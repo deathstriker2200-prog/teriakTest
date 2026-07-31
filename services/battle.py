@@ -1,0 +1,311 @@
+"""
+سیستم نبرد HP گروهی ⚔️
+HP دائمی تو دیتابیس | هر ضربه همون لحظه دمیج + غارت + تجربه | شکست = ۱۰ دقیقه بیهوشی
+
+ماژولاره: هر عدد/ضریب توی config (بخش «نبرد HP» و HEAL_ITEMS) قابل تغییره
+سلاح/زره/سگ/آیتم درمان/رویداد جدید فقط با یه خط به کاتالوگ‌ها اضافه میشه
+"""
+
+import random
+from datetime import timedelta
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+import config
+from models import User
+from services import actionlog, combat
+from services import dogs as dog_svc
+from services import users as user_svc
+from utils import now_utc
+
+
+# ───────── HP ❤️ ─────────
+
+def max_hp(level: int) -> int:
+    """HP کامل بر اساس جدول لول، بالاتر از سقف همون مقدار آخره"""
+    lvl = min(max(int(level or 1), 1), len(config.HP_TABLE))
+    return config.HP_TABLE[lvl - 1]
+
+
+def ensure_hp(user: User) -> None:
+    """مقداردهی اولیه جان، کاربرای قدیمی یا تازه‌ساخته‌شده‌ها با HP فول لول خودشون"""
+    if getattr(user, "hp", None) is None:
+        user.hp = max_hp(user.level)
+
+
+def full_heal(user: User) -> None:
+    """HP فول (لول‌آپ و زنده شدن بعد از بیهوشی)"""
+    user.hp = max_hp(user.level)
+
+
+# ───────── بیهوشی 💀 ─────────
+
+def dead_left(user: User) -> int:
+    """ثانیه مونده تا زنده شدن، صفر یعنی سر پاست"""
+    if not user.dead_until:
+        return 0
+    left = (user.dead_until - now_utc()).total_seconds()
+    return max(0, int(left))
+
+
+def revive_if_due(user: User) -> bool:
+    """وقت بیهوشی گذشته؟ خودکار با HP فول زنده‌ش کن (تنبلی، بدون جاب)"""
+    if user.dead_until and dead_left(user) <= 0:
+        user.dead_until = None
+        full_heal(user)
+        return True
+    return False
+
+
+# ───────── کولدان مهاجم ⏳ ─────────
+
+async def cooldown_left(session: AsyncSession, user: User) -> int:
+    """ثانیه مونده از کولدان حمله، فقط مهاجم می‌گیره | دوبرمن ⚡ و چابک 🌀 کوتاهش می‌کنن"""
+    if not user.last_attack_at:
+        return 0
+    dogs = await dog_svc.get_user_dogs(session, user.id)
+    cd = config.BATTLE_COOLDOWN_SECONDS * dog_svc.breed_cooldown_mult(dogs)
+    left = cd - (now_utc() - user.last_attack_at).total_seconds()
+    return max(0, int(left))
+
+
+# ───────── قدرت نبرد 💪 ─────────
+
+async def battle_powers(session: AsyncSession, attacker: User, target: User) -> tuple[int, int, dict]:
+    """
+    (حمله مهاجم, دفاع مدافع, اطلاعات مادیفایرها)
+    حمله: پایه + سلاح + لول + سگ + هوا + ساختمان حمله تیم
+    دفاع: پایه + زره + لول + هوا + ساختمان دفاع تیم + قابلیت‌های ویژه (گرگ دفاع رو خرد می‌کنه)
+    """
+    a_items = await user_svc.get_item_keys(session, attacker.id)
+    t_items = await user_svc.get_item_keys(session, target.id)
+    a_dogs = await dog_svc.get_user_dogs(session, attacker.id)
+    t_dogs = await dog_svc.get_user_dogs(session, target.id)
+
+    atk, _ = combat.combat_stats(attacker, a_items, a_dogs)
+    _, dfn = combat.combat_stats(target, t_items, t_dogs)
+
+    info: dict = {"tbuff": 0.0, "defcut": 0.0, "weather": "normal"}
+
+    from services import teams as team_svc
+    a_team = await team_svc.get_team_of(session, attacker.id)
+    t_team = await team_svc.get_team_of(session, target.id)
+    tbuff = team_svc.atk_bonus(a_team)
+    tbuff_def = team_svc.def_bonus(t_team)
+    if tbuff:
+        atk = int(atk * (1 + tbuff))
+        info["tbuff"] = tbuff
+    if tbuff_def:
+        dfn = int(dfn * (1 + tbuff_def))
+
+    from services import world as world_svc
+    wkey, wpct, _ = await world_svc.weather_state(session)
+    watk, wdef = world_svc.weather_combat_mods(wkey, wpct)
+    if watk:
+        atk = max(1, int(atk * (1 + watk)))
+    if wdef:
+        dfn = max(1, int(dfn * (1 + wdef)))
+    info["weather"] = wkey
+
+    # گرگ سیاه دفاع حریف رو خرد می‌کنه، تا ۳۰% بسته به لولش
+    def_cut = dog_svc.rare_defense_cut(a_dogs)
+    if def_cut:
+        dfn = max(1, int(dfn * (1 - def_cut)))
+        info["defcut"] = def_cut
+
+    info["a_items"] = a_items
+    info["t_items"] = t_items
+    info["a_dogs"] = a_dogs
+    info["t_dogs"] = t_dogs
+    return atk, dfn, info
+
+
+# ───────── دمیج 🩸 ─────────
+
+def roll_damage(atk: int, dfn: int, victim_max_hp: int) -> tuple[int, bool]:
+    """
+    (دمیج نهایی یه ضربه, کریتیکال بود؟)
+    دمیج درصدی از مکس HP قربانیه: هرچی حمله نسبت به دفاع حریف قوی‌تر، درصد بالاتر
+    (بین کف و سقف کانفیگ) و بعد واریانس رندوم، که نبرد هیجانی و غیرقابل پیش‌بینی بمونه
+    دمیج صفر فقط وقتی حریف حسابی قوی‌تره (دفاع ≥ نسبت کانفیگ برابر حمله)
+    کریتیکال با شانس کم دمیج نهایی رو چند برابر می‌کنه
+    """
+    if dfn >= atk * config.BATTLE_NO_DAMAGE_DEF_RATIO:
+        return 0, False
+    ratio = atk / max(1, atk + dfn)  # ۰ تا ۱، برتری نسبی حمله به دفاع
+    pct = config.BATTLE_DMG_PCT_MIN + (config.BATTLE_DMG_PCT_MAX - config.BATTLE_DMG_PCT_MIN) * ratio
+    raw = max(1, victim_max_hp) * pct
+    v = config.BATTLE_DMG_VARIANCE
+    dmg = max(1, round(raw * random.uniform(1 - v, 1 + v)))
+    crit = random.random() < config.BATTLE_CRIT_CHANCE
+    if crit:
+        dmg = max(1, round(dmg * config.BATTLE_CRIT_MULT))
+    return dmg, crit
+
+
+# ───────── غارت و تجربه همون لحظه 💰 ─────────
+
+def steal_for_hit(
+    dmg: int, victim_max_hp: int, victim_cash: int,
+    attacker_dogs: list, victim_items: list[str], victim_dogs: list,
+    attacker_items=None,
+) -> tuple[int, dict]:
+    """
+    مبلغ غارت یه ضربه بر اساس دمیج نسبت به HP کامل حریف
+    دمیج بیشتر، غارت بیشتر | مادیفایر سگ‌ها و زره افسانه‌ای اعمال میشه | سقف سخت ۵%
+    خروجی: (مبلغ, اطلاعات مادیفایرها)
+    """
+    meta = {"bonus": 0.0, "cut": 0.0, "halved": False}
+    if victim_cash <= 0 or dmg <= 0:
+        return 0, meta
+
+    pct = config.BATTLE_STEAL_MAX_PCT * min(1.0, dmg / max(1, victim_max_hp))
+    amount = float(victim_cash) * pct
+
+    bonus = dog_svc.rare_steal_bonus(attacker_dogs)
+    bonus += user_svc.artifact_steal_bonus(user_svc.artifact_keys(attacker_items or []))
+    if bonus:
+        amount *= 1 + bonus
+        meta["bonus"] = bonus
+
+    if combat.has_legend_armor(victim_items) and amount > 0:
+        amount *= 0.5
+        meta["halved"] = True
+
+    amount = min(amount, victim_cash * config.BATTLE_STEAL_MAX_PCT)
+    return max(0, int(amount)), meta
+
+
+def xp_for_hit(dmg: int) -> int:
+    """تجربه همون لحظه هر ضربه، دمیج بیشتر تجربه بیشتر"""
+    return max(1, round(config.BATTLE_HIT_XP_BASE + dmg * config.BATTLE_HIT_XP_PER_DMG))
+
+
+# ───────── اجرای کامل یه ضربه ⚔️ ─────────
+
+async def execute_hit(session: AsyncSession, attacker: User, target: User) -> dict:
+    """
+    همه چک‌ها + محاسبات + تغییرات دیتابیس برای یه ضربه (بدون کامیت)
+    خروجی: اگه ok نباشه reason داره
+    reason: dead_self | dead_target | cooldown | energy | self
+    nodmg=True یعنی حمله انجام شد ولی زره حریف هیچ آسیبی نگه داشت
+    """
+    revive_if_due(attacker)
+    revive_if_due(target)
+    ensure_hp(attacker)
+    ensure_hp(target)
+
+    if target.id == attacker.id:
+        return {"ok": False, "reason": "self"}
+
+    d_self = dead_left(attacker)
+    if d_self:
+        return {"ok": False, "reason": "dead_self", "left": d_self}
+
+    d_target = dead_left(target)
+    if d_target:
+        return {"ok": False, "reason": "dead_target", "left": d_target}
+
+    cd = await cooldown_left(session, attacker)
+    if cd:
+        return {"ok": False, "reason": "cooldown", "left": cd}
+
+    if attacker.energy < config.ATTACK_ENERGY_COST:
+        return {"ok": False, "reason": "energy"}
+
+    # هزینه تلاش برای حمله، حتی اگه دمیج نخوره
+    attacker.energy -= config.ATTACK_ENERGY_COST
+    attacker.last_attack_at = now_utc()
+    await actionlog.log(session, "battle")  # آمار نبردهای گروهی پنل ادمین
+
+    atk, dfn, info = await battle_powers(session, attacker, target)
+    hp_max = max_hp(target.level)
+
+    dmg, crit = roll_damage(atk, dfn, hp_max)
+    if dmg <= 0:
+        return {"ok": True, "nodmg": True, "a_pow": atk, "d_pow": dfn, "info": info}
+
+    target.hp = max(0, (target.hp or 0) - dmg)
+
+    steal, meta = steal_for_hit(
+        dmg, hp_max, target.cash, info["a_dogs"], info["t_items"], info["t_dogs"],
+        info["a_items"],
+    )
+    if steal:
+        target.cash -= steal
+        attacker.cash += steal
+
+    xp = xp_for_hit(dmg)
+    xp = int(xp * dog_svc.battle_xp_mult(info["a_dogs"]))
+    xp = int(xp * user_svc.artifact_xp_mult(user_svc.artifact_keys(info["a_items"])))
+    notes = user_svc.add_xp(attacker, xp)
+    from services import teams as team_svc
+    notes += await team_svc.add_team_xp(session, attacker, xp)
+    notes += await dog_svc.add_battle_xp(info["a_dogs"], config.DOG_BATTLE_XP_HIT)
+
+    killed = target.hp <= 0
+    if killed:
+        target.dead_until = now_utc() + timedelta(seconds=config.BATTLE_DEAD_SECONDS)
+        attacker.wins += 1
+        target.losses += 1
+        from services import teams as team_svc
+        quest_msg = await team_svc.record_kill(session, attacker)
+        if quest_msg:
+            notes.append(quest_msg)
+
+    return {
+        "ok": True,
+        "nodmg": False,
+        "killed": killed,
+        "dmg": dmg,
+        "crit": crit,
+        "hp_now": target.hp,
+        "hp_max": hp_max,
+        "steal": steal,
+        "meta": meta,
+        "xp": xp,
+        "notes": notes,
+        "a_pow": atk,
+        "d_pow": dfn,
+        "info": info,
+    }
+
+
+# ───────── درمان ❤️ ─────────
+
+def heal_preview(user: User, key: str) -> int:
+    """چقدر HP با این آیتم برمی‌گرده (با سقف HP کامل)"""
+    item = config.HEAL_ITEMS.get(key)
+    if not item:
+        return 0
+    ensure_hp(user)
+    if item["heal"] is None:
+        return max_hp(user.level) - user.hp
+    return min(item["heal"], max_hp(user.level) - user.hp)
+
+
+def apply_heal(user: User, key: str) -> tuple[bool, str, int]:
+    """
+    خرید و استفاده همون لحظه آیتم درمان (بدون انبار)
+    خروجی: (موفق, پیام, مقدار برگشتی)
+    دلیل ناموفق: dead | full | poor | badkey
+    """
+    item = config.HEAL_ITEMS.get(key)
+    if not item:
+        return False, "badkey", 0
+
+    revive_if_due(user)
+    if dead_left(user):
+        return False, "dead", 0
+
+    ensure_hp(user)
+    gain = heal_preview(user, key)
+    if gain <= 0:
+        return False, "full", 0
+
+    if user.cash < item["price"]:
+        return False, "poor", 0
+
+    user.cash -= item["price"]
+    user.hp += gain
+    return True, "ok", gain

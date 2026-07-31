@@ -1,0 +1,363 @@
+"""شروع | ثبت‌نام خودکار | منو | لغو | هلپ"""
+
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.constants import ChatType
+from telegram.ext import ContextTypes
+
+import config
+from database import session_scope
+from handlers.common import respond, strip_home
+from keyboards import keyboards as kb
+from services import users
+from utils import esc, money
+
+
+async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    async with session_scope() as s:
+        user, created = await users.get_or_create(s, update.effective_user)
+        users.apply_energy_regen(user)
+        name = esc(users.display_name(user))
+        await s.commit()
+
+    # ── /start تو گروه، پیام مخصوص (هشدار ادمین فقط وقتی ادمین نیستیم) ──
+    if update.effective_chat.type != ChatType.PRIVATE:
+        bot_username = kb.BOT_USERNAME or (await context.bot.get_me()).username
+        is_admin = await _bot_is_group_admin(context, update.effective_chat.id)
+        markup = InlineKeyboardMarkup([[InlineKeyboardButton(
+            "🛒 برو پیوی ربات", url=f"https://t.me/{bot_username}", style="primary",
+        )]])
+        await update.message.reply_html(group_welcome_text(bot_username, is_admin), reply_markup=markup)
+        return
+
+    # ── /start تو پیوی ──
+    # اکانت ریست‌شده با /clearacc هم مثل روز اول پیام خوش‌آمد می‌گیره
+    fresh = created or (
+        user.level == 1 and user.first_mine_at is None and user.last_mine_at is None
+        and user.last_attack_at is None and user.last_harvest_at is None
+    )
+    if fresh:
+        # خوش‌آمد تازه‌کار فقط یه قدم مشخص میده، بقیه آموزش‌ها تو بخش راهنما می‌مونه
+        text = (
+            f"<b>🔥 سلام {name}، به بازی تریاکی خوش اومدی</b>\n\n"
+            "برای شروع اولین قدم خیلی ساده‌ست\n"
+            "⛏ روی «کنده کاری» بزن و بکن تا اولین تی‌پوینت و جایزه شروع بازی رو بگیری\n\n"
+            "بعدش قدم به قدم خود بازی راهنماییت می‌کنم\n"
+            "📖 آموزشات کامل هم همیشه تو بخش راهنماست"
+        )
+    else:
+        text = (
+            f"<b>😎 سلام {name} خوب شد که دوباره اومدی</b>\n\n"
+            "محله بی تو حال نمی‌داد\n"
+            "فقط بگو کجا می‌خوای بری 👇"
+        )
+        card = await _mission_card(update)
+        if card:
+            text = card + "\n\n" + text
+
+    await update.message.reply_html(text, reply_markup=kb.main_menu_kb())
+
+
+async def _mission_card(update: Update) -> str | None:
+    """کارت مأموریت شروع تازه‌کارها، فقط تا لول MISSION_GUIDE_MAX_LEVEL بالای منو میاد"""
+    from services import onboarding as onb
+    async with session_scope() as s:
+        user, _ = await users.get_or_create(s, update.effective_user)
+        card = await onb.menu_card(s, user)
+        await s.commit()
+    return card
+
+
+async def menu_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    text = "<b>🏠 منوی اصلی</b>\n\nکجا می‌خوای بری؟"
+    card = await _mission_card(update)
+    if card:
+        text = card + "\n\n" + text
+    await respond(update, text, kb.main_menu_kb())
+
+
+async def cancel_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await respond(
+        update,
+        "<b>😅 بی‌خیال شدیم</b>\n\nهر وقت نظرت عوض شد اینجام",
+        kb.main_menu_kb(),
+    )
+
+
+# ───────── آموزشات (هلپ دکمه‌دار) 📖 ─────────
+
+_HELP_INTRO = (
+    "<b>📖 آموزشات تریاکی</b>\n\n"
+    "بخش مورد نظر رو انتخاب کن تا آموزشات لازم رو بهت بدم 👇"
+)
+
+
+HELP_SECTIONS: dict[str, str] = {
+    "start": (
+        "<b>📖 شروع بازی</b>\n\n"
+        "با دستور «تریاکی پروفایل» حسابت رو ببین\n"
+        "با «تریاکی کنده کاری» یا «کنده کاری» اولین پول و تجربه‌هات رو جمع کن\n"
+        "از «تریاکی شاپ» بذر بخر و با «تریاکی کاشت [نام بذر]» بکار\n\n"
+        "هر لول‌آپ جایزه می‌گیری و چیزای جدید برات باز میشه\n"
+        "پولت رو با «تریاکی بانک» امن نگه دار\n\n"
+        "از منوی اصلی همه بخش‌ها یکی‌دو دکمه فاصله‌ست"
+    ),
+    "battle": (
+        "<b>⚔ نبرد</b>\n\n"
+        "تو گروه روی پیام حریف ریپلای کن و «حمله» یا «شلیک» بفرست\n"
+        "تو پی‌وی با «تریاکی حمله» لیست هدف باز میشه\n\n"
+        "قدرت نبردت از سلاح و زره و سگ و آرتیفکت و لولت میاد\n"
+        "هر ضربه تی‌پوینت و تجربه میده و سگ‌هات هم از نبرد تجربه می‌گیرن\n\n"
+        "سلاح و زره رو تو شاپ تا لول 5 ارتقا بده\n"
+        "سلامتت که کم شد با «تریاکی درمان» خودت رو به هم بزن\n"
+        "سلامت حریف که صفر شد دوئل تمومه و طرف چند دقیقه‌ای از بازی خارجه\n\n"
+        "🎰 قمارخانه هم بخش خودش رو تو همین آموزشات داره"
+    ),
+    "farm": (
+        "<b>🌱 مزرعه</b>\n\n"
+        "اولین زمین رایگانه و هر زمین جدید قیمت و لول خودشو می‌خواد\n"
+        "بذر از شاپ می‌خری و با «تریاکی کاشت [نام بذر]» یا دکمه کاشت می‌کاری\n"
+        "بعد رشد با «تریاکی برداشت» محصولت رو نقد کن\n\n"
+        "هر برداشت یه کیفیت داره و کیفیت بهتر پول بیشتری میده\n"
+        "آب‌وهوا و بازار هم روی درآمدت اثر می‌ذارن\n\n"
+        "⬆️ ارتقای زمین سرعت رشد رو بیشتر و شانس محصول افسانه‌ای رو بالا می‌بره\n"
+        "ارتقا علاوه بر تی‌پوینت چوب هم می‌خواد\n\n"
+        "بذرهای افسانه‌ای فروخته نمیشن و فقط از جستجو و کاروان میان"
+    ),
+    "dogs": (
+        "<b>🐕 سگ‌ها</b>\n\n"
+        "هر نژاد یه ویژگی درصدی داره که با لول سگ قوی‌تر میشه\n\n"
+        "🐕 پیتبول، کاهش کولدان حمله\n"
+        "🐕 دوبرمن، دفاع بیشتر\n"
+        "🐕 ژرمن شپرد، تجربه بیشتر از نبرد\n"
+        "🐕 کانگال، قدرت حمله بیشتر\n"
+        "👑 گرگ سیاه، غارت بیشتر\n\n"
+        "سگ‌ها از نبرد تجربه می‌گیرن و با لول قوی‌تر میشن\n"
+        "با 🍖 غذا هم لولشون می‌بره\n\n"
+        "اسم سگت رو با «اسم سگ [اسم فعلی] [اسم جدید]» عوض کن\n"
+        "کارت هر سگ با «تریاکی آمار [اسم سگ]» میاد"
+    ),
+    "company": (
+        "<b>🏭 شرکت</b>\n\n"
+        "دو ساختمان داره\n"
+        "🪵 چوب‌بری و ⛏️ کارخانه آهن\n\n"
+        "تولید تو انبار خود کارخونه جمع میشه و 12 ساعته پر میشه، با دکمه 📥 برداشت خالی‌ش کن\n"
+        "انبار کارخونه پر که بشه تولید وایمیسته 🔴\n"
+        "لول ساختمان بالاتر بره تولید بیشتر میشه\n\n"
+        "ساخت و ارتقا علاوه بر تی‌پوینت چوب هم می‌خواد\n"
+        "حتی وقتی آفلاینی کارخونه‌هات کار می‌کنن"
+    ),
+    "shelter": (
+        "<b>🏚 انبار</b>\n\n"
+        "انبارت همینجاست\n"
+        "ظرفیت بذر و چوب و آهن رو نشون میده\n"
+        "پر بودن انبار چوب و آهن رو با نوار می‌بینی\n"
+        "با هر ارتقا ظرفیت همه بیشتر میشه، هر ارتقا سطح خودشو می‌خواد\n\n"
+        "بخش فروش منابع هم همینجاست\n"
+        "از بخش فروش میتونی چوب و آهن اضافه رو بفروشی، مثلا تو همین بخش بنویس آهن 300 یا چوب 200"
+    ),
+    "team": (
+        "<b>👥 تیم</b>\n\n"
+        "«ساخت تیم» از لول 5 به بعد باز میشه و\n"
+        "از لول 3 با «جوین تیم [نام تیم]» میتونی درخواست عضویت بفرستی\n"
+        "درخواستت باید توسط رهبر یا مدیران اون تیم قبول کنن\n\n"
+        "تیم هم لول داره، هر تجربه‌ای که اعضا می‌گیرن به تیم هم میرسه\n"
+        "هر لول تیم جای عضو بیشتر میشه و ارتقای ساختمان هم به لول تیم وابسته‌ست\n\n"
+        "رهبر و مدیران تو «تیم من» بخش 👑 مدیریت تیم رو دارن\n"
+        "درخواست‌ها اونجا با دکمه یا دستور «تیم درخواست @یوزر قبول/رد» جواب داده میشن\n"
+        "اخراج عضو با «تیم کیک @یوزر» و مدیرسازی با «تیم ادمین @یوزر»\n\n"
+        "کوئست روزانه تیم و کنده‌کاری تیمی به همه اعضا جایزه میده\n"
+        "آخر هفته تیم‌های برتر جایزه می‌گیرن"
+    ),
+    "resources": (
+        "<b>🎒 منابع</b>\n\n"
+        "چوب و آهن دو منبع اصلی محله‌ان\n"
+        "از سه راه به دست میان\n\n"
+        "⛏ کنده‌کاری (شانسی میفتن)، بازش تو بخش ⛏ کنده‌کاری توضیح دادیم\n"
+        "🏭 تولید چوب‌بری و کارخانه آهن، تولید صرفه بیشتری داره\n"
+        "🛒 خرید پک از فروشگاه، گرونه و برای وقتیه که عجله داری\n\n"
+        "چوب و آهن اضافه رو از بخش فروش منابع انبار می‌فروشی\n"
+        "سلاح و ارتقاشون آهن می‌خوان\n"
+        "ارتقای زمین و ساختمان‌های شرکت چوب می‌خوان\n"
+        "ظرفیتشون با لول انبار بیشتر میشه"
+    ),
+    "shop": (
+        "<b>🛒 فروشگاه</b>\n\n"
+        "🔫 سلاح، دمیجت رو بالا می‌بره و خریدش آهن هم می‌خواد\n"
+        "🛡 زره، دفاعت رو بالا می‌بره\n"
+        "⬆️ ارتقای سلاح و زره تا لول 5، با تی‌پوینت و آهن\n"
+        "🧿 آرتیفکت‌های کمیاب و گرون آخر بازی، از لول 10\n"
+        "🎒 پک چوب و آهن\n"
+        "🌱 بذر برای کاشت\n"
+        "🐕 سگ‌ها با نژادهای مختلف\n"
+        "🍖 غذای سگ\n\n"
+        "دکمه سبز یعنی قابل خریده\n"
+        "دکمه قرمز یعنی هنوز لولت کافی نیس\n\n"
+        "با دستور «تریاکی خرید [نام آیتم]» هم می‌تونی بخری"
+    ),
+    "mine": (
+        "<b>⛏ کنده‌کاری</b>\n\n"
+        "با «تریاکی کنده کاری» یا فقط «کنده کاری» هر 60 ثانیه یه بار می‌تونی کار کنی\n"
+        "هر بار تی‌پوینت و تجربه قطعیه، ولی افتادن چوب و آهن شانسیه\n\n"
+        "🪓 تبر شانس و مقدار چوب رو بالا می‌بره\n"
+        "⛏️ کلنگ همین کارو برای آهن می‌کنه\n"
+        "هر دو ابزار تا لول 5 ارتقا می‌خورن و علاوه بر شانس، خودِ تی‌پوینت و تجربه‌ی\n"
+        "کنده‌کاری رو هم بیشتر می‌کنن\n\n"
+        "🍀 گاهی «شکار کمیاب» میفته که توش چوب و آهن حتمی میفتن و\n"
+        "همه درآمد اون ضربه چند برابر میشه؛ هرچی ابزارت بالاتر باشه شانس این شکار هم بیشتره"
+    ),
+    "casino": (
+        "<b>🎰 قمارخانه</b>\n\n"
+        "از لول 7 به بعد با «تریاکی قمارخانه» باز میشه\n"
+        "هر 12 ساعت فقط یه دست می‌تونی بازی کنی\n\n"
+        "یکی از میزهای شرط رو انتخاب کن و ببند\n"
+        "چهار از هر ده دست می‌بری، برد یعنی 1.8 برابر شرطت رو می‌گیری\n\n"
+        "قمارخونه برای سرگرمیه، نه یه راه پول‌سازی مطمئن؛ تو درازمدت بیشتر از\n"
+        "این‌که ببری می‌بازی، پس فقط با پولی وارد شو که از دست دادنش برات مهم نیست"
+    ),
+    "bank": (
+        "<b>🏦 بانک</b>\n\n"
+        "با «تریاکی بانک» پولت رو از خطر حمله‌ی بقیه دور نگه دار\n"
+        "پول تو بانک برخلاف پول نقدت با غارت حریف از دست نمیره\n\n"
+        "بانک ظرفیت داره و بالاتر از سقفش نمی‌تونی واریز کنی\n"
+        "با تی‌پوینت ارتقاش بده تا هم سقفش بره بالا هم به لول‌های بالاتر برسه\n"
+        "هر لول بانک به یه حداقل لول کاراکتر نیاز داره"
+    ),
+    "quests": (
+        "<b>📋 ماموریت روزانه</b>\n\n"
+        "هر شب نیمه‌شب 2 تا 3 ماموریت رندوم برات ست میشه\n"
+        "می‌تونه هر ترکیبی از حمله، برداشت، کنده‌کاری، کاشت، جستجو یا غذادادن به سگ باشه\n\n"
+        "هر ماموریت که کامل بشه یه جایزه می‌گیری؛ بیشتر وقتا تی‌پوینت یا تجربه‌ست\n"
+        "و گاهی هم یه بذر رندوم نصیبت میشه\n\n"
+        "از منوی اصلی وارد بخش ماموریت‌ها شو و پیشرفتت رو چک کن"
+    ),
+    "misc": (
+        "<b>🧭 متفرقه</b>\n\n"
+        "🔍 جستجو، هر 10 دقیقه یه بار با «تریاکی جستجو» می‌تونی بگردی؛ ممکنه پول،\n"
+        "بذر معمولی یا کمیاب، حتی بذر جهنم و ابلیس (نادرترین‌ها) پیدا کنی، ولی\n"
+        "شانس کمی هم هست یه دزد بخشی از پولت رو بزنه\n\n"
+        "📈 بازار سیاه، قیمت فروش هر محصول دست خود بازیکناس؛ هر فروشی رو قیمتش اثر می‌ذاره\n"
+        "کمیاب بشه گرون‌تر و اشباع بشه ارزون‌تر میشه، قیمت‌ها هر یک ساعت یه حرکت کوچیک دارن\n"
+        "همه محصولات از روز اول با قیمتشون دیده میشن و قبل فروش بهتره یه نگاه به وضعیت بازار بندازی\n\n"
+        "🌦 آب‌وهوا، ساعت 6 و 12 و 18 و 24 به وقت ایران عوض میشه و شدت افکتش هم هر بار یه کم فرق می‌کنه؛ بیشتر وقتا عادیه ولی گاهی یکی از این‌ها میاد:\n"
+        "🌧 باران، رشد گیاه سریع‌تر | ☀️ گرمای شدید، رشد کندتر\n"
+        "❄️ سرمای شدید، رشد کندتر | 🌫 مه، دفاع همه بیشتر\n"
+        "🌪 طوفان، حمله همه کمتر | 🌈 جشن برداشت، قیمت فروش بیشتر\n"
+        "🌕 شب مهتابی، شانس محصول ⭐⭐⭐⭐⭐ بیشتر\n\n"
+        "⚡️ انرژی، سقفش 100ه و هر 5 دقیقه خودش شارژ میشه؛ حمله (چه گروه چه پی‌وی)\n"
+        "انرژی مصرف می‌کنه، پس بی‌حساب خرجش نکن"
+    ),
+}
+async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await respond(update, _HELP_INTRO, kb.help_menu_kb())
+
+
+async def help_menu_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """🔙 آموزشات، برگشت به منوی بخش‌ها"""
+    await respond(update, _HELP_INTRO, kb.help_menu_kb())
+
+
+async def help_section_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    key = update.callback_query.data.split(":")[-1]
+    text = HELP_SECTIONS.get(key)
+    if text is None:
+        return await help_menu_cb(update, context)
+    await respond(update, text, kb.help_back_kb())
+
+
+# ───────── خوش‌آمد گروه 🔥 ─────────
+
+def group_welcome_text(bot_username: str, is_admin: bool) -> str:
+    """متن خوش‌آمد گروهی، موقع اد شدن یا /start گروهی (هشدار فقط وقتی ادمین نیستیم)"""
+    text = (
+        "<b>🔥 تریاکی بات وارد گروه شد</b>\n\n"
+        f"🎁 با دستور /start@{bot_username} بازی رو شروع کن و {money(config.START_CASH)} جایزه بگیر\n\n"
+        "⚔️ برای حمله روی پیام حریف ریپلای کن و بنویس\n"
+        "حمله\n"
+        "⛏️ برای کسب تی‌پوینت بنویس\n"
+        "کنده کاری\n\n"
+        f"جهت مشاهده مابقی دستورات و قابلیت‌ها از دستور «تی راهنما» یا /help@{bot_username} استفاده کنید"
+    )
+    if not is_admin:
+        text += (
+            "\n\n⚠️ من هنوز تو این گروه ادمین نیستم و بدون ادمین بودن نمی‌تونم پیام‌های متنی رو ببینم\n"
+            "لطفا از تنظیمات گروه من رو ادمین کن تا همه چی درست کار کنه 🙏"
+        )
+    return text
+
+
+async def _bot_is_group_admin(context: ContextTypes.DEFAULT_TYPE, chat_id: int) -> bool:
+    """آیا ربات تو این گروه ادمینه؟"""
+    try:
+        me = await context.bot.get_me()
+        member = await context.bot.get_chat_member(chat_id, me.id)
+        return member.status in ("administrator", "creator")
+    except Exception:
+        return False
+
+
+async def bot_added(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """موقع اد شدن به گروه (my_chat_member)، خودش متن خوش‌آمد رو می‌فرسته"""
+    cm = update.my_chat_member
+    if cm is None or cm.chat.type not in ("group", "supergroup"):
+        return
+    new = cm.new_chat_member
+    status = new.status if new else ""
+    if status not in ("member", "administrator"):
+        return
+
+    me = await context.bot.get_me()
+    username = me.username or "TeriakyBot"
+    kb.BOT_USERNAME = kb.BOT_USERNAME or username
+    text = group_welcome_text(username, status == "administrator")
+    markup = InlineKeyboardMarkup([[InlineKeyboardButton(
+        "🛒 برو پیوی ربات", url=f"https://t.me/{username}", style="primary",
+    )]])
+    try:
+        await context.bot.send_message(cm.chat.id, text, parse_mode="HTML", reply_markup=markup)
+    except Exception:
+        pass
+
+    # گروه رو فعال ثبت کن (اعلان آب و هوا و کاروان بهش میرسه)
+    from services import world as world_svc
+    async with session_scope() as s:
+        await world_svc.touch_group(s, cm.chat.id, cm.chat.title)
+        await s.commit()
+
+
+# پیام‌های کوتاه دکمه‌های اطلاعاتی
+_NOOP_ANSWERS = {
+    "lock": "🔒 اول باید لولت بره بالا",
+    "own": "اینو داری که",
+    "winfo": "🗡 سلاح قدرت حملتو می‌بره بالا، فقط بهترینش حساب میشه",
+    "ainfo": "🛡 زره دفات رو قوی می‌کنه، فقط بهترینش حساب میشه",
+    "maxplot": "🌱 این زمین لول مکس، بهتر از این نمیشه",
+    "maxplots": "🏡 به سقف زمین رسیدی",
+    "plot": "🗺 اینم زمینته، از دکمه‌های زیرش استفاده کن",
+    "grow": "⏳ صبر کن رشد کنه",
+    "ready": "✅ آمادست، از دکمه برداشت پایین استفاده کن",
+    "build": "🔨 زمینت داره ساخته میشه، صبر کن تحویل بگیرش",
+    "maxbank": "🏦 این بانک لول مکس، بهتر از این نمیشه",
+    "maxshelter": "🏚 این انبار لول مکس، بهتر از این نمیشه",
+    "maxdog": "🐕 این سگ لول مکس، بهتر از این نمیشه",
+    "maxbld": "🏗 این ساختمان لول مکس، بهتر از این نمیشه",
+    "depinfo": "💰 تو گروه یا پیوی بنویس «تیم واریز 1200»، عددش خودته",
+    "feedinfo": "🍖 برای غذا دادن بنویس «تریاکی سگ‌های من» و دکمه 🍖 زیر سگت رو بزن",
+    "doginfo": "🐕 برای غذا دادن از دکمه 🍖 زیرش استفاده کن",
+}
+
+
+async def noop_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    parts_ = query.data.split(":")
+    key = parts_[1] if len(parts_) > 1 else ""
+    if key == "plot":
+        # «زمین شماره n، از دکمه‌های زیرش استفاده کن»
+        words = {1: "یکم", 2: "دوم", 3: "سوم", 4: "چهارم", 5: "پنجم"}
+        try:
+            idx = int(parts_[2])
+        except (IndexError, ValueError):
+            idx = 0
+        word = words.get(idx, str(idx))
+        await query.answer(f"زمین شماره {word}، از دکمه‌های زیرش استفاده کن", show_alert=True)
+        return
+    await query.answer(_NOOP_ANSWERS.get(key, "👀"), show_alert=True)
