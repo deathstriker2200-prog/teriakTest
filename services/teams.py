@@ -449,7 +449,7 @@ async def rename_team(session: AsyncSession, user: User, new_name: str) -> tuple
     old = team.name
     team.name = display
     team.name_norm = team_name_norm(display)  # ستون یکدست‌شده جستجو هم آپدیت میشه
-    return True, f"✏️ اسم تیم از «{old}» شد «{team.name}»\n💸 {money(cost)} هم از جیبت رفت"
+    return True, f"✏️ اسم تیم از «{old}» شد «{team.name}»\n💸 {money(cost)} هم از جیبت کم شد"
 
 
 # ───────── آمار تیم ─────────
@@ -630,9 +630,17 @@ async def _record(session: AsyncSession, user: User, key: str, n: int) -> str | 
             team.bank += bank_reward
             bank_line = f"\n🏦 و {money(bank_reward)} هم به بانک تیم رسید" if bank_reward else ""
 
+            # جایزه ویژه تیمی: لول تیم ۷ به بالا، با شانس کم یه بذر جهنم یا ابلیس به هر عضو میرسه
+            legend_line = ""
+            if (team.level or 1) >= config.TEAM_QUEST_LEGEND_MIN_LEVEL and random.random() < config.TEAM_QUEST_LEGEND_CHANCE:
+                from services import farming as farm_svc
+                for m in members:
+                    await farm_svc.add_seed_stock(session, m.user_id, random.choice(config.QUEST_LEGEND_SEEDS), 1)
+                legend_line = "\n🍀 بخت باهاتون یار بود، یه بذر افسانه‌ای 🔥 یا 😈 هم به هر عضو رسید"
+
             return (
                 f"🏴 کوئست {quest['emoji']} «{scaled['title']}» تیم «{team.name}» کامل شد!\n"
-                f"🎁 {money(scaled['reward'])} به هر عضو تیم رسید{bank_line}"
+                f"🎁 {money(scaled['reward'])} به هر عضو تیم رسید{bank_line}{legend_line}"
             )
     return None
 
@@ -660,6 +668,21 @@ async def record_search(session, user: User) -> str | None:
 async def record_caravan(session, user: User) -> str | None:
     """هر ضربه عضو به کاروان، با قلاب هندلر کاروان صدا زده میشه"""
     return await _record(session, user, "caravan", 1)
+
+
+async def record_plant(session, user: User, n: int = 1) -> str | None:
+    """هر بذری که عضو می‌کاره، کوئست تیمی کاشت"""
+    return await _record(session, user, "plant", n)
+
+
+async def record_feed(session, user: User) -> str | None:
+    """هر بار غذا دادن به سگ، کوئست تیمی غذا"""
+    return await _record(session, user, "feed", 1)
+
+
+async def record_team_deposit(session, user: User, amount: int) -> str | None:
+    """هر واریز به بانک تیم، کوئست تیمی «واریز مجموع» با مبلغ"""
+    return await _record(session, user, "depbank", amount)
 
 
 def quests_view(daily: TeamDaily, team_level: int = 1) -> list[dict]:
@@ -1001,14 +1024,16 @@ async def upgrade_building(session: AsyncSession, user: User, kind: str) -> tupl
     return True, f"🏗 {title} رفت رو لول {fa_num(new_level)}، {effect}"
 
 
-async def toggle_hidden(session: AsyncSession, user: User) -> tuple[bool, str]:
-    """«تیم مخفی» فقط رهبر، تاگل نامرئی تیم تو لیدربردهای تیم (دوباره بزنی برمی‌گرده)"""
-    team = await get_team_of(session, user.id)
-    if not team:
-        return False, "🏴 اصلا تو تیمی نیستی"
-    m = await get_membership(session, user.id)
-    if not m or m.role != "owner":
-        return False, "👑 فقط رهبر تیم می‌تونه مخفیش کنه"
+async def toggle_hidden(session: AsyncSession, user: User, team_name: str | None = None) -> tuple[bool, str]:
+    """«تیم مخفی» فقط دست ادمینه، با اسم هر تیمی و بدون اسم تیم خود ادمین (دوباره بزنی برمی‌گرده)"""
+    if team_name:
+        team = await get_team_by_name(session, team_name)
+        if not team:
+            return False, f"❌ تیمی به اسم «{team_name}» پیدا نکردم"
+    else:
+        team = await get_team_of(session, user.id)
+        if not team:
+            return False, "🏴 خودت تو تیمی نیستی، با اسم بزن: «تیم مخفی [اسم تیم]»"
     team.lb_hidden = 0 if team.lb_hidden else 1
     if team.lb_hidden:
         return True, (

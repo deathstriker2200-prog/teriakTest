@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 import config
 from models import User
+from services import users as users_svc
 from utils import fa_num, money, now_utc
 
 
@@ -50,7 +51,7 @@ async def deposit(session: AsyncSession, user: User, amount: int) -> tuple[bool,
         return False, f"🏦 ظرفیت بانکت تا {money(cap)} ـه، فقط {money(room)} جا داره"
     user.cash -= amount
     user.bank_balance += amount
-    return True, f"🏦 {money(amount)} رفت تو بانک، امنه از هر دزدی 🛡"
+    return True, f"🏦 {money(amount)} رفت تو بانک و جاش امنه، دور از هر دزدی 🛡"
 
 
 async def withdraw(session: AsyncSession, user: User, amount: int) -> tuple[bool, str]:
@@ -122,27 +123,28 @@ def trf_cooldown_left(user: User) -> int:
 
 
 async def transfer_to(session: AsyncSession, sender: User, recipient: User, amount: int) -> tuple[bool, str]:
-    """انتقال پول بانکی فرستنده به بانک گیرنده، با چک موجودی و ظرفیت مقصد"""
+    """انتقال پول بانکی فرستنده به بانک گیرنده، با چک موجودی و ظرفیت مقصد (تو خطاها اسم گیرنده میاد)"""
     if recipient.id == sender.id:
         return False, "😅 به حساب خودت لازم نیس انتقال بدی، برداشت و واریز معمولی بزن"
     if amount <= 0:
         return False, "❌ مبلغو درست بگو، مثلا: 1200"
     if amount < config.TRF_MIN_AMOUNT:
-        return False, f"❌ حداقل انتقال {money(config.TRF_MIN_AMOUNT)} ـه، بیشتر بگو"
+        return False, f"❌ حداقل انتقال باید {money(config.TRF_MIN_AMOUNT)} باشه، بیشتر بگو"
     if amount > config.TRF_MAX_AMOUNT:
-        return False, f"❌ حداکثر انتقال {money(config.TRF_MAX_AMOUNT)} ـه، کمتر بگو"
+        return False, f"❌ حداکثر انتقال باید {money(config.TRF_MAX_AMOUNT)} باشه، کمتر بگو"
     left = trf_cooldown_left(sender)
     if left > 0:
         return False, f"⏳ تازه انتقال دادی، تا {fa_num(left)} ثانیه دیگه نمیتونی انتقال بدی"
     if sender.bank_balance < amount:
         return False, f"❌ تو بانک این همه نداری، موجودیت {money(sender.bank_balance)} ـه"
+    name = users_svc.display_name(recipient)
     cap = bank_capacity(recipient.bank_level)
     room = max(0, cap - recipient.bank_balance)
     if amount > room:
         if room <= 0:
-            return False, "🏦 بانک طرف کاملاً پره، الان جای واریز نداره"
-        return False, f"🏦 ظرفیت بانک طرف فقط {money(room)} جا داره، کمتر بگو"
+            return False, f"🏦 بانک «{name}» کاملاً پره، الان امکان واریز به حسابش نیست"
+        return False, f"🏦 بانک «{name}» فقط {money(room)} جای خالی داره، کمتر بگو"
     sender.bank_balance -= amount
     recipient.bank_balance += amount
     sender.last_trf_at = now_utc()
-    return True, f"💳 {money(amount)} به حساب طرف واریز شد"
+    return True, f"💳 {money(amount)} به حساب «{name}» واریز شد"

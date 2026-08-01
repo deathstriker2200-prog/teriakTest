@@ -31,7 +31,36 @@ _KNOWN_TEXTS = {
     "بازار سیاه", "بازار", "هواشناسی", "پناهگاه", "مخفیگاه", "شرکت", "کارخانه", "قمار", "قمارخانه", "زمین", "لیدربرد", "رتبه بندی",
 }
 
-_KNOWN_PREFIXES = ("خرید", "کاشت", "جوین", "آمار", "تیم ", "ست بیو", "بیو ", "واریز ", "برداشت ", "اسم سگ", "شرکت", "مخفیگاه", "آپگرید")
+_KNOWN_PREFIXES = ("خرید", "کاشت", "جوین", "آمار", "تیم ", "ست بیو", "بیو ", "واریز ", "برداشت ", "اسم سگ", "شرکت", "مخفیگاه", "آپگرید", "بانک ", "انتقال ")
+
+
+async def capture_bcast_media(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """پیام همگانی: رسانه (عکس | ویدیو | فایل و… حتی با کپشن) هم ورودیه، capture اصلی فقط متن خالص رو می‌گیره"""
+    msg = update.message
+    if msg is None or msg.text:
+        return  # متن خالص رو capture اصلی می‌گیره
+
+    from handlers.common import chat_id_of
+    chat_id = chat_id_of(update)
+
+    async with session_scope() as s:
+        user = await users.get_by_tg(s, update.effective_user.id)
+        if user is None or user.pending_action != "bcast":
+            return
+        if user.pending_chat_id is not None and chat_id is not None and chat_id != user.pending_chat_id:
+            return
+        if update.effective_user.id not in config.ADMIN_IDS:
+            users.set_pending(user, None)
+            await s.commit()
+            return
+        users.set_pending(user, None)
+        await s.commit()
+
+    await update.message.reply_html(
+        "<b>📣 پیام همگانی</b>\n\nبه کی بفرستمش؟",
+        reply_markup=kb.broadcast_scope_kb(chat_id if chat_id else 0, update.message.message_id),
+    )
+    raise ApplicationHandlerStop()
 
 
 async def capture(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -235,13 +264,13 @@ async def capture(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 raise ApplicationHandlerStop()
             if amount < config.TRF_MIN_AMOUNT:
                 await update.message.reply_html(
-                    f"❌ حداقل انتقال {money(config.TRF_MIN_AMOUNT)} ـه، بیشتر بگو\n\n"
+                    f"❌ حداقل انتقال باید {money(config.TRF_MIN_AMOUNT)} باشه، بیشتر بگو\n\n"
                     "❌ اگر هم پشیمون شدی بنویس «لغو»"
                 )
                 raise ApplicationHandlerStop()  # pending سر جاش تا بیشتر بفرسته
             if amount > config.TRF_MAX_AMOUNT:
                 await update.message.reply_html(
-                    f"❌ حداکثر انتقال {money(config.TRF_MAX_AMOUNT)} ـه، کمتر بگو\n\n"
+                    f"❌ حداکثر انتقال باید {money(config.TRF_MAX_AMOUNT)} باشه، کمتر بگو\n\n"
                     "❌ اگر هم پشیمون شدی بنویس «لغو»"
                 )
                 raise ApplicationHandlerStop()  # pending سر جاش تا کمتر بفرسته
@@ -258,15 +287,16 @@ async def capture(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                     "❌ اگر هم پشیمون شدی بنویس «لغو»"
                 )
                 raise ApplicationHandlerStop()  # pending سر جاش تا کمتر بفرسته
+            tgt_name0 = esc(users.display_name(target))
             cap_room = bank_svc.bank_capacity(target.bank_level) - target.bank_balance
             if amount > cap_room:
                 if cap_room <= 0:
                     users.set_pending(user, None)
                     await s.commit()
-                    await update.message.reply_html("🏦 بانک طرف کاملاً پره، الان واریز بهش ممکن نیس")
+                    await update.message.reply_html(f"🏦 بانک «{tgt_name0}» کاملاً پره، الان امکان واریز به حسابش نیست")
                     raise ApplicationHandlerStop()
                 await update.message.reply_html(
-                    f"🏦 ظرفیت بانک طرف فقط {money(cap_room)} جا داره، کمتر بگو\n\n"
+                    f"🏦 بانک «{tgt_name0}» فقط {money(cap_room)} جای خالی داره، کمتر بگو\n\n"
                     "❌ اگر هم پشیمون شدی بنویس «لغو»"
                 )
                 raise ApplicationHandlerStop()

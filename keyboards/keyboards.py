@@ -45,9 +45,9 @@ BOT_USERNAME = ""
 
 def _btn(text: str, data: str, style: str | None = PRIMARY) -> InlineKeyboardButton:
     """پیش‌فرض همه دکمه‌ها آبیه مگر اینکه سبز یا قرمز گفته شده باشه
-    دکمه‌های نمایشی (noop:…، مثل شماره زمین و تایمرها) به درخواست کارفرما بدون رنگ‌ان"""
+    قفل‌ها (🔒) همیشه قرمزن، فقط دکمه‌های نمایشی بی‌کار (شماره زمین | تایمرها) بدون رنگ‌ان"""
     kwargs = {"callback_data": data}
-    if style and not data.startswith("noop"):
+    if style:
         kwargs["style"] = style
     return InlineKeyboardButton(text, **kwargs)
 
@@ -239,17 +239,17 @@ def farm_kb(user: User, plots: list[Plot], next_price: int, ready_count: int) ->
     for i, plot in enumerate(plots, 1):
         state, left = plot.current_status()
         lvl_label = "👑 لول مکس" if plot.level >= config.PLOT_MAX_LEVEL else f"لول {fa_num(plot.level)}"
-        rows.append([_btn(f"🗺 زمین {fa_num(i)} | {lvl_label}", f"noop:plot:{i}")])
+        rows.append([_btn(f"🗺 زمین {fa_num(i)} | {lvl_label}", f"noop:plot:{i}", None)])
 
         actions: list[InlineKeyboardButton] = []
         if state == "building":
-            actions.append(_btn(f"🔨 ساخت: {fa_dur(left)}", "noop:build", DANGER))
+            actions.append(_btn(f"🔨 ساخت: {fa_dur(left)}", "noop:build", None))
         elif state == "empty":
             actions.append(_btn("🌱 کاشت", f"farm:plant:{plot.id}"))
         elif state == "growing":
-            actions.append(_btn(f"⏳ {fa_dur(left)}", "noop:grow", DANGER))
+            actions.append(_btn(f"⏳ {fa_dur(left)}", "noop:grow", None))
         else:
-            actions.append(_btn("✅ آماده", "noop:ready"))
+            actions.append(_btn("✅ آماده", "noop:ready", None))
 
         if state != "building":
             if plot.level < config.PLOT_MAX_LEVEL:
@@ -259,7 +259,7 @@ def farm_kb(user: User, plots: list[Plot], next_price: int, ready_count: int) ->
                 else:
                     actions.append(_btn(f"🔒 آپگرید | لول {fa_num(up_req)}", "noop:uplock", DANGER))
             else:
-                actions.append(_btn("👑 لول مکس", "noop:maxplot"))
+                actions.append(_btn("👑 لول مکس", "noop:maxplot", None))
         rows.append(actions)
 
     if ready_count:
@@ -279,7 +279,7 @@ def farm_kb(user: User, plots: list[Plot], next_price: int, ready_count: int) ->
                 "noop:lock", DANGER,
             )])
     else:
-        rows.append([_btn("🏡 هر 5 زمین رو داری", "noop:maxplots")])
+        rows.append([_btn("🏡 هر 5 زمین رو داری", "noop:maxplots", None)])
 
     rows.append([_btn("🔄 آپدیت", "farm:rf", PRIMARY)])
     rows.append([_btn("🏠 منوی اصلی", "menu:home", PRIMARY)])
@@ -338,7 +338,7 @@ def shop_arti_kb(user: User, owned: set[str]) -> InlineKeyboardMarkup:
     rows = []
     for key, a in config.ARTIFACTS.items():
         if f"arti_{key}" in owned:
-            rows.append([_btn(f"✅ {a['emoji']} {a['name']}", "noop:own")])
+            rows.append([_btn(f"✅ {a['emoji']} {a['name']}", "noop:own", None)])
         elif user.level < config.ARTIFACT_MIN_LEVEL:
             rows.append([_btn(
                 f"🔒 {a['emoji']} {a['name']} به لول {fa_num(config.ARTIFACT_MIN_LEVEL)}",
@@ -364,7 +364,7 @@ def gear_up_kb(kind: str, owned_lvls: dict[str, int], user: User) -> InlineKeybo
             continue
         item = catalog[key]
         if lv >= config.GEAR_UPG_MAX:
-            rows.append([_btn(f"👑 {item['name']} | لول مکس", "noop:maxgear")])
+            rows.append([_btn(f"👑 {item['name']} | لول مکس", "noop:maxgear", None)])
             continue
         req = economy.gear_upg_min_level(lv)
         if user.level < req:
@@ -412,7 +412,7 @@ def shop_weap_kb(user: User, owned: set[str], sec: str = "cold") -> InlineKeyboa
         if w.get("sec", "cold") != sec:
             continue
         if key in owned:
-            rows.append([_btn(f"✅ {w['name']}", "noop:own")])
+            rows.append([_btn(f"✅ {w['name']}", "noop:own", None)])
         elif user.level < w["min_level"]:
             rows.append([_btn(f"🔒 {w['name']} به لول {fa_num(w['min_level'])}", "noop:lock", DANGER)])
         else:
@@ -426,7 +426,7 @@ def shop_arm_kb(user: User, owned: set[str]) -> InlineKeyboardMarkup:
     rows = []
     for key, a in config.ARMORS.items():
         if key in owned:
-            rows.append([_btn(f"✅ {a['name']}", "noop:own")])
+            rows.append([_btn(f"✅ {a['name']}", "noop:own", None)])
         elif user.level < a["min_level"]:
             rows.append([_btn(f"🔒 {a['name']} به لول {fa_num(a['min_level'])}", "noop:lock", DANGER)])
         else:
@@ -462,7 +462,7 @@ def shop_dog_kb(user: User, owned_keys: set[str], dogs_count: int) -> InlineKeyb
     rows = []
     for key, d in config.DOGS.items():
         if key in owned_keys:
-            rows.append([_btn(f"✅ {d['name']}", "noop:own")])
+            rows.append([_btn(f"✅ {d['name']}", "noop:own", None)])
         elif user.level < d["min_level"]:
             rows.append([_btn(f"🔒 {d['name']} به لول {fa_num(d['min_level'])}", "noop:lock", DANGER)])
         else:
@@ -480,7 +480,7 @@ def shop_food_kb() -> InlineKeyboardMarkup:
     for key, f in config.DOG_FOODS.items():
         rows.append([_btn(
             f"{f['name']} | +{fa_num(f['xp'])} XP",
-            "noop:feedinfo",
+            "noop:feedinfo", None,
         )])
     rows.append([_btn("🔙 بخش‌های شاپ", "menu:shop", PRIMARY)])
     return InlineKeyboardMarkup(rows)
@@ -505,7 +505,7 @@ def dog_card_kb(dog: Dog, feeds_left: int) -> InlineKeyboardMarkup:
     """کیبورد کارت آمار یه سگ، از همونجا میشه غذاش داد («آمار اصغر»)"""
     rows: list[list[InlineKeyboardButton]] = []
     if dog.level >= config.DOG_MAX_LEVEL:
-        rows.append([_btn("👑 لول مکس", "noop:maxdog")])
+        rows.append([_btn("👑 لول مکس", "noop:maxdog", None)])
     elif feeds_left > 0:
         for key, f in config.DOG_FOODS.items():
             rows.append([_btn(
@@ -679,11 +679,11 @@ def team_bld_kb(team, is_owner: bool, tg_id: int) -> InlineKeyboardMarkup:
         if can_atk:
             row.append(_btn("⚔️ ارتقا حمله", f"tbup:atk:{tg_id}", SUCCESS))
         else:
-            row.append(_btn("⚔️ حمله 👑 لول مکس", "noop:maxbld"))
+            row.append(_btn("⚔️ حمله 👑 لول مکس", "noop:maxbld", None))
         if can_def:
             row.append(_btn("🛡 ارتقا دفاع", f"tbup:def:{tg_id}", SUCCESS))
         else:
-            row.append(_btn("🛡 دفاع 👑 لول مکس", "noop:maxbld"))
+            row.append(_btn("🛡 دفاع 👑 لول مکس", "noop:maxbld", None))
         if row:
             rows.append(row)
     rows.append([_btn("🔃 رفرش", "team:bld", PRIMARY)])

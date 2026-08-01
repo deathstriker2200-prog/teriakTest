@@ -105,10 +105,11 @@ async def plant(session: AsyncSession, user: User, plot: Plot, seed_key: str) ->
 # ───────── برداشت (همه آماده‌ها، هر ۲ دقیقه یه بار) ─────────
 
 def apply_legendary_cap(seed_key: str, gain: int) -> int:
-    """سقف فروش بذرهای افسانه‌ای بعد از همه ضریب‌ها (کیفیت/آب‌وهوا/بونس لول)، درخواست کارفرما: بالای ۶۰,۰۰۰ نره"""
-    if config.SEEDS[seed_key].get("legendary") and gain > config.LEGENDARY_SELL_CAP:
-        return config.LEGENDARY_SELL_CAP
-    return gain
+    """سقف فروش بذرهای افسانه‌ای بعد از همه ضریب‌ها، درخواست کارفرما: عادی‌ها بالای ۶۰,۰۰۰ نرن، جهش‌یافته سقف خودشو داره"""
+    if not config.SEEDS[seed_key].get("legendary"):
+        return gain
+    cap = config.SEEDS[seed_key].get("cap", config.LEGENDARY_SELL_CAP)
+    return min(gain, cap)
 
 def harvest_cooldown_left(user: User) -> int:
     """ثانیه مونده از کولدان برداشت، زمان‌بندی برای هر کاربر جدا ذخیره میشه"""

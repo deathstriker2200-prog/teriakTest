@@ -109,24 +109,37 @@ PLOT_UPGRADE_WOOD = [30, 60, 120, 250, 500]                 # چوب لازم ب
 PLOT_UPGRADE_LEVELS = [3, 5, 10, 15, 20]
 
 # ───────── بذرها (فروشگاه 🌱) ─────────
-# ترتیب پیشرفت: ماری‌جوانا → قارچ → پیوت → تریاک → کوکائین
+# ترتیب پیشرفت: ماری‌جوانا → قارچ → پیوت → کراتوم → خشخاش سیاه → تریاک → کوکائین
 # price = قیمت بذر | grow_min = دقیقه رشد | sell = فروش | xp = تجربه برداشت | min_level = لول لازم
+# کلیدها عوض نشدن، انبار و زمین‌های بازیکنای قدیمی خودشون با آپدیت درست میشن
 SEEDS = {
     "marijuana": {"name": "ماری‌جوانا",  "emoji": "🌿", "price": 120,  "grow_min": 5,  "sell": 300,   "xp": 10, "min_level": 1,  "desc": "محصول شروع هر دلال"},
     "gharch":    {"name": "قارچ",         "emoji": "🍄", "price": 320,  "grow_min": 8,  "sell": 800,   "xp": 18, "min_level": 3,  "desc": "کپک سحرآمیز و پرطرفدار"},
-    "peyote":    {"name": "پیوت",         "emoji": "🌵", "price": 850,  "grow_min": 12, "sell": 2100,  "xp": 30, "min_level": 5,  "desc": "کاکتوس جادویی صحرا"},
-    "teriak":    {"name": "تریاک",        "emoji": "🌱", "price": 2000, "grow_min": 18, "sell": 5200,  "xp": 45, "min_level": 7,  "desc": "طلای سیاه محله"},
-    "cocaine":   {"name": "کوکائین",      "emoji": "⚪", "price": 5200, "grow_min": 25, "sell": 14000, "xp": 70, "min_level": 10, "desc": "پودر سفید قیمتی"},
+    "peyote":    {"name": "پیوت",         "emoji": "🌵", "price": 850,  "grow_min": 12, "sell": 2100,  "xp": 30, "min_level": 4,  "desc": "کاکتوس جادویی صحرا"},
+    "kratom":    {"name": "کراتوم",       "emoji": "🍃", "price": 1300, "grow_min": 14, "sell": 3400,  "xp": 35, "min_level": 5,  "desc": "برگ سبز انرژی‌بخش شرق"},
+    "khashkhash": {"name": "خشخاش سیاه",   "emoji": "🌺", "price": 1650, "grow_min": 16, "sell": 4300,  "xp": 40, "min_level": 7,  "desc": "گل سیاهی که تریاک ازش در میاد"},
+    "teriak":    {"name": "تریاک",        "emoji": "☕", "price": 2000, "grow_min": 18, "sell": 5200,  "xp": 45, "min_level": 10, "desc": "طلای سیاه محله"},
+    "cocaine":   {"name": "کوکائین",      "emoji": "⚪", "price": 5200, "grow_min": 25, "sell": 14000, "xp": 70, "min_level": 14, "desc": "پودر سفید قیمتی"},
     # ── بذرهای افسانه‌ای، قابل خرید نیستن (فقط جستجو/کاروان/ایونت) و تو بازار سیاه دیده نمیشن ──
     # کاشتشون هیچ گیت لولی نداره و برای همه آزاده (min_level فقط تاریخیه)،
     # تو متن لول‌آپ هم اسمشون نمیاد که ملت فکر نکنن تو شاپ باز شدن
+    # بالانس درخواستی کارفرما: جهنم بکم کوچیک از دوبرابر کوکائینه، هم قیمت (27,000 به‌جای 28,000)
+    # هم تایم رشد (45 دقیقه به‌جای 50)، ولی تایم کمتری برداشته تا به‌ازای هر دقیقه بصرفه‌تر باشه
+    # ابلیس هم دقیقا همین داستانو نسبت به جهنم داره (50,000 به‌جای 54,000 و 80 دقیقه به‌جای 90)
+    # سود به‌ازای هر دقیقه رشد: کوکائین 560 | جهنم 600 | ابلیس 625 (تفاوتا عمداً کمه)
     "jahannam": {
-        "name": "بذر جهنم 🔥", "price": 0, "grow_min": 60, "sell": 30000, "xp": 150,
+        "name": "بذر جهنم 🔥", "price": 0, "grow_min": 45, "sell": 27000, "xp": 150,
         "min_level": 1, "legendary": True, "desc": "از عمق جهنم رسیده",
     },
     "eblis": {
-        "name": "بذر ابلیس 😈", "price": 0, "grow_min": 120, "sell": 50000, "xp": 300,
+        "name": "بذر ابلیس 😈", "price": 0, "grow_min": 80, "sell": 50000, "xp": 300,
         "min_level": 1, "legendary": True, "desc": "نایاب‌ترین بذر محله",
+    },
+    # ☣️ جهش‌یافته از جهنم و ابلیس هم نایاب‌تره (دراپش خیلی کمه) ولی ارزش کاشتش خیلی بالاتره
+    # cap: سقف فروش نهاییش بعد از کیفیت/آب‌وهوا/بونس لول، جدا از سقف ۶۰,۰۰۰ی افسانه‌ای‌های عادی
+    "mutant": {
+        "name": "بذر جهش‌یافته ☣️", "price": 0, "grow_min": 180, "sell": 150000, "xp": 600,
+        "min_level": 1, "legendary": True, "cap": 200000, "desc": "یه جهش عجیب و غریب",
     },
 }
 # سقف فروش نهایی بذر افسانه‌ای بعد از کیفیت/آب‌وهوا/بونس لول: درخواست کارفرما، هیچ‌وقت بالای ۶۰,۰۰۰ نشه
@@ -408,15 +421,23 @@ TEAM_CAP_TABLE = [10, 12, 14, 16, 18, 21, 23, 25, 27, 30]
 # reward = جایزه نقدی هر عضو | bank_reward = جایزه به بانک تیم | min_level = لول تیم لازم
 # title با {n} (هدف مقیاس‌خورده) پر میشه | هرچی لول تیم بالاتر، کوئست بیشتر و سخت‌تر و پرجایزه‌تر
 TEAM_QUESTS = [
-    {"key": "kills",    "emoji": "⚔️", "title": "کشتن {n} نفر",      "target": 25, "reward": 200, "bank_reward": 2000, "min_level": 1, "desc": "برد هر عضو تو دعوا حساب میشه"},
-    {"key": "harvest",  "emoji": "🌾", "title": "برداشت {n} محصول",   "target": 10, "reward": 100, "bank_reward": 1000, "min_level": 1, "desc": "برداشت هر عضو حساب میشه"},
-    {"key": "mine",     "emoji": "⛏",  "title": "{n} بار کنده‌کاری",   "target": 60, "reward": 250, "bank_reward": 2500, "min_level": 3, "desc": "کنده‌کاری تک‌تک اعضا حساب میشه"},
-    {"key": "search",   "emoji": "🔍", "title": "{n} بار جستجو",       "target": 15, "reward": 400, "bank_reward": 4000, "min_level": 5, "desc": "جستجوی تک‌تک اعضا حساب میشه"},
-    {"key": "caravan",  "emoji": "🚛", "title": "{n} ضربه به کاروان",   "target": 20, "reward": 600, "bank_reward": 6000, "min_level": 7, "desc": "ضربه اعضا به کاروان حساب میشه"},
+    {"key": "kills",    "emoji": "⚔️", "title": "کشتن {n} نفر",      "target": 25, "reward": 250, "bank_reward": 2500, "min_level": 1, "desc": "برد هر عضو تو دعوا حساب میشه"},
+    {"key": "harvest",  "emoji": "🌾", "title": "برداشت {n} محصول",   "target": 10, "reward": 150, "bank_reward": 1500, "min_level": 1, "desc": "برداشت هر عضو حساب میشه"},
+    {"key": "plant",    "emoji": "🌱", "title": "کاشت {n} بذر",       "target": 18, "reward": 300, "bank_reward": 3000, "min_level": 2, "desc": "کاشت هر عضو حساب میشه"},
+    {"key": "mine",     "emoji": "⛏",  "title": "{n} بار کنده‌کاری",   "target": 60, "reward": 300, "bank_reward": 3000, "min_level": 3, "desc": "کنده‌کاری تک‌تک اعضا حساب میشه"},
+    {"key": "feed",     "emoji": "🍖", "title": "{n} بار غذا دادن به سگ", "target": 12, "reward": 350, "bank_reward": 3500, "min_level": 4, "desc": "غذا دادن هر عضو به سگاش حساب میشه"},
+    {"key": "search",   "emoji": "🔍", "title": "{n} بار جستجو",       "target": 15, "reward": 450, "bank_reward": 4500, "min_level": 5, "desc": "جستجوی تک‌تک اعضا حساب میشه"},
+    {"key": "depbank",  "emoji": "🏦", "title": "واریز مجموع {n} تی‌پوینت به بانک تیم", "target": 20000, "reward": 500, "bank_reward": 5000, "min_level": 6, "desc": "واریز اعضا به بانک تیم حساب میشه"},
+    {"key": "caravan",  "emoji": "🚛", "title": "{n} ضربه به کاروان",   "target": 20, "reward": 700, "bank_reward": 7000, "min_level": 7, "desc": "ضربه اعضا به کاروان حساب میشه"},
 ]
 # مقیاس با لول تیم: از لول min_level به بعد، هر لول هدف و جایزه اینقدر رشد می‌کنه
 TEAM_QUEST_TARGET_GROWTH = 0.40    # هر لول +۴۰% هدف
 TEAM_QUEST_REWARD_GROWTH = 0.30    # هر لول +۳۰% جایزه نقدی عضو و بانک تیم
+# از لول تیم ۷ به بعد، کامل شدن هر کوئست این شانس رو داره که به هر عضو هم یه بذر جهنم یا ابلیس برسه
+TEAM_QUEST_LEGEND_CHANCE = 0.10    # ۱۰% جایزه ویژه تیمی
+TEAM_QUEST_LEGEND_MIN_LEVEL = 7
+# بذرهای افسانه‌ای قابل اهدای کوئست‌ها (روزانه و تیمی)؛ جهش‌یافته عمداً نیس چون خیلی نایابه
+QUEST_LEGEND_SEEDS = ["jahannam", "eblis"]
 
 # کنده‌کاری تیمی، با پیوستن ۷۰% اعضا پول میره تو خزانه تیم
 TEAM_MINE_JOIN_PCT = 0.70
@@ -474,11 +495,12 @@ QUALITY_TIERS = [
 SEARCH_COOLDOWN_MINUTES = 10      # هر ۱۰ دقیقه یه جستجو
 # هر نتیجه شانس خودشو داره، جمع شانس‌ها باید ۱ باشه
 SEARCH_OUTCOMES = [
-    {"key": "money",       "chance": 0.28, "emoji": "💰", "text": "مقداری پول پیدا کردی",        "min": 100, "max": 700},
+    {"key": "money",       "chance": 0.27, "emoji": "💰", "text": "مقداری پول پیدا کردی",        "min": 100, "max": 700},
     {"key": "seed_common", "chance": 0.25, "emoji": "🌱", "text": "بذر معمولی پیدا کردی",        "pool": ["marijuana", "gharch"]},
-    {"key": "seed_rare",   "chance": 0.20, "emoji": "🌿", "text": "بذر کمیاب پیدا کردی",         "pool": ["peyote", "teriak", "cocaine"]},
+    {"key": "seed_rare",   "chance": 0.20, "emoji": "🌿", "text": "بذر کمیاب پیدا کردی",         "pool": ["peyote", "kratom", "khashkhash", "teriak", "cocaine"]},
     {"key": "seed_hell",   "chance": 0.07, "emoji": "🔥", "text": "بذر جهنم پیدا کردی",          "pool": ["jahannam"]},
     {"key": "seed_devil",  "chance": 0.05, "emoji": "😈", "text": "بذر ابلیس پیدا کردی",         "pool": ["eblis"]},
+    {"key": "seed_mutant", "chance": 0.01, "emoji": "☣️", "text": "بذر جهش‌یافته پیدا کردی",      "pool": ["mutant"]},
     {"key": "thief",       "chance": 0.15, "emoji": "☠️", "text": "دزد مقداری پولت را دزدید",   "pct_min": 0.05, "pct_max": 0.12},
 ]
 
@@ -592,10 +614,11 @@ CARAVAN_MONEY_PER_DMG = 2          # جایزه هر ضربه = دمیج × ای
 CARAVAN_HIT_XP = 5                 # XP هر ضربه
 # جایزه نهایی کشته شدن، بذر بر اساس سهم دمیج + جایزه مخصوص نفر اول
 CARAVAN_LOOT = [
-    {"key": "common", "chance": 0.60, "pool": ["marijuana", "gharch"]},
-    {"key": "rare",   "chance": 0.30, "pool": ["peyote", "teriak", "cocaine"]},
+    {"key": "common", "chance": 0.59, "pool": ["marijuana", "gharch"]},
+    {"key": "rare",   "chance": 0.30, "pool": ["peyote", "kratom", "khashkhash", "teriak", "cocaine"]},
     {"key": "hell",   "chance": 0.07, "pool": ["jahannam"]},
     {"key": "devil",  "chance": 0.03, "pool": ["eblis"]},
+    {"key": "mutant", "chance": 0.01, "pool": ["mutant"]},
 ]
 
 # ───────── عضویت اجباری 🔒 ─────────
@@ -659,5 +682,8 @@ DAILY_QUEST_REWARD_GROWTH = 0.12   # هر لول +۱۲% جایزه نقدی یا
 # شانس نوع جایزه هر کوئست: مابقی بذر رندوم معمولیه
 DAILY_QUEST_TP_WEIGHT = 0.55     # ۵۵% جایزه تی‌پوینت
 DAILY_QUEST_XP_WEIGHT = 0.30     # ۳۰% جایزه تجربه
+# از لول DAILY_QUEST_LEGEND_MIN_LEVEL به بعد، به جای یه قسمت از شانس «بذر معمولی» این شانس میاد که جایزه جهنم/ابلیس باشه
+DAILY_QUEST_LEGEND_CHANCE = 0.10   # ۱۰% جایزه، بذر جهنم یا ابلیس (لول پایین‌تر، همون بذر معمولی)
+DAILY_QUEST_LEGEND_MIN_LEVEL = 10
 DAILY_QUEST_COUNT_MIN = 2        # حداقل ماموریت روزانه
 DAILY_QUEST_COUNT_MAX = 3        # حداکثر ماموریت روزانه

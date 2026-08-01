@@ -203,6 +203,10 @@ async def feed_execute(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             from services import quests as dq_svc
             dq_done, dq_left = await dq_svc.track(s, user, "feed")
             uname = users.display_name(user)
+            from services import teams as team_svc
+            tq = await team_svc.record_feed(s, user)  # کوئست تیمی غذا
+            if tq:
+                notes.append(tq)
         cash = user.cash
         await s.commit()
 

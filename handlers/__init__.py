@@ -52,7 +52,7 @@ TEXT_HANDLERS: list[tuple[str, str, object]] = [
     ("team_leave", rf"{TP}ترک{S}+تیم!?$", team.leave_confirm),
     ("team_disband", rf"{TP}انحلال{S}+تیم!?$", team.disband_confirm),
     ("team_bio", rf"{TP}تیم{S}+ست{S}+بیو{S}+(.+)$", team.set_bio_text),
-    ("team_hide", rf"{TP}تیم{S}+مخفی!?$", team.hide_team_text),
+    ("team_hide", rf"{TP}تیم{S}+مخفی(?:{S}+(.+))?!?$", team.hide_team_text),
     ("team_rename", rf"{TP}تیم{S}+تغییر{S}+نام{S}+(.+)$", team.rename_text),
     ("team_req", rf"{TP}تیم{S}+درخواست{S}+(\S+)(?:{S}+(قبول|رد|اکسپت|ریجکت))?!?$", team.team_request_text),
     ("team_kick", rf"{TP}تیم{S}+کیک{S}+(.+)$", team.team_kick_text),
@@ -70,8 +70,11 @@ TEXT_HANDLERS: list[tuple[str, str, object]] = [
     ("company", rf"{T}شرکت!?$|{T}کارخانه!?$", company.company_cb),
     ("dogrename", rf"{T}اسم{S}+سگ{S}+(.+)$", dogs.dog_rename_text),
     ("casino", rf"{T}قمارخانه!?$|{T}قمار!?$", world.casino_cmd),
-    # ── بانک شخصی ──
-    ("bankhome", rf"{T}بانک!?$", bank.bank_cb),
+    # ── بانک شخصی، «بانک» بدون پیشوند هم باز میشه + دستورهای «بانک واریز/برداشت» و «انتقال n کد» ──
+    ("banktrf", rf"{TP}انتقال{S}+(.+)$", bank.transfer_text),
+    ("bankdep2", rf"{TP}بانک{S}+واریز{S}+(.+)$", bank.deposit_text),
+    ("bankwd2", rf"{TP}بانک{S}+برداشت{S}+(.+)$", bank.withdraw_text),
+    ("bankhome", rf"{TP}بانک!?$", bank.bank_cb),
     ("bankdep", rf"{T}واریز{S}+(.+)$", bank.deposit_text),
     ("bankwd", rf"{T}برداشت{S}+([0-9۰-۹٠-٩,٬]+)$", bank.withdraw_text),
     ("help", rf"{T}راهنما!?$|{T}آموزشات!?$", start.help_cmd),
@@ -101,6 +104,8 @@ def register_handlers(app: Application) -> None:
 
     # ── ورودی معلق (اسم سگ بعد خرید | اسم تیم بعد ساخت)، قبل از همه دستورهای متنی ──
     app.add_handler(MessageHandler(fa_text, pending.capture), group=-1)
+    # رسانه‌های همگانی (عکس/ویدیو/فایل) متن ندارن و به فیلتر متن نمی‌رسن، گیرنده جدا براشون لازمه
+    app.add_handler(MessageHandler(filters.ALL & ~filters.TEXT & ~filters.COMMAND, pending.capture_bcast_media), group=-1)
 
     # ── دستورهای اسلشی ──
     app.add_handler(CommandHandler("start", start.start_cmd))

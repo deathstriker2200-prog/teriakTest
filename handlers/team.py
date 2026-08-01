@@ -471,10 +471,15 @@ async def team_confirm_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 # ───────── مخفی کردن تیم از لیدربرد ─────────
 
 async def hide_team_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """👻 «تیم مخفی»، فقط رهبر، تاگل نامرئی تیم تو لیدربردها"""
+    """👻 «تیم مخفی [اسم]»، فقط ادمین، تاگل نامرئی هر تیم تو لیدربردها (بدون اسم، تیم خودش)"""
+    if update.effective_user.id not in config.ADMIN_IDS:
+        return await respond(update, "🚫 مخفی کردن تیم فقط دست ادمینه")
+    txt = strip_bot_cmd(update.message.text or "")
+    m = re.match(r"^تیم[\s‌]+مخفی(?:[\s‌]+(.+))?$", txt)
+    arg = (m.group(1) or "").strip() if m else ""
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
-        _, msg = await teams.toggle_hidden(s, user)
+        _, msg = await teams.toggle_hidden(s, user, arg or None)
         await s.commit()
     await respond(update, msg)
 
@@ -683,8 +688,10 @@ async def roster_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     lines = [f"<b>👥 اعضای تیم «{esc(team.name)}»، {fa_num(data['count'])} نفر</b>", ""]
     by_id = {u.id: u for u in data["users"]}
-    for m in data["members"]:
-        u = by_id.get(m.user_id)
+    # اسم‌ها بر اساس لول، از بالا به پایین (مساوی بود، برد بیشتر اول)
+    pairs = [(m, by_id.get(m.user_id)) for m in data["members"]]
+    pairs.sort(key=lambda p: (-(p[1].level if p[1] else 0), -(p[1].wins if p[1] else 0)))
+    for m, u in pairs:
         if not u:
             continue
         tag = {"owner": "👑", "admin": "🛡"}.get(m.role, "🔸")
@@ -734,11 +741,17 @@ async def team_deposit_text(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         ok, msg = await teams.team_deposit(s, user, amount)
         team = await teams.get_team_of(s, user.id)
         bank = team.bank if team else 0
+        tq = None
+        if ok:
+            tq = await teams.record_team_deposit(s, user, amount)  # کوئست تیمی واریز به بانک
         await s.commit()
 
     if not ok:
         return await respond(update, msg)
     await respond(update, f"<b>{esc(msg)}</b>\n\n🏦 موجودی بانک تیم: {money(bank)}")
+    if tq:
+        from handlers.common import announce_notes
+        await announce_notes(update, [tq])
 
 
 # ───────── ارتقای ساختمان («تیم ارتقا حمله/دفاع» + دکمه‌ها) ─────────

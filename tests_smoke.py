@@ -60,16 +60,40 @@ async def main() -> None:
     # ═══ کاتالوگ‌ها ═══
     seed_lvls = [s["min_level"] for s in config.SEEDS.values() if not s.get("legendary")]
     check("ترتیب لول بذرهای عادی صعودیه", seed_lvls == sorted(seed_lvls), str(seed_lvls))
-    check("ترتیب بذرها: ۵ عادی + جهنم و ابلیس تو آخر",
-          list(config.SEEDS.keys()) == ["marijuana", "gharch", "peyote", "teriak", "cocaine", "jahannam", "eblis"],
+    check("ترتیب بذرها: ۷ عادی + جهنم و ابلیس و جهش‌یافته تو آخر",
+          list(config.SEEDS.keys()) == ["marijuana", "gharch", "peyote", "kratom", "khashkhash", "teriak", "cocaine", "jahannam", "eblis", "mutant"],
           str(list(config.SEEDS.keys())))
-    check("جهنم و ابلیس افسانه‌ای‌ان و قیمت‌شون صفره (قابل خرید نیستن)",
-          config.SEEDS["jahannam"].get("legendary") and config.SEEDS["eblis"].get("legendary")
-          and config.SEEDS["jahannam"]["price"] == 0 and config.SEEDS["eblis"]["price"] == 0)
+    check("سلسله لول بذرهای عادی: ۱ و ۳ و ۴ و ۵ و ۷ و 10 و 14",
+          [config.SEEDS[k]["min_level"] for k in ("marijuana", "gharch", "peyote", "kratom", "khashkhash", "teriak", "cocaine")]
+          == [1, 3, 4, 5, 7, 10, 14],
+          str([config.SEEDS[k]["min_level"] for k in config.SEEDS if not config.SEEDS[k].get("legendary")]))
+    check("کلید بذرهای قدیمی عوض نشده (انبار و زمین بازیگرای قدیمی سالم می‌مونه)",
+          all(k in config.SEEDS for k in ("marijuana", "gharch", "peyote", "teriak", "cocaine")))
+    check("کراتوم و خشخاش سیاه بین پیوت و تریاک قرار گرفتن",
+          config.SEEDS["peyote"]["price"] < config.SEEDS["kratom"]["price"] < config.SEEDS["khashkhash"]["price"] < config.SEEDS["teriak"]["price"]
+          and config.SEEDS["peyote"]["sell"] < config.SEEDS["kratom"]["sell"] < config.SEEDS["khashkhash"]["sell"] < config.SEEDS["teriak"]["sell"])
+    check("جهنم و ابلیس و جهش‌یافته افسانه‌ای‌ان و قیمت‌شون صفره (قابل خرید نیستن)",
+          config.SEEDS["jahannam"].get("legendary") and config.SEEDS["eblis"].get("legendary") and config.SEEDS["mutant"].get("legendary")
+          and config.SEEDS["jahannam"]["price"] == 0 and config.SEEDS["eblis"]["price"] == 0 and config.SEEDS["mutant"]["price"] == 0)
     check("بذر افسانه‌ای تو لیست شاپ نمیاد",
-          "jahannam" not in shop_svc.shop_seeds() and "eblis" not in shop_svc.shop_seeds())
-    check("قیمت فروش بذر ابلیس 50,000 و بذر جهنم 30,000ـه",
-          config.SEEDS["eblis"]["sell"] == 50000 and config.SEEDS["jahannam"]["sell"] == 30000)
+          "jahannam" not in shop_svc.shop_seeds() and "eblis" not in shop_svc.shop_seeds() and "mutant" not in shop_svc.shop_seeds())
+    check("بذر جهش‌یافته از جهنم و ابلیس نایاب‌تره: فروش 150,000 و سقف خودش 200,000ـه",
+          config.SEEDS["mutant"]["sell"] == 150000 and config.SEEDS["mutant"].get("cap") == 200000)
+    _mrate = [o for o in config.SEARCH_OUTCOMES if o["key"] == "seed_mutant"]
+    _cloot = [l for l in config.CARAVAN_LOOT if l["key"] == "mutant"]
+    check("دراپ جهش‌یافته تو جستجو و کاروان خیلی کمه (۱٪، کمتر از ابلیس)",
+          _mrate and _mrate[0]["chance"] == 0.01 and _cloot and _cloot[0]["chance"] == 0.01)
+    check("جمع شانس جستجوها ۱ـه", abs(sum(o["chance"] for o in config.SEARCH_OUTCOMES) - 1.0) < 1e-9)
+    check("جمع شانس لوت کاروان ۱ـه", abs(sum(l["chance"] for l in config.CARAVAN_LOOT) - 1.0) < 1e-9)
+    check("قیمت فروش بذر ابلیس 50,000 و بذر جهنم 27,000ـه (بکم کوچیک از دوبرابر کوکائین)",
+          config.SEEDS["eblis"]["sell"] == 50000 and config.SEEDS["jahannam"]["sell"] == 27000)
+    _rates = {k: config.SEEDS[k]["sell"] / config.SEEDS[k]["grow_min"] for k in ("cocaine", "jahannam", "eblis")}
+    check("سود هر دقیقه رشد: جهنم از کوکائین و ابلیس از جهنم بصرفه‌تره ولی فقط بکم",
+          config.SEEDS["jahannam"]["grow_min"] == 45 and config.SEEDS["eblis"]["grow_min"] == 80
+          and _rates["cocaine"] == 560 and _rates["jahannam"] == 600 and _rates["eblis"] == 625
+          and 0 < _rates["jahannam"] - _rates["cocaine"] <= 50
+          and 0 < _rates["eblis"] - _rates["jahannam"] <= 50,
+          str({k: round(v, 1) for k, v in _rates.items()}))
     check("سقف فروش نهایی بذر افسانه‌ای 60,000ـه", config.LEGENDARY_SELL_CAP == 60000)
 
     # ── برداشت افسانه‌ای: با بهترین کیفیت و لول مکس هم از 60,000 رد نمیشه ──
@@ -92,6 +116,10 @@ async def main() -> None:
         ok_lg, _a, _ex, _dq, _nn = await farming.harvest_all(s, lgu)
         check("فروش جهنم با بهترین کیفیت و لول مکس روی سقف 60,000 می‌ایسته",
               ok_lg and lgu.cash - lg_cash == 60000, str(lgu.cash - lg_cash))
+        check("سقف فروش جهش‌یافته جدای خودشه و کوکائین سقف نداره",
+              farming.apply_legendary_cap("mutant", 999999) == 200000
+              and farming.apply_legendary_cap("jahannam", 999999) == 60000
+              and farming.apply_legendary_cap("cocaine", 999999) == 999999)
         lgu.last_harvest_at = None
         lgp.status, lgp.crop = "growing", "cocaine"
         lgp.planted_at = now_utc() - timedelta(hours=1)
@@ -1632,11 +1660,11 @@ async def main() -> None:
         await s.flush()
         weap_kb = kb2.shop_weap_kb(low, set())
         locked_styles = [b.style for row in weap_kb.inline_keyboard for b in row if b.callback_data == "noop:lock"]
-        check("آیتم‌های قفل شاپ (نمایشی) بدون رنگن", len(locked_styles) >= 3 and all(st is None for st in locked_styles))
+        check("آیتم‌های قفل شاپ قرمزن", len(locked_styles) >= 3 and all(st == "danger" for st in locked_styles))
 
         dog_kb = kb2.shop_dog_kb(low, set(), 0)
         dog_locked = [b.style for row in dog_kb.inline_keyboard for b in row if b.callback_data == "noop:lock"]
-        check("قفل سگ‌ها هم بدون رنگه", len(dog_locked) >= 3 and all(st is None for st in dog_locked))
+        check("قفل سگ‌ها هم قرمزه", len(dog_locked) >= 3 and all(st == "danger" for st in dog_locked))
 
         # سگ‌های من از شاپ حذف شده
         all_shop_datas = [b.callback_data for k in (kb2.shop_sections_kb(), kb2.shop_food_kb(), dog_kb)
@@ -1966,7 +1994,7 @@ async def main() -> None:
         su.cash = 100000
         res = await world_svc.do_search(s, su, luck=1.0)
         check("جستجوی اول نتیجه داره",
-              res["status"] in ("money", "seed_common", "seed_rare", "seed_hell", "seed_devil", "thief"),
+              res["status"] in ("money", "seed_common", "seed_rare", "seed_hell", "seed_devil", "seed_mutant", "thief"),
               res["status"])
         res2 = await world_svc.do_search(s, su, luck=1.0)
         check("کولدان ۱۰ دقیقه جستجو فعاله",
@@ -1984,9 +2012,10 @@ async def main() -> None:
             counts[r["status"]] = counts.get(r["status"], 0) + 1
             if r["status"] == "money":
                 money_bounds.append(r["amount"])
-        check("همه نتیجه‌های جستجو دیده میشن",
-              all(counts.get(k) for k in ("money", "seed_common", "seed_rare", "seed_hell", "seed_devil", "thief")),
+        check("همه نتیجه‌های جستجو دیده میشن (حتی جهش‌یافته با دراپ ۱٪)",
+              all(counts.get(k) for k in ("money", "seed_common", "seed_rare", "seed_hell", "seed_devil", "seed_mutant", "thief")),
               str(counts))
+        check("دراپ جهش‌یافته از ابلیس هم کمتره", counts.get("seed_mutant", 0) < counts.get("seed_devil", 0), str(counts))
         check("پول جستجو تو بازه ۱۰۰ تا ۷۰۰ه",
               min(money_bounds) >= 100 and max(money_bounds) <= 700,
               f"{min(money_bounds)}..{max(money_bounds)}")
@@ -3533,8 +3562,8 @@ async def main() -> None:
 
     # ── ایموجی بذرها تو شاپ و دکمه کاشت ──
     check("ایموجی هر بذر تو کانفیگه",
-          [config.SEEDS[k]["emoji"] for k in ("marijuana", "gharch", "peyote", "teriak", "cocaine")]
-          == ["🌿", "🍄", "🌵", "🌱", "⚪"])
+          [config.SEEDS[k]["emoji"] for k in ("marijuana", "gharch", "peyote", "kratom", "khashkhash", "teriak", "cocaine")]
+          == ["🌿", "🍄", "🌵", "🍃", "🌺", "☕", "⚪"])
     async with session_scope() as s:
         su1 = await users.get_by_tg(s, 1001)
         su1.level = 20
@@ -3543,14 +3572,16 @@ async def main() -> None:
         check("دکمه‌های بذر شاپ ایموجی محصول رو دارن",
               any(t.startswith("🌿 ماری‌جوانا") for t in seed_texts)
               and any(t.startswith("🍄 قارچ") for t in seed_texts)
-              and any(t.startswith("🌱 تریاک") for t in seed_texts), str(seed_texts[:4]))
+              and any(t.startswith("🍃 کراتوم") for t in seed_texts)
+              and any(t.startswith("🌺 خشخاش سیاه") for t in seed_texts)
+              and any(t.startswith("☕ تریاک | 📦 ×3") for t in seed_texts), str(seed_texts[:4]))
         splot1 = Plot(user_id=su1.id, status="empty")
         s.add(splot1)
         await s.flush()
         pkb = kb2.seeds_kb(su1, splot1, {"teriak": 3})
         p_texts = [b.text for row in pkb.inline_keyboard for b in row]
         check("دکمه کاشت بذر هم ایموجی داره",
-              any(t.startswith("🌱 تریاک") for t in p_texts), str(p_texts[:3]))
+              any(t.startswith("☕ تریاک") for t in p_texts), str(p_texts[:3]))
 
     # ── بخش‌های هلپ — متن نهایی کورییت‌شده ──
     import re as _re
@@ -3753,7 +3784,7 @@ async def main() -> None:
 
     # ── کوتیشن‌های هلپ: یا پیشوند تریاکی دارن یا دستور بدون‌پیشوند مجازن (تیمی/حمله/کنده کاری) ──
     BARE_OK = ("کنده کاری", "مزرعه من", "حمله", "کنده\u200cکاری تیمی", "شلیک", "اسم سگ [اسم فعلی] [اسم جدید]",
-               "شکار کمیاب")
+               "شکار کمیاب", "بانک", "بانک واریز 1200", "بانک برداشت 1200", "انتقال 4000 E86YF2")
     for key, body in start_h2.HELP_SECTIONS.items():
         for snip in re.findall("«(.+?)»", body):
             check(f"«{snip[:22]}» توی هلپ {key} پیشوند داره یا بدون‌پیشوند مجازه",
@@ -3811,9 +3842,9 @@ async def main() -> None:
     # ── دکمه قفل ساخت زمین هم همون قالب با 🔒 و قرمز ──
     fk2 = kb2.farm_kb(SimpleNamespace(level=1), [e_plot, e_plot, e_plot], 20000, 0)
     lock_btn = next(b for row in fk2.inline_keyboard for b in row if b.callback_data == "noop:lock")
-    check("قفل ساخت زمین قالب جدید + بدون رنگ (نمایشی)",
+    check("قفل ساخت زمین قالب جدید + قرمز",
           lock_btn.text == f"🔒 ساخت زمین 4 | 🪙 20,000 TP | لول {fa_num(15)}"
-          and lock_btn.style is None, lock_btn.text)
+          and lock_btn.style == "danger", lock_btn.text)
 
     # ── تایمرهای مزرعه (ساخت + رشد) قرمزن ──
     b_plot = SimpleNamespace(id=904, level=1, current_status=lambda: ("building", 300))
@@ -5187,8 +5218,8 @@ async def main() -> None:
           any(b.callback_data == "shop:sec:wcold" and b.style == "success" for b in secbtns)
           and any(b.callback_data == "shop:sec:whot" and b.style == "success" for b in secbtns),
           str([(b.text, b.style) for b in secbtns]))
-    check("دسته قفل (لول کم) نمایشی و بدون رنگه",
-          any(b.callback_data == "noop:lock" and b.style is None for b in secbtns),
+    check("دسته قفل (لول کم) قرمزه",
+          any(b.callback_data == "noop:lock" and b.style == "danger" for b in secbtns),
           str([(b.text, b.style) for b in secbtns]))
 
     # صفحه دسته گرم: باکس + دکمه بدون قیمت + قفل «به لول N»
@@ -5205,10 +5236,10 @@ async def main() -> None:
     check("دکمه سلاح فقط اسمه و قیمت توش نیس",
           any("کلت کمری" in t for t in buy_txt)
           and all("تی‌پوینت" not in t and "TP" not in t and "⛏" not in t for t in buy_txt), str(buy_txt))
-    check("دکمه قفل «به لول N» نمایشی و بدون رنگه",
+    check("دکمه قفل «به لول N» قرمزه",
           len(lock_btns) >= 3
           and all(t.text.startswith("🔒") and "به لول" in t.text for t in lock_btns)
-          and all(b.style is None for b in lock_btns), str([t.text for t in lock_btns]))
+          and all(b.style == "danger" for b in lock_btns), str([t.text for t in lock_btns]))
     check("دکمه خرید سبزه", all(b.style == "success" for b in cbtns if b.callback_data.startswith("shop:buy:weap:")))
 
     # ── بخش سگ شاپ: ویژگی درصدی هر نژاد + تی‌پوینت کامل + خط وضعیت زیر تیتر ──
@@ -5500,7 +5531,7 @@ async def main() -> None:
         check("با سطح لازم ارتقا انجام شد", ok_s3 and sl.shelter_level == 2)
         lock_styles = [b.style for row in kb3.shelter_kb(sl).inline_keyboard
                        for b in row if b.callback_data == "noop:lock"]
-        check("دکمه ارتقای انبار زیر سطح نمایشی و بدون رنگه", lock_styles == [None], str(lock_styles))
+        check("دکمه ارتقای انبار زیر سطح قرمزه", lock_styles == ["danger"], str(lock_styles))
         await s.commit()
 
     # ── لول تیم: تجربه اعضا به تیم میرسه و ظرفیت رشد می‌کنه ──
@@ -6037,7 +6068,8 @@ async def main() -> None:
         cash_rn0 = ru.cash  # بعد از هزینه ساخت تیم
         ok, msg = await team_svc.rename_team(s, ru, "اسم نونوار")
         check("رهبر با پول کافی اسم تیم رو عوض می‌کنه و هزینه کم میشه",
-              ok and "اسم نونوار" in msg and ru.cash == cash_rn0 - config.TEAM_RENAME_COST, msg)
+              ok and "اسم نونوار" in msg and ru.cash == cash_rn0 - config.TEAM_RENAME_COST
+              and f"💸 {money(config.TEAM_RENAME_COST)} هم از جیبت کم شد" in msg, msg)
         ok, msg = await team_svc.rename_team(s, ru, "اسم نونوار")
         check("اسم فعلی دوباره رد میشه", not ok and "همینه" in msg, msg)
         ru.cash = 100
@@ -6933,8 +6965,8 @@ async def main() -> None:
     # ── بانک ۵ لولی: جدول ظرفیت و قیمت و گیت سطح + قفل کیبورد ──
     bk_lock = kb3.bank_kb(SimpleNamespace(bank_level=1, level=1))
     bk_flat = [(b.text, b.callback_data, b.style) for r in bk_lock.inline_keyboard for b in r]
-    check("دکمه قفل ارتقای بانک با سطح لازم (نمایشی، بدون رنگ)",
-          any("🔒 ارتقای بانک | لول 2 | سطح 4" in t and c == "noop:banklock" and st is None
+    check("دکمه قفل ارتقای بانک با سطح لازم، قرمزه",
+          any("🔒 ارتقای بانک | لول 2 | سطح 4" in t and c == "noop:banklock" and st == "danger"
               for t, c, st in bk_flat), str(bk_flat))
     bk_open = kb3.bank_kb(SimpleNamespace(bank_level=1, level=4))
     bk_flat2 = [(b.text, b.callback_data) for r in bk_open.inline_keyboard for b in r]
@@ -6989,11 +7021,11 @@ async def main() -> None:
     check("تیتر صفحه انبار «انبار» ـه",
           sht.startswith("<b>🏚 انبار</b>") and "مخفیگاه" not in sht and "پلیس" not in sht, sht[:40])
     check("نوار پرشوندگی بذرها هم توی انبار هست مثل چوب و آهن",
-          all(x in sht for x in ["🌿 ماری‌جوانا ▱", "🍄 قارچ ▱", "🌵 پیوت ▱", "🌱 تریاک ▱", "⚪ کوکائین ▱"])
-          and sht.count("▰") + sht.count("▱") >= 70,
+          all(x in sht for x in ["🌿 ماری‌جوانا ▱", "🍄 قارچ ▱", "🌵 پیوت ▱", "🍃 کراتوم ▱", "🌺 خشخاش سیاه ▱", "☕ تریاک ▱", "⚪ کوکائین ▱"])
+          and sht.count("▰") + sht.count("▱") >= 90,
           sht.replace("\n", " | ")[:220])
     check("بذر افسانه‌ای توی لیست انبار نمیاد",
-          "جهنم" not in sht and "ابلیس" not in sht)
+          "جهنم" not in sht and "ابلیس" not in sht and "جهش‌یافته" not in sht)
     mm_flat = [b.text for r in kb3.main_menu_kb().inline_keyboard for b in r]
     check("دکمه منوی اصلی «انبار» ـه", "🏚 انبار" in mm_flat, str(mm_flat))
     check("بخش هلپ انبار اسم جدید رو داره",
@@ -7946,7 +7978,7 @@ async def main() -> None:
         ac1 = await users.get_by_tg(s, 7390)
         under_amt = ac1.pending_action == "trf_amt"
     check("مبلغ زیر حداقل 5,000 رد میشه و pending می‌مونه",
-          under_amt and any(f"حداقل انتقال {fa_num(config.TRF_MIN_AMOUNT)}" in c[1] for c in upd.message.calls),
+          under_amt and any(f"حداقل انتقال باید {money(config.TRF_MIN_AMOUNT)} باشه" in c[1] for c in upd.message.calls),
           str(upd.message.calls[-1][1][:60]) if upd.message.calls else "-")
 
     upd = _text_update("100001", uid=7390, uname="acc1", fname="حسابی یک")
@@ -7958,7 +7990,7 @@ async def main() -> None:
         ac1 = await users.get_by_tg(s, 7390)
         overmax_amt = ac1.pending_action == "trf_amt"
     check("مبلغ بالای سقف 100,000 رد میشه و pending می‌مونه",
-          overmax_amt and any(f"حداکثر انتقال {fa_num(config.TRF_MAX_AMOUNT)}" in c[1] for c in upd.message.calls))
+          overmax_amt and any(f"حداکثر انتقال باید {money(config.TRF_MAX_AMOUNT)} باشه" in c[1] for c in upd.message.calls))
 
     upd = _text_update("99999", uid=7390, uname="acc1", fname="حسابی یک")
     try:
@@ -8038,10 +8070,73 @@ async def main() -> None:
         sv_ok, _m2 = await bank_svc.transfer_to(s, ac1, ac2, 5000)
         await s.commit()
     check("محدوده انتقال 5,000 تا 100,000 سر سرویس هم هست",
-          not sv_min and "حداقل انتقال 5,000" in m_min and not sv_max and "حداکثر انتقال 100,000" in m_max,
+          not sv_min and "حداقل انتقال باید 5,000 تی‌پوینت باشه" in m_min and not sv_max and "حداکثر انتقال باید 100,000 تی‌پوینت باشه" in m_max,
           f"{m_min} | {m_max}")
     check("سرویس انتقال خودی و سرِ ظرفیت رو رد می‌کنه ولی تا سقف قبوله",
           not sv_self and not sv_room and "فقط" in rmsg and sv_ok, f"{sv_self}/{sv_room}/{sv_ok}")
+
+    # ── «بانک» بدون پیشوند + «بانک واریز/برداشت» + «انتقال n کد» ──
+    check("«بانک» لخت و با پیشوند بانک رو باز می‌کنه",
+          bool(pats["bankhome"].match("بانک")) and bool(pats["bankhome"].match("تریاکی بانک")))
+    check("«بانک واریز/برداشت 1200» با و بدون پیشوند می‌خوره",
+          bool(pats["bankdep2"].match("بانک واریز 1200")) and bool(pats["bankwd2"].match("تی بانک برداشت ۱۴۰۰")))
+    check("«انتقال 4000 E86YF2» با و بدون پیشوند می‌خوره",
+          bool(pats["banktrf"].match("انتقال 4000 E86YF2")) and bool(pats["banktrf"].match("تریاک انتقال ۷۰۰۰ E86YF2")))
+    from handlers.bank import _bank_text as _btext
+    btx2 = _btext(SimpleNamespace(bank_acc="X9Q2LM", bank_balance=0, bank_level=1))
+    check("هینت دستورهای جدید تو صفحه بانک هست",
+          "«بانک واریز 1200»" in btx2 and "«انتقال 4000 E86YF2»" in btx2, btx2[:60])
+
+    async with session_scope() as s:
+        bs1, _ = await users.get_or_create(s, tg(7392, "acc3", "حسابی سه"))
+        bs2, _ = await users.get_or_create(s, tg(7393, "acc4", "حسابی چهار"))
+        bs1.cash = 30000
+        bs1.bank_balance = 30000
+        bs1.bank_level = 2
+        bs2.bank_balance = 0
+        bs2.bank_level = 1
+        code4 = await bank_svc.ensure_bank_acc(s, bs2)
+        dok, dmsg = await bank_svc.deposit(s, bs1, 5000)
+        await s.commit()
+    check("متن واریز جدید: رفت تو بانک و جاش امنه، دور از هر دزدی",
+          dok and "رفت تو بانک و جاش امنه، دور از هر دزدی 🛡" in dmsg, dmsg[:70])
+    async with session_scope() as s:
+        bs1 = await users.get_by_tg(s, 7392)
+        bs2 = await users.get_by_tg(s, 7393)
+        bs1.last_trf_at = None
+        bs2.bank_balance = bank_svc.bank_capacity(1)
+        fok4, fmsg4 = await bank_svc.transfer_to(s, bs1, bs2, 5000)
+        bs2.bank_balance = bank_svc.bank_capacity(1) - 3000
+        rok4, rmsg4 = await bank_svc.transfer_to(s, bs1, bs2, 5000)
+        await s.commit()
+    check("بانک پر گیرنده با اسمش رد میشه",
+          not fok4 and "بانک «حسابی چهار» کاملاً پره، الان امکان واریز به حسابش نیست" in fmsg4, fmsg4[:80])
+    check("جای خالی کم بانک گیرنده با اسم و مبلغ دقیق رد میشه",
+          not rok4 and "بانک «حسابی چهار» فقط 3,000 تی‌پوینت جای خالی داره، کمتر بگو" in rmsg4, rmsg4[:80])
+
+    # هندلر دستور «انتقال n کد»: فاکتور با دکمه تایید میاد
+    async with session_scope() as s:
+        bs2 = await users.get_by_tg(s, 7393)
+        bs2.bank_balance = 0  # جای خالی برای فاکتور موفق
+        await s.commit()
+    upd_btx = _text_update(f"انتقال 8000 {code4}", uid=7392, uname="acc3", fname="حسابی سه")
+    await bank_h3.transfer_text(upd_btx, None)
+    btx_t = upd_btx.message.calls[-1][1] if upd_btx.message.calls else ""
+    btx_mk = upd_btx.message.calls[-1][2].get("reply_markup") if upd_btx.message.calls else None
+    btx_datas = [b.callback_data for row in btx_mk.inline_keyboard for b in row] if btx_mk else []
+    check("«انتقال 8000 کد» فاکتور با شماره حساب و اسم گیرنده و دکمه تایید میاره",
+          all(x in btx_t for x in ["<b>💳 تاییدیه انتقال</b>", "💸 مبلغ: 8,000 تی‌پوینت",
+                                   f"🔢 شماره حساب: <code>{code4}</code>", "👤 حساب به نام «حسابی چهار» هست",
+                                   "🏦 موجودی بانکت بعد انتقال: 27,000 تی‌پوینت"])
+          and "tbf:7393:8000" in btx_datas, btx_t.replace("\n", " | ")[:140])
+    upd_bad3 = _text_update("انتقال 8000 WRONG99", uid=7392, uname="acc3", fname="حسابی سه")
+    await bank_h3.transfer_text(upd_bad3, None)
+    check("شماره حساب اشتباه تو دستور انتقال رد میشه",
+          any("همچین شماره حسابی پیدا نکردم" in c[1] for c in upd_bad3.message.calls))
+    upd_low3 = _text_update(f"انتقال 3000 {code4}", uid=7392, uname="acc3", fname="حسابی سه")
+    await bank_h3.transfer_text(upd_low3, None)
+    check("زیر حداقل تو دستور انتقال هم قالب «باید باشه»ـه",
+          any("حداقل انتقال باید 5,000 تی‌پوینت باشه" in c[1] for c in upd_low3.message.calls))
     async with session_scope() as s:
         ac1 = await users.get_by_tg(s, 7390)
         ac1.last_trf_at = None
@@ -8072,6 +8167,38 @@ async def main() -> None:
         await s.commit()
     check("«لغو» وسط انتقال کار می‌کنه", tpclr is None and cmsg != "🤷 کاری در جریان نیس که")
 
+    # ── پیام همگانی: رسانه (عکس/ویدیو/فایل) هم «به کی بفرستمش؟» می‌گیره ──
+    async with session_scope() as s:
+        bmu = await users.get_by_tg(s, 1001)
+        users.set_pending(bmu, "bcast", None, 100)
+        await s.commit()
+    _med = SimpleNamespace(text=None, caption=None, message_id=77, calls=[],
+                           chat=SimpleNamespace(id=100))
+
+    async def _med_reply(text, **kw):
+        _med.calls.append(("reply", text, kw))
+        return _med
+    _med.reply_html = _med_reply
+    upd_med = SimpleNamespace(
+        message=_med, effective_message=_med,
+        effective_user=SimpleNamespace(id=1001, username="boss", first_name="باس"),
+        effective_chat=SimpleNamespace(id=100, type="private"),
+    )
+    try:
+        await pending_h.capture_bcast_media(upd_med, None)
+    except Exception:
+        pass
+    async with session_scope() as s:
+        bmu = await users.get_by_tg(s, 1001)
+        med_cleared = bmu.pending_action is None
+        await s.commit()
+    check("عکس برای پیام همگانی هم واکنش می‌گیره و pending پاک میشه",
+          med_cleared and _med.calls and "به کی بفرستمش؟" in _med.calls[0][1]
+          and "broadcast_scope_kb".lower() not in str(_med.calls[0][2]).lower(),
+          str(_med.calls[:1]))
+    check("کیبورد دامنه همگانی به رسانه هم وصله",
+          _med.calls and _med.calls[0][2].get("reply_markup") is not None)
+
     # ── تیم مخفی 👻 تاگل نامرئی لیدربرد ──
     async with session_scope() as s:
         rno = await users.get_by_tg(s, 7376)
@@ -8100,17 +8227,6 @@ async def main() -> None:
           rn_id not in hid_bank and rn_id not in hid_pts and rn_id not in hid_week)
     check("تیم مخفی تو مدال فقط با include_hidden دیده میشه",
           rn_id not in hid_medals and rn_id in hid_medals_inc)
-    from models import TeamMember as _TMm
-    async with session_scope() as s:
-        mno, _ = await users.get_or_create(s, tg(7377, "memonly", "عضو ساده"))
-        mno.level = 5
-        s.add(_TMm(team_id=rn_id, user_id=mno.id, role="member"))
-        await s.commit()
-    async with session_scope() as s:
-        mno = await users.get_by_tg(s, 7377)
-        hok2, hmsg2 = await team_svc.toggle_hidden(s, mno)
-        await s.commit()
-    check("عضو ساده نمی‌تونه تیم رو مخفی کنه", not hok2 and "فقط رهبر" in hmsg2, hmsg2[:50])
     async with session_scope() as s:
         rno = await users.get_by_tg(s, 7376)
         hok3, hmsg3 = await team_svc.toggle_hidden(s, rno)
@@ -8119,33 +8235,83 @@ async def main() -> None:
         await s.commit()
     check("دوباره «تیم مخفی» برش گردوند تو لیدربرد",
           hok3 and "برگشت تو لیدربردها" in hmsg3 and back_bank[0] == rn_id and back_pts[0] == rn_id, hmsg3[:50])
-    check("پترن «تیم مخفی» ساده و با پیشوند کار می‌کنه",
-          bool(pats["team_hide"].match("تیم مخفی")) and bool(pats["team_hide"].match("تریاکی تیم مخفی"))
-          and not pats["team_hide"].match("تیم مخفی شو"))
 
-    # ── کوئست‌های تیم: 5 تا، لول‌گیت و مقیاس‌خورده ──
+    # ── مخفی کردن تیم فقط دست ادمینه: عضو عادی رد میشه و وضعیت دست‌نخورده می‌مونه ──
+    async with session_scope() as s:
+        from models import Team as _TeamQ
+        vis_before = (await s.get(_TeamQ, rn_id)).lb_hidden
+        await s.commit()
+    upd_mh = _text_update("تریاکی تیم مخفی", uid=7377, uname="memonly", fname="عضو ساده")
+    await team_h.hide_team_text(upd_mh, None)
+    async with session_scope() as s:
+        from models import Team as _TeamQ2
+        vis_after = (await s.get(_TeamQ2, rn_id)).lb_hidden
+        await s.commit()
+    check("مخفی کردن تیم فقط دست ادمینه، عضو عادی 🚫 می‌گیره و تیم دست‌نخورده می‌مونه",
+          vis_before == vis_after
+          and any("فقط دست ادمینه" in c[1] for c in upd_mh.message.calls),
+          str(upd_mh.message.calls[-1][1][:60]) if upd_mh.message.calls else "-")
+
+    # ── ادمین با اسم هر تیمی رو می‌تونه مخفی و برگردونه ──
+    upd_ah = _text_update("تریاکی تیم مخفی قهرمانان", uid=1001, uname="باس", fname="باس")
+    await team_h.hide_team_text(upd_ah, None)
+    async with session_scope() as s:
+        from models import Team as _TeamQ3
+        hid1 = (await s.get(_TeamQ3, rn_id)).lb_hidden
+        await s.commit()
+    check("ادمین با اسم تیم مخفی می‌کنه",
+          hid1 == 1 and any("نامرئی شد" in c[1] and "قهرمانان" in c[1] for c in upd_ah.message.calls),
+          str(upd_ah.message.calls[-1][1][:60]) if upd_ah.message.calls else "-")
+    upd_ah2 = _text_update("تریاکی تیم مخفی قهرمانان", uid=1001, uname="باس", fname="باس")
+    await team_h.hide_team_text(upd_ah2, None)
+    async with session_scope() as s:
+        from models import Team as _TeamQ4
+        hid2 = (await s.get(_TeamQ4, rn_id)).lb_hidden
+        await s.commit()
+    check("دوباره همون دستور برش می‌گردونه تو لیدربرد",
+          hid2 == 0 and any("برگشت تو لیدربردها" in c[1] for c in upd_ah2.message.calls))
+    upd_ah3 = _text_update("تریاکی تیم مخفی غیرموجود‌ها", uid=1001, uname="باس", fname="باس")
+    await team_h.hide_team_text(upd_ah3, None)
+    check("اسم تیم اشتباه خطای پیدا نکردم می‌ده",
+          any("پیدا نکردم" in c[1] for c in upd_ah3.message.calls))
+    check("پترن «تیم مخفی» ساده و با پیشوند و اسم کار می‌کنه",
+          bool(pats["team_hide"].match("تیم مخفی")) and bool(pats["team_hide"].match("تریاکی تیم مخفی"))
+          and bool(pats["team_hide"].match("تیم مخفی قهرمانان")))
+    # اسم ناشناخته هم به هندلر میرسه ولی ادمین خطای «پیدا نکردم» می‌گیره، سیلنت رد نمیشه
+
+    # ── کوئست‌های تیم: 8 تا، لول‌گیت و مقیاس‌خورده با جایزه بهبودیافته ──
     tq = {q["key"]: q for q in config.TEAM_QUESTS}
-    check("تیم 5 کوئست روزانه داره", len(config.TEAM_QUESTS) == 5, str(list(tq)))
+    check("تیم 8 کوئست روزانه داره (کشتن | برداشت | کاشت | معدن | غذا | جستجو | واریز بانک | کاروان)",
+          len(config.TEAM_QUESTS) == 8
+          and [q["key"] for q in config.TEAM_QUESTS] == ["kills", "harvest", "plant", "mine", "feed", "search", "depbank", "caravan"],
+          str(list(tq)))
+    check("ترتیب لول‌گیت کوئست‌های تیم 1 و 1 و 2 و 3 و 4 و 5 و 6 و 7ـه",
+          [q["min_level"] for q in config.TEAM_QUESTS] == [1, 1, 2, 3, 4, 5, 6, 7])
     s1 = team_svc.team_quest_scaled(tq["kills"], 1)
-    check("کوئست کش لول 1 همون مبناست",
-          s1["target"] == 25 and s1["reward"] == 200 and s1["bank_reward"] == 2000,
+    check("کوئست کش لول 1 همون مبناست با جایزه بیشتر",
+          s1["target"] == 25 and s1["reward"] == 250 and s1["bank_reward"] == 2500,
           f"{s1['target']}/{s1['reward']}/{s1['bank_reward']}")
     s5m = team_svc.team_quest_scaled(tq["mine"], 5)
     check("کوئست معدن لول 5 دو پله رشد 40% خورد", s5m["target"] == 108, str(s5m["target"]))
     s10 = team_svc.team_quest_scaled(tq["kills"], 10)
-    check("کوئست کش لول 10 سقف مقیاس",
-          s10["target"] == 115 and s10["reward"] == 740 and s10["bank_reward"] == 7400,
+    check("کوئست کش لول 10 سقف مقیاس با جایزه بهبودیافته",
+          s10["target"] == 115 and s10["reward"] == 925 and s10["bank_reward"] == 9250,
           f"{s10['target']}/{s10['reward']}/{s10['bank_reward']}")
     check("تیایتل کوئست با عدد مقیاس‌خورده پر میشه", fa_num(115) in s10["title"], s10["title"])
+    check("تیایتل کوئست بانک تیم هم مقیاس عددش پر میشه",
+          fa_num(team_svc.team_quest_scaled(tq["depbank"], 6)["target"]) in team_svc.team_quest_scaled(tq["depbank"], 6)["title"])
     check("کوئست لول‌گیت برای تیم کم‌لول Noneـه", team_svc.team_quest_scaled(tq["mine"], 2) is None)
-    check("لول 2 کوئست معدن و جستجو و کاروان قفله",
-          [q["key"] for q in team_svc.locked_quests_view(2)] == ["mine", "search", "caravan"])
+    check("لول 2 کوئست‌های معدن و غذا و جستجو و بانک و کاروان قفله",
+          [q["key"] for q in team_svc.locked_quests_view(2)] == ["mine", "feed", "search", "depbank", "caravan"])
     td_view = TeamDaily(team_id=424242, day="2000-01-01", kills=0, harvests=0, kills_done=0, harvests_done=0)
     v8 = team_svc.quests_view(td_view, 8)
     v1 = team_svc.quests_view(td_view, 1)
-    check("استعلام لول 8 هر 5 کوئست رو داره", len(v8) == 5, str(len(v8)))
+    check("استعلام لول 8 هر 8 کوئست رو داره", len(v8) == 8, str(len(v8)))
     check("استعلام لول 1 فقط 2 کوئست باز داره",
           len(v1) == 2 and {q["key"] for q in v1} == {"kills", "harvest"}, str([q["key"] for q in v1]))
+    check("شانس جایزه بذر افسانه‌ای کوئست تیم ۱۰٪ بعد لول 7ـه",
+          config.TEAM_QUEST_LEGEND_CHANCE == 0.10 and config.TEAM_QUEST_LEGEND_MIN_LEVEL == 7
+          and set(config.QUEST_LEGEND_SEEDS) == {"jahannam", "eblis"})
 
     async with session_scope() as s:
         qmo, _ = await users.get_or_create(s, tg(7378, "qmine", "معدنچی"))
@@ -8163,10 +8329,77 @@ async def main() -> None:
         check("کوئست معدن تیم با ضربه 60اُم کامل شد و اعلان داد",
               qnote is not None and "کامل شد" in qnote and "کنده‌کاری" in qnote, str(qnote)[:70])
         check("جایزه عضو و بانک تیم با مقیاس لول 3 واریز شد",
-              qmo.cash == q_cash_b + 250 and qteam.bank == q_bank_b + 2500,
+              qmo.cash == q_cash_b + 300 and qteam.bank == q_bank_b + 3000,
               f"{qmo.cash - q_cash_b}/{qteam.bank - q_bank_b}")
         check("شمارنده JSON پیشرفت کوئست 60 شد", qprog_after.get("mine") == 60, str(qprog_after))
         await s.commit()
+
+    # ── کوئست تیم: کاشت و غذا و واریز به بانک هم ثبت میشن + بذر افسانه‌ای برای لول 7+ ──
+    async with session_scope() as s:
+        qlo, _ = await users.get_or_create(s, tg(7384, "qleg", "خوش‌شانس"))
+        qlo.level = 9
+        qlo.cash = 100000
+        ok_lq, _ = await team_svc.create_team(s, qlo, "برگ‌بخت‌ها")
+        assert ok_lq
+        qt2 = await team_svc.get_team_of(s, qlo.id)
+        qt2.level = 8
+        qd2 = await team_svc._daily(s, qt2.id)
+        qd2.qprog = _json.dumps({"feed": 30, "plant": 60})  # تارگت لول 8: غذا 31 و کاشت 61
+        cash_c0, bank_c0 = qlo.cash, qt2.bank
+        _orig_tqr = team_svc.random.random
+        try:
+            team_svc.random.random = lambda: 0.0
+            lnote = await team_svc.record_feed(s, qlo)
+            team_svc.random.random = lambda: 0.5
+            pnote = await team_svc.record_plant(s, qlo)
+        finally:
+            team_svc.random.random = _orig_tqr
+        lg_stock = await farming.get_stock(s, qlo.id)
+        cash_c1, bank_c1 = qlo.cash, qt2.bank
+        dep1 = await team_svc.record_team_deposit(s, qlo, 25000)
+        dep_mid = _json.loads((await team_svc._daily(s, qt2.id)).qprog or "{}").get("depbank")
+        dep2 = await team_svc.record_team_deposit(s, qlo, 11000)  # تارگت واریز لول 8: 36,000
+        qd2p = _json.loads((await team_svc._daily(s, qt2.id)).qprog or "{}")
+        await s.commit()
+    check("کوئست تیم لول 7+ با بخت به هر عضو بذر جهنم یا ابلیس داد و اعلانش کرد",
+          lnote is not None and "بذر افسانه‌ای" in lnote
+          and lg_stock.get("jahannam", 0) + lg_stock.get("eblis", 0) == 1, f"{lnote} | {lg_stock}")
+    check("بدون بخت خط بذر افسانه‌ای تو اعلان نیس",
+          pnote is not None and "کامل شد" in pnote and "بذر افسانه‌ای" not in pnote, str(pnote)[:80])
+    check("جایزه‌های مقیاس‌شده غذا و کاشت و واریز (لول 8) واریز شدن",
+          cash_c1 == cash_c0 + 770 + 840 and bank_c1 == bank_c0 + 7700 + 8400
+          and qlo.cash == cash_c1 + 800 and qt2.bank == bank_c1 + 8000,
+          f"{qlo.cash}/{qt2.bank}")
+    check("واریز بانک تیم تو شمارنده کوئست جمع میشه و زیر تارگت اعلان نداره",
+          dep1 is None and dep_mid == 25000 and qd2p.get("depbank") == 36000,
+          f"{dep_mid}/{qd2p.get('depbank')}")
+    check("رسیدن به تارگت واریز، کوئست بانک رو کامل می‌کنه و جایزه مقیاس‌شده میده",
+          dep2 is not None and "کامل شد" in dep2 and "واریز" in dep2
+          and qlo.cash == cash_c1 + 800 and qt2.bank == bank_c1 + 8000,
+          f"{dep2} | {qt2.bank}")
+
+    # ── روستر: اسم‌ها بر اساس لول از بالا به پایین ──
+    async with session_scope() as s:
+        r1u, _ = await users.get_or_create(s, tg(7385, "ros1", "کم‌لولی"))
+        r1u.level = 8
+        r1u.cash = 100000
+        ok_r, _ = await team_svc.create_team(s, r1u, "روستری‌ها")
+        assert ok_r, _
+        r1u.level = 3
+        r2u, _ = await users.get_or_create(s, tg(7386, "ros2", "بالالولی"))
+        r2u.level = 9
+        r3u, _ = await users.get_or_create(s, tg(7387, "ros3", "وسطولی"))
+        r3u.level = 6
+        _rt = await team_svc.get_team_of(s, r1u.id)
+        s.add(TeamMember(team_id=_rt.id, user_id=r2u.id, role="member"))
+        s.add(TeamMember(team_id=_rt.id, user_id=r3u.id, role="member"))
+        await s.commit()
+    upd_ros = _text_update("تریاکی تیم عضویت", uid=7385, uname="ros1", fname="کم‌لولی")
+    await team_h.roster_text(upd_ros, None)
+    ros_t = upd_ros.message.calls[-1][1] if upd_ros.message.calls else ""
+    check("روستر بر اساس لول از بالا به پایین مرتبه",
+          ros_t and ros_t.index("بالالولی") < ros_t.index("وسطولی") < ros_t.index("کم‌لولی"),
+          ros_t.replace("\n", " | ")[:130])
 
     # ── کوئست روزانه بازیکن: مقیاس لول و گیت تنوع ──
     check("کوئست معدن بازیکن لول 10 با رشد مقیاس خورد",
@@ -8191,6 +8424,26 @@ async def main() -> None:
     check("هدف کوئست‌های ساخته‌شده با لول کاربر مقیاس خورده",
           bool(pqs6) and all(q["target"] == quests_svc.scaled_values(q["kind"], 6)[0] for q in pqs6),
           str(pqs6[:1]))
+
+    # ── کوئست روزانه: جایزه بذر جهنم/ابلیس با شانس ۱۰٪ بعد لول 10 ──
+    _orig_dqr = quests_svc.random.random
+    try:
+        quests_svc.random.random = lambda: 0.90
+        r_low9 = quests_svc._roll_reward("mine", 9)
+        r_high12 = quests_svc._roll_reward("mine", 12)
+        quests_svc.random.random = lambda: 0.96
+        r_out12 = quests_svc._roll_reward("mine", 12)
+    finally:
+        quests_svc.random.random = _orig_dqr
+    check("کوئست روزانه زیر لول 10 هیچ‌وقت جهنم/ابلیس نمی‌ده",
+          r_low9["type"] == "seed" and r_low9["seed"] not in ("jahannam", "eblis"), str(r_low9))
+    check("کوئست روزانه بعد لول 10 تو برش ۱۰٪ جهنم یا ابلیس می‌ده",
+          r_high12["type"] == "seed" and r_high12["seed"] in ("jahannam", "eblis"), str(r_high12))
+    check("بیرون برش ۱۰٪ حتی بعد لول 10 هم بذر معمولی می‌ده",
+          r_out12["type"] == "seed" and r_out12["seed"] not in ("jahannam", "eblis")
+          and "mutant" != r_out12["seed"], str(r_out12))
+    check("ثابت‌های بذر افسانه‌ای روزانه ۱۰٪ بعد لول 10 و بدون جهش‌یافته",
+          config.DAILY_QUEST_LEGEND_CHANCE == 0.10 and config.DAILY_QUEST_LEGEND_MIN_LEVEL == 10)
 
     # ── دیبانس کلیک کاروان ──
     world_svc.CARAVAN_CLICKS.clear()
