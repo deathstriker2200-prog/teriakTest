@@ -16,26 +16,27 @@ from utils import fa_num, money
 
 
 def skills_text(user) -> str:
-    """متن صفحه مهارت‌ها، بالاش امتیاز فعلی و زیرش وضعیت هر قابلیت"""
+    """متن صفحه مهارت‌ها: امتیاز فعلی بالا، هر قابلیت یه بلاک با لول و درصد الان/بعدی"""
     users.ensure_skills(user)
     lines = [
         "<b>⭐️ مهارت‌ها</b>",
         "",
         f"🎖 امتیاز مهارت: {fa_num(user.skill_points or 0)}",
         "",
-        "هر لول‌آپ یه امتیاز مهارت می‌گیری و هرکدوم از قابلیت‌ها رو تا لول 8 می‌تونی ببری بالا",
+        "هر لول‌آپ یه امتیاز مهارت(جز لول 10 و 20) می‌گیری و هرکدوم از قابلیت‌ها رو تا لول 8 می‌تونی ببری بالا",
         "",
     ]
     for key, sk in config.SKILLS.items():
         lv = users.skill_level(user, key)
         now_pct = int(round(sk["per"] * lv * 100))
         lines.append(f"{sk['name']} | لول {fa_num(lv)} از {fa_num(config.SKILL_MAX_LEVEL)}")
+        lines.append(f"▫️ {sk['desc']}")
         if lv >= config.SKILL_MAX_LEVEL:
-            lines.append(f"▫️ {sk['desc']} | الان {fa_num(now_pct)}% ، 👑 مکس")
+            lines.append(f"الان {fa_num(now_pct)}% ، 👑 مکس")
         else:
             nxt_pct = int(round(sk["per"] * (lv + 1) * 100))
-            lines.append(f"▫️ {sk['desc']} | الان {fa_num(now_pct)}% ، بعدی {fa_num(nxt_pct)}%")
-    lines.append("")
+            lines.append(f"الان {fa_num(now_pct)}% ، بعدی {fa_num(nxt_pct)}%")
+        lines.append("")
     lines.append(f"♻️ ریست همه امتیازاتو برمی‌گردونه و مهارت‌ها صفر میشن ({money(config.SKILL_RESET_COST)})")
     return "\n".join(lines)
 

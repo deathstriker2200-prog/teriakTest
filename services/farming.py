@@ -92,8 +92,10 @@ async def plant(session: AsyncSession, user: User, plot: Plot, seed_key: str) ->
 
     # آب و هوا روی سرعت رشد اثر می‌ذاره (باران سریع‌تر | گرما/سرما کندتر)، شدت همین رول
     from services import world as world_svc
+    from services import combat as combat_svc
     wkey, wpct, _ = await world_svc.weather_state(session)
     speed = world_svc.weather_grow_speed(wkey, wpct)
+    speed *= 1 + combat_svc.skill_pct(user, "speed")  # مهارت ⚡ سرعت: هر لول ۲% کاشت تندتر
     seconds = max(30, int(economy.crop_grow_seconds(seed_key, plot.level) / speed))
     plot.status = "growing"
     plot.crop = seed_key

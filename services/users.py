@@ -173,10 +173,16 @@ def title_of(user: User) -> tuple[str, str]:
     return emoji, name
 
 
+def expected_skill_points(level: int) -> int:
+    """مجموع امتیاز مهارتی که یه بازیکن تا این لول باید گرفته باشه (لول ۱۰ دو امتیاز و لول ۲۰ سه امتیاز میده)"""
+    level = max(1, int(level or 1))
+    return sum(config.SKILL_BONUS_LEVELS.get(k, config.SKILL_POINT_PER_LEVEL) for k in range(2, level + 1))
+
+
 def ensure_skills(user: User) -> None:
-    """امتیاز مهارت کاربرای قدیمی NULL‌ه، با امتیاز پس‌دررو (لول منهای یک) مقداردهی میشه"""
+    """امتیاز مهارت کاربرای قدیمی NULL‌ه، با امتیاز پس‌دررو به‌ازای هر لولی که داره مقداردهی میشه"""
     if user.skill_points is None:
-        user.skill_points = max(0, (user.level or 1) - 1) * config.SKILL_POINT_PER_LEVEL
+        user.skill_points = expected_skill_points(user.level or 1)
     for key in config.SKILLS:
         if getattr(user, f"skill_{key}", None) is None:
             setattr(user, f"skill_{key}", 0)
@@ -344,7 +350,8 @@ def add_xp(user: User, amount: int) -> list[str]:
     while user.level < config.MAX_LEVEL and user.xp >= xp_need(user.level):
         user.xp -= xp_need(user.level)
         user.level += 1
-        user.skill_points = (user.skill_points or 0) + config.SKILL_POINT_PER_LEVEL
+        pts = config.SKILL_BONUS_LEVELS.get(user.level, config.SKILL_POINT_PER_LEVEL)
+        user.skill_points = (user.skill_points or 0) + pts
 
         reward = config.LEVEL_CASH_REWARD * user.level
         user.cash += reward
@@ -353,7 +360,7 @@ def add_xp(user: User, amount: int) -> list[str]:
         battle_svc.full_heal(user)  # لول‌آپ یعنی جان تازه
 
         note = f"🎉 تبریک، لول‌آپ شدی ({fa_num(user.level - 1)}←{fa_num(user.level)})"
-        note += f"\n🎖 {fa_num(config.SKILL_POINT_PER_LEVEL)} امتیاز مهارت گرفتی، برو تو «مهارت» خرجش کن"
+        note += f"\n🎖 {fa_num(pts)} امتیاز مهارت گرفتی، برو تو «مهارت» خرجش کن"
         if user.level == config.MAX_LEVEL:
             note += "\n👑 لولت مکس شد، از این به بعد فقط تجربه جمع میشه"
 

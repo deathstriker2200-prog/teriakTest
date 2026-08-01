@@ -280,6 +280,19 @@ async def update_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             for u in (await s.execute(q_stuck)).scalars():
                 u.first_plot_at = now_utc()
                 plot_fixed += 1
+        # امتیاز مهارتِ بازیکن‌هایی که هنوز هیچ امتیازی خرج نکردن به مقدار درست لولشون به‌روز میشه
+        # (پس‌دررو: به‌ازای هر لولی که دارن، با بونوس لول ۱۰ و ۲۰)، خرج‌کرده‌ها سر جاشون می‌مونن
+        q_sk = sa_select(_User).where(
+            _User.skill_points.isnot(None),
+            _User.skill_power == 0, _User.skill_speed == 0,
+            _User.skill_defense == 0, _User.skill_loot == 0,
+        )
+        skills_fixed = 0
+        for u in (await s.execute(q_sk)).scalars():
+            expect = users.expected_skill_points(u.level or 1)
+            if (u.skill_points or 0) != expect:
+                u.skill_points = expect
+                skills_fixed += 1
         # ظرفیت تیم‌ها داینامیک از لول حساب میشه؛ اینجا بازخوانی و گزارش سرریز
         all_teams = (await s.execute(sa_select(Team))).scalars().all()
         over: list[tuple[str, int, int]] = []
@@ -313,6 +326,10 @@ async def update_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         lines.append(f"🌱 آنبوردینگ زمین {fa_num(plot_fixed)} بازیکن گیرکرده فیکس شد")
     else:
         lines.append("🌱 آنبوردینگ زمین همه اوکیه")
+    if skills_fixed:
+        lines.append(f"🎖 امتیاز مهارت {fa_num(skills_fixed)} بازیکنِ خرجنکرده به مقدار درست لولشون به‌روز شد")
+    else:
+        lines.append("🎖 امتیاز مهارت‌ها از قبل به‌روزه")
     if over:
         lines.append(
             f"⚠️ {fa_num(len(over))} تیم سرریز ظرفیت دارن: "

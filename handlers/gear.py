@@ -36,12 +36,14 @@ def _gear_text(user, lvls: dict, tab: str, atk: int, dfn: int) -> str:
         f"💪 حمله: {fa_num(atk)} | 🛡 دفاع: {fa_num(dfn)}",
         "",
         f"🔫 سلاح فعال: {esc(wname)}",
-        f"🦺 زره فعال: {esc(aname)}",
     ]
     abil = (config.WEAPONS.get(wkey) or {}).get("ability") if wkey else None
     if abil:
+        lines.append("")
         lines.append(f"🎯 قابلیت ویژه: {config.WEAPON_ABILITY_TEXT.get(abil['kind'], '')}")
         lines.append("با ارتقای سلاح درصد قابلیت بیشتر میشه")
+        lines.append("")
+    lines.append(f"🦺 زره فعال: {esc(aname)}")
     lines.append("")
     lines.append("🔽 روی هر آیتم بزن تا دستت بشه")
     if not any(k in (config.WEAPONS if tab == "weap" else config.ARMORS) for k in lvls):

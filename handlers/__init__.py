@@ -37,7 +37,10 @@ TEXT_HANDLERS: list[tuple[str, str, object]] = [
     ("mydogs", rf"{T}سگ{S}*های{S}*من!?$|{T}سگ{S}*هام!?$|{T}سگ{S}*ها!?$", textcmd.dogs_text),
     ("farm", rf"{T}مزرعه!?$|{T}زمین{S}*های{S}*من!?$|{T}زمین{S}*هام!?$|{T}زمین{S}*ها!?$|{T}زمین!?$", textcmd.farm_text),
     ("rank", rf"{TP}رتبه!?$|{TP}رتبه{S}*بندی!?$|{TP}لیدربرد!?$|{TP}لیدر{S}*برد!?$", rank.rank_cb),
-    ("dogstats", rf"{T}آمار{S}+(.+)$", dogs.dog_stats_text),
+    ("dogstats", rf"{TP}[اآ]مار{S}+(.+)$", dogs.dog_stats_text),  # «آمار لوله‌کش» و «امار لوله‌کش»، با و بدون پیشوند
+    ("stats", rf"{TP}[اآ]مار!?$", textcmd.profile_text),  # «آمار» و «امار» تنها، پروفایل باز میشه که بلوک آمار داره
+    ("skills_txt", rf"{TP}مهارت(?:{S}*ها)?!?$", skills.skills_cb),  # «مهارت» منوی مهارت رو باز می‌کنه
+    ("dquests_txt", rf"{TP}(?:ماموریت|مأموریت)(?:{S}*های?)?(?:{S}+روزانه)?!?$", dquests.daily_quests_cb),  # «ماموریت» و «مأموریت» بخش مأموریت‌های روزانه
     # ── تیم ──
     ("team_bld", rf"{TP}تیم{S}+ساختمان(?:{S}*ها)?!?$|{TP}تیم{S}+ساخت!?$", team.buildings_text),
     ("team_profile", rf"{TP}تیم{S}+پروفایل!?$", team.team_profile_text),
@@ -68,7 +71,7 @@ TEXT_HANDLERS: list[tuple[str, str, object]] = [
     ("search", rf"{T}جستجو!?$|{T}جست{S}*و{S}*جو!?$", world.search_cmd),
     ("weather", rf"{TP}وضعیت{S}+آب{S}+و{S}+هوا!?$|{TP}آب{S}*و{S}*هوا!?$|{TP}وضعیت{S}+هواشناسی!?$|{TP}هواشناسی!?$|{TP}وضعیت{S}+هوا!?$", world.weather_cmd),
     ("market", rf"{TP}وضعیت{S}+بازار!?$|{TP}بازار{S}*سیاه!?$|{TP}بازار!?$", world.market_cmd),  # با و بدون پیشوند
-    ("shelter", rf"{T}پناهگاه!?$|{T}مخفیگاه!?$|{T}انبار!?$|{T}انبار{S}+و{S}+پناهگاه!?$", world.shelter_cmd),
+    ("shelter", rf"{T}پناهگاه!?$|{T}مخفیگاه!?$|{TP}انبار!?$|{TP}انبار{S}+و{S}+پناهگاه!?$", world.shelter_cmd),  # «انبار» بدون پیشوند هم جواب میده
     ("company", rf"{T}شرکت!?$|{T}کارخانه!?$", company.company_cb),
     ("dogrename", rf"{T}اسم{S}+سگ{S}+(.+)$", dogs.dog_rename_text),
     ("casino", rf"{T}قمارخانه!?$|{T}قمار!?$", world.casino_cmd),

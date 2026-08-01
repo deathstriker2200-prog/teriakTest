@@ -34,7 +34,7 @@ async def render_dquests(update: Update, alert: str | None = None) -> None:
         quests = await dq_svc.ensure_quests(s, user)
         left = dq_svc.remaining(quests)
 
-        lines = ["<b>📅 کوئست‌های روزانه</b>", ""]
+        lines = ["<b>🎯 مأموریت‌های روزانه</b>", ""]
         for q in quests:
             lines.append(quest_line(q))
             lines.append("")

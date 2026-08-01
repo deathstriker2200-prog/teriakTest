@@ -3813,7 +3813,7 @@ async def main() -> None:
 
     # ── کوتیشن‌های هلپ: یا پیشوند تریاکی دارن یا دستور بدون‌پیشوند مجازن (تیمی/حمله/کنده کاری) ──
     BARE_OK = ("کنده کاری", "مزرعه من", "حمله", "کنده\u200cکاری تیمی", "شلیک", "اسم سگ [اسم فعلی] [اسم جدید]",
-               "شکار کمیاب", "بانک", "بانک واریز 1200", "بانک برداشت 1200", "انتقال 4000 E86YF2")
+               "شکار کمیاب", "بانک", "بانک واریز 1200", "بانک برداشت 1200", "انتقال 4000 E86YF2", "مهارت")
     for key, body in start_h2.HELP_SECTIONS.items():
         for snip in re.findall("«(.+?)»", body):
             check(f"«{snip[:22]}» توی هلپ {key} پیشوند داره یا بدون‌پیشوند مجازه",
@@ -4033,7 +4033,7 @@ async def main() -> None:
     await dquests_h.daily_quests_cb(upd, None)
     ed = next((c for c in upd.callback_query.calls if c[0] == "edit"), None)
     check("صفحه کوئست‌های روزانه باز میشه",
-          ed is not None and "<b>📅 کوئست‌های روزانه</b>" in ed[1]
+          ed is not None and "<b>🎯 مأموریت‌های روزانه</b>" in ed[1]
           and "هر شب ساعت 12 ریست میشن" in ed[1]
           and "🎁" in ed[1], ed[1][:140] if ed else "-")
     check("کوئست‌های انجام‌شده خط خوردن و تیک خوردن",
@@ -5109,6 +5109,7 @@ async def main() -> None:
     # ── شرکت: ساخت، تولید lazy، ارتقا ──
     async with session_scope() as s:
         cu, _ = await users.get_or_create(s, tg(9603, "compo", "کارخونه‌دار"))
+        cu.level = 6  # ساخت شرکت از لول 5 بازه
         cu.cash = 100000
         cu.wood = 500
         ok, msg = await comp_svc.build(s, cu, "lumber")
@@ -9092,8 +9093,8 @@ async def main() -> None:
 
     # ── کارخونه‌ها: قیمت و تولید جدید ──
     check("هزینه ارتقای کارخونه‌ها: لول‌های پایین ارزون، لول‌های بالا تصاعدی گرون",
-          comp_svc.upgrade_cost("lumber", 2) == (3000, 40) and comp_svc.upgrade_cost("lumber", 10) == (750000, 800)
-          and comp_svc.upgrade_cost("ironmill", 2) == (4500, 60) and comp_svc.upgrade_cost("ironmill", 10) == (1100000, 1210),
+          comp_svc.upgrade_cost("lumber", 2) == (6000, 40) and comp_svc.upgrade_cost("lumber", 10) == (2250000, 800)
+          and comp_svc.upgrade_cost("ironmill", 2) == (9000, 60) and comp_svc.upgrade_cost("ironmill", 10) == (3300000, 1210),
           str(comp_svc.upgrade_cost("ironmill", 10)))
     check("جدول‌های ارتقای کارخونه صعودی‌ان و به ازای هر لول یه ردیف",
           len(config.FACTORIES["lumber"]["up_tp"]) == config.FACTORY_MAX_LEVEL - 1
@@ -9187,6 +9188,216 @@ async def main() -> None:
           st_sb2.get("marijuana") == 3 and ans_x and "انبار بذرت جا نداره" in str(ans_x[0][1][0])
           and "فقط 2 تا دیگه جا داری" in str(ans_x[0][1][0]) and sb.cash == 100000 - 360,
           str(ans_x[0][1][0])[:140] if ans_x else "-")
+
+    # ═══ این دور: بونوس مهارت لول ۱۰/۲۰ + بک‌فیل /update | گیت لول ۵ شرکت + قیمت ۲-۳ برابر ═══
+    # ═══ دستورهای متنی انبار/ماموریت/آمار/مهارت + متن مهارت و تجهیزات روی الگوی جدید ═══
+
+    # ── امتیاز مهارت موردانتظار: لول 10 دو تا و لول 20 سه تا ──
+    check("امتیاز مهارت موردانتظار هر لول (بونوس لول 10 و 20)",
+          users.expected_skill_points(1) == 0 and users.expected_skill_points(2) == 1
+          and users.expected_skill_points(6) == 5 and users.expected_skill_points(9) == 8
+          and users.expected_skill_points(10) == 10 and users.expected_skill_points(11) == 11
+          and users.expected_skill_points(19) == 19 and users.expected_skill_points(20) == 22,
+          str(users.expected_skill_points(20)))
+
+    async with session_scope() as s:
+        btr, _ = await users.get_or_create(s, tg(9913, "retro10", "قدیمی"))
+        btr.level = 12
+        btr.skill_points = None
+        users.ensure_skills(btr)
+        check("پس‌دررو با بونوس: امتیاز کاربر قدیمی لول 12 میشه 12",
+              btr.skill_points == 12, str(btr.skill_points))
+        b10, _ = await users.get_or_create(s, tg(9912, "bon10", "بونوسی"))
+        b10.level, b10.xp = 9, 0
+        b10.skill_points = 0  # تا اینجا سر راه درست گرفته، فقط بونوس لول 10 مهمه
+        notes_b = users.add_xp(b10, economy.xp_need(9))
+        check("رسیدن به لول 10 دو امتیاز مهارت میده و تو خبرش هست",
+              b10.level == 10 and b10.skill_points == 2
+              and any("🎖 2 امتیاز مهارت" in n for n in notes_b),
+              f"{b10.skill_points} | {notes_b}")
+        b10.level = 19
+        b10.xp = 0
+        notes_b2 = users.add_xp(b10, economy.xp_need(19))
+        check("رسیدن به لول 20 سه امتیاز مهارت میده",
+              b10.level == 20 and b10.skill_points == 5
+              and any("🎖 3 امتیاز مهارت" in n for n in notes_b2),
+              f"{b10.skill_points}")
+        await s.commit()
+
+    # ── شرکت: گیت لول 5 (خریدهای قدیمی قفل ولی سالم می‌مونن) ──
+    check("قیمت ارتقای کارخونه‌ها دو تا سه برابر شد (چوب همون قبلیه)",
+          comp_svc.upgrade_cost("lumber", 2) == (6000, 40) and comp_svc.upgrade_cost("lumber", 10) == (2250000, 800)
+          and comp_svc.upgrade_cost("ironmill", 2) == (9000, 60) and comp_svc.upgrade_cost("ironmill", 10) == (3300000, 1210),
+          str(comp_svc.upgrade_cost("ironmill", 10)))
+
+    async with session_scope() as s:
+        cl, _ = await users.get_or_create(s, tg(9914, "lowlvl", "کم‌لول"))
+        cl.level = 3
+        cl.lumber_level = 2
+        cl.lumber_stock = 100
+        cl.cash = 500000
+        cl.wood = 500
+        ok_l1, msg_l1 = await comp_svc.collect(s, cl, "lumber")
+        check("برداشت کارخونه زیر لول 5 قفله و موجودیش دست نمی‌خوره",
+              not ok_l1 and "🔒" in msg_l1 and "لول 5" in msg_l1 and cl.lumber_stock == 100, msg_l1[:110])
+        ok_l2, msg_l2 = await comp_svc.upgrade(s, cl, "lumber")
+        check("ارتقای کارخونه زیر لول 5 قفله و لول کارخونه سر جاشه",
+              not ok_l2 and "🔒" in msg_l2 and cl.lumber_level == 2, msg_l2[:110])
+        ok_l3, msg_l3 = await comp_svc.build(s, cl, "ironmill")
+        check("ساخت شرکت زیر لول 5 رد میشه",
+              not ok_l3 and "🔒" in msg_l3 and "لول 5" in msg_l3 and cl.ironmill_level == 0, msg_l3[:110])
+        ctxt_l = comp_svc.company_text(cl)
+        check("صفحه شرکت خط قفل رو نشون میده",
+              "🔒 شرکتت تا لول 5 قفله" in ctxt_l, ctxt_l.replace("\n", " | ")[:160])
+        cl.level = 5
+        cl.wood = 50
+        ok_l4, msg_l4 = await comp_svc.collect(s, cl, "lumber")
+        check("لول 5 شد و قفل خودش باز شد، تولید قبلی هم میاد دستش",
+              ok_l4 and cl.lumber_stock == 0 and cl.wood == 150, f"{ok_l4} | {cl.wood}")
+        await s.commit()
+
+    check("کانفیگ گیت لول شرکت 5-ه", config.COMPANY_MIN_LEVEL == 5)
+
+    # ── /update: امتیاز مهارت خرج‌نکرده‌ها به مقدار درست به‌روز میشه ──
+    async with session_scope() as s:
+        uf1, _ = await users.get_or_create(s, tg(9915, "upd_fill1", "پرشونده"))
+        uf1.level = 12
+        uf1.skill_points = 11  # مقدار قدیمی بمانده از قبل از بونوس لول 10
+        uf1.skill_power = uf1.skill_speed = uf1.skill_defense = uf1.skill_loot = 0
+        uf2, _ = await users.get_or_create(s, tg(9916, "upd_spent", "خرج‌کرده"))
+        uf2.level = 15
+        uf2.skill_points = 10
+        uf2.skill_power = 2
+        uf2.skill_speed = 1
+        uf2.skill_defense = uf2.skill_loot = 0
+        await s.commit()
+    upd_up = _text_update("/update", uid=1001, uname="adm", fname="ادمین")
+    await admin_h.update_cmd(upd_up, None)
+    rep_up = next((c[1] for c in upd_up.message.calls if "به‌روز" in c[1]), "")
+    check("گزارش /update خط امتیاز مهارت داره",
+          "🎖 امتیاز مهارت" in rep_up, rep_up.splitlines()[-2] if rep_up else "-")
+    async with session_scope() as s:
+        uf1 = await users.get_by_tg(s, 9915)
+        uf2 = await users.get_by_tg(s, 9916)
+        check("/update امتیاز بازیکنِ هنوز-خرج‌نکرده رو به مقدار لولش به‌روز می‌کنه",
+              uf1.skill_points == 12, str(uf1.skill_points))
+        check("/update امتیاز خرج‌کرده‌ها رو دست نمی‌زنه",
+              uf2.skill_points == 10 and uf2.skill_power == 2, str(uf2.skill_points))
+
+    # ── دستورهای متنی: انبار | ماموریت | آمار/امار | مهارت ──
+    pats_now = {n: re.compile(p) for n, p, _ in handlers.TEXT_HANDLERS}
+    check("«انبار» با و بدون پیشوند انبار رو باز می‌کنه",
+          bool(pats_now["shelter"].match("انبار")) and bool(pats_now["shelter"].match("تی انبار")),
+          pats_now["shelter"].pattern)
+    check("«آمار» و «امار» جفتش کار می‌کنن (تنها و با اسم سگ)",
+          bool(pats_now["stats"].match("آمار")) and bool(pats_now["stats"].match("امار"))
+          and bool(pats_now["stats"].match("تریاکی امار"))
+          and bool(pats_now["dogstats"].match("امار لوله‌کش")) and bool(pats_now["dogstats"].match("تی آمار لوله‌کش")),
+          pats_now["dogstats"].pattern)
+    check("«مهارت» با و بدون پیشوند منوی مهارت رو باز می‌کنه",
+          bool(pats_now["skills_txt"].match("مهارت")) and bool(pats_now["skills_txt"].match("تریاکی مهارت")),
+          pats_now["skills_txt"].pattern)
+    check("«ماموریت» و «مأموریت» با هر دو املای ی و کسره بخش مأموریت رو باز می‌کنن",
+          bool(pats_now["dquests_txt"].match("ماموریت")) and bool(pats_now["dquests_txt"].match("مأموریت"))
+          and bool(pats_now["dquests_txt"].match("ماموریت‌ها")) and bool(pats_now["dquests_txt"].match("مأموریت‌های روزانه"))
+          and bool(pats_now["dquests_txt"].match("تی مأموریت")),
+          pats_now["dquests_txt"].pattern)
+
+    from handlers import world as world_hx
+    from handlers import dquests as dq_hx
+    upd_anb = _text_update("انبار", uid=9917, uname="anb", fname="انباری")
+    await world_hx.shelter_cmd(upd_anb, None)
+    txt_anb = next((c[1] for c in upd_anb.message.calls if "انبار" in c[1]), "")
+    check("نوشتن «انبار» صفحه انبار رو باز می‌کنه",
+          "<b>🏚 انبار</b>" in txt_anb, txt_anb[:60])
+    upd_mam = _text_update("مأموریت", uid=9917)
+    await dq_hx.daily_quests_cb(upd_mam, None)
+    txt_mam = next((c[1] for c in upd_mam.message.calls if "مأموریت" in c[1]), "")
+    check("نوشتن «مأموریت» صفحه با سر تیتر «مأموریت‌های روزانه» باز میشه",
+          "<b>🎯 مأموریت‌های روزانه</b>" in txt_mam, txt_mam[:60])
+    upd_mhk = _text_update("مهارت", uid=9917)
+    await skills_h.skills_cb(upd_mhk, None)
+    txt_mhk = next((c[1] for c in upd_mhk.message.calls if "مهارت" in c[1]), "")
+    check("نوشتن «مهارت» منوی مهارت رو باز می‌کنه",
+          "<b>⭐️ مهارت‌ها</b>" in txt_mhk, txt_mhk[:60])
+    check("«آمار»/«امار» به هندلر پروفایل وصله (بلوک ⚔️ آمار همون تو پروفایله)",
+          dict((n, fn) for n, _, fn in handlers.TEXT_HANDLERS)["stats"] is textcmd_h.profile_text)
+
+    # ── متن مهارت روی الگوی کارفرما ──
+    async with session_scope() as s:
+        stx, _ = await users.get_or_create(s, tg(9918, "skltext", "متنی"))
+        stx.skill_points = 19
+        await s.commit()
+        txt_sk = skills_h.skills_text(stx)
+    check("متن مهارت: هدر، شمار امتیاز و توضیح بونوس لول 10 و 20",
+          txt_sk.splitlines()[0] == "<b>⭐️ مهارت‌ها</b>" and "🎖 امتیاز مهارت: 19" in txt_sk
+          and "هر لول‌آپ یه امتیاز مهارت(جز لول 10 و 20) می‌گیری" in txt_sk,
+          txt_sk.splitlines()[4] if txt_sk else "-")
+    check("بلاک چهار قابلیت: اسم با لول، خط توضیح ▫️، خط الان/بعدی",
+          "💥 قدرت | لول 0 از 8" in txt_sk and "▫️ هر لول 2% حمله بیشتر" in txt_sk
+          and "⚡ سرعت | لول 0 از 8" in txt_sk and "▫️ هر لول 2% حمله و کاشت سریع‌تر" in txt_sk
+          and "🛡 دفاع | لول 0 از 8" in txt_sk and "▫️ هر لول 2% دفاع بیشتر" in txt_sk
+          and "💰 غارت | لول 0 از 8" in txt_sk and "▫️ هر لول 3% غارت بیشتر از برد" in txt_sk
+          and "الان 0% ، بعدی 2%" in txt_sk and "الان 0% ، بعدی 3%" in txt_sk,
+          txt_sk.replace("\n", " | ")[:230])
+    check("خط ریست آخر متن با مبلغ کامله",
+          txt_sk.rstrip().endswith("♻️ ریست همه امتیازاتو برمی‌گردونه و مهارت‌ها صفر میشن (25,000 تی‌پوینت)"),
+          txt_sk.rstrip().splitlines()[-1])
+    async with session_scope() as s:
+        stx = await users.get_by_tg(s, 9918)
+        stx.skill_power = 8
+        txt_mx = skills_h.skills_text(stx)
+        await s.commit()
+    check("قابلیت مکس «👑 مکس» می‌گیره",
+          "💥 قدرت | لول 8 از 8" in txt_mx and "الان 16% ، 👑 مکس" in txt_mx,
+          txt_mx.replace("\n", " | ")[:240])
+
+    # ── تجهیزات: توضیح قابلیت ویژه زیر سلاح فعال و قبل از زره ──
+    async with session_scope() as s:
+        gab, _ = await users.get_or_create(s, tg(9919, "gearab", "گیراب"))
+        gab.level = 18
+        from models import InventoryItem as _InvA
+        s.add(_InvA(user_id=gab.id, item_key="vampire", level=1))
+        gab.equipped_weapon = "vampire"
+        await s.commit()
+    upd_ga = _fake_update("menu:gear", uid=9919)
+    await gear_h.gear_cb(upd_ga, None)
+    ed_ga = next((c for c in upd_ga.callback_query.calls if c[0] == "edit"), None)
+    t_ga = ed_ga[1] if ed_ga else ""
+    _iw = t_ga.find("🔫 سلاح فعال: " + config.WEAPONS["vampire"]["name"])
+    _ia = t_ga.find("🎯 قابلیت ویژه: " + config.WEAPON_ABILITY_TEXT["vampire"])
+    _ig = t_ga.find("با ارتقای سلاح درصد قابلیت بیشتر میشه")
+    _iz = t_ga.find("🦺 زره فعال")
+    check("توضیح قابلیت ویژه دقیقاً زیر سلاح فعاله و قبل از زره میاد",
+          0 <= _iw < _ia < _ig < _iz, t_ga.replace("\n", " | ")[:200])
+    check("متن قابلیت اوبلیویون همون جمله کارفرماس",
+          config.WEAPON_ABILITY_TEXT["oblivion"]
+          == "👑 هر حمله یکی از قابلیت‌های دیگر سلاح‌های ویژه، به‌صورت تصادفی فعال میشه",
+          config.WEAPON_ABILITY_TEXT["oblivion"])
+
+    # ── مهارت ⚡ سرعت، زمان رشد بذر رو هم کمتر می‌کنه ──
+    async with session_scope() as s:
+        await world_svc._meta_set(s, "weather_key", "normal")
+        await world_svc._meta_set(s, "weather_until", (now_utc() + timedelta(seconds=7200)).isoformat())
+        spd, _ = await users.get_or_create(s, tg(9920, "planter", "کاشته"))
+        spd.level = 10
+        spd.skill_speed = 0
+        await farming.add_seed_stock(s, spd.id, "marijuana", 5)
+        p1s = Plot(user_id=spd.id, status="empty", level=1)
+        s.add(p1s)
+        await s.flush()
+        ok_p1, _ = await farming.plant(s, spd, p1s, "marijuana")
+        sec0 = (p1s.ready_at - now_utc()).total_seconds()
+        spd.skill_speed = 8
+        p2s = Plot(user_id=spd.id, status="empty", level=1)
+        s.add(p2s)
+        await s.flush()
+        ok_p2, _ = await farming.plant(s, spd, p2s, "marijuana")
+        sec8 = (p2s.ready_at - now_utc()).total_seconds()
+        check("مهارت سرعت کاشت رو تندتر می‌کنه (لول 8 یعنی 16%)",
+              ok_p1 and ok_p2 and sec8 < sec0 and sec8 <= int(sec0 / 1.16) + 1,
+              f"{sec0:.0f} → {sec8:.0f}")
+        await s.commit()
 
     # ── تمیزکاری ته تست‌ها ──
     fj_svc._MEMBER_CACHE.clear()

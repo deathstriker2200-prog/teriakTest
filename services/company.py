@@ -19,6 +19,11 @@ def factory_level(user: User, fac_key: str) -> int:
     return user.lumber_level if fac_key == "lumber" else user.ironmill_level
 
 
+def company_locked(user: User) -> bool:
+    """کارخونه زیر لول حداقل شرکت قفله، ولی لول کارخونه‌ش دست نمی‌خوره و با رسیدن لول باز میشه"""
+    return (getattr(user, "level", None) or 1) < config.COMPANY_MIN_LEVEL
+
+
 def _set_level(user: User, fac_key: str, level: int) -> None:
     if fac_key == "lumber":
         user.lumber_level = level
@@ -99,6 +104,8 @@ async def collect(session: AsyncSession, user: User, fac_key: str) -> tuple[bool
     cfg = config.FACTORIES[fac_key]
     if factory_level(user, fac_key) <= 0:
         return False, f"{cfg['emoji']} اول {cfg['name']} رو بساز"
+    if company_locked(user):
+        return False, f"🔒 شرکتت تا لول {fa_num(config.COMPANY_MIN_LEVEL)} قفله، کارخونه‌ات سر جاشه و پاک نشده، لولت که رسید خودش باز میشه"
     stock = factory_stock(user, fac_key)
     if stock <= 0:
         return False, f"📥 انبار {cfg['name']} فعلا خالیه، هنوز چیزی تولید نشده"
@@ -123,6 +130,8 @@ async def build(session: AsyncSession, user: User, fac_key: str) -> tuple[bool, 
     cfg = config.FACTORIES[fac_key]
     if factory_level(user, fac_key) > 0:
         return False, f"{cfg['emoji']} {cfg['name']} رو که ساختی"
+    if company_locked(user):
+        return False, f"🔒 ساخت شرکت از لول {fa_num(config.COMPANY_MIN_LEVEL)} باز میشه، فعلا لولت کمه"
     tp, wood = build_cost(fac_key)
     if user.cash < tp:
         return False, "❌ تی‌پوینتت کافی نیس"
@@ -138,6 +147,8 @@ async def build(session: AsyncSession, user: User, fac_key: str) -> tuple[bool, 
 
 async def upgrade(session: AsyncSession, user: User, fac_key: str) -> tuple[bool, str]:
     cfg = config.FACTORIES[fac_key]
+    if company_locked(user) and factory_level(user, fac_key) > 0:
+        return False, f"🔒 شرکتت تا لول {fa_num(config.COMPANY_MIN_LEVEL)} قفله، کارخونه‌ات سر جاشه و پاک نشده، لولت که رسید خودش باز میشه"
     cur = factory_level(user, fac_key)
     if cur >= config.FACTORY_MAX_LEVEL:
         return False, "👑 این ساختمان لول مکسه"
@@ -158,6 +169,9 @@ def company_text(user: User, got: dict | None = None) -> str:
     """متن صفحه شرکت، هر ساختمان بلاک خودشو داره: وضعیت تولید/توقف، انبار کارخونه و سرعت ساعتی"""
     lines = ["<b>🏭 شرکت</b>", ""]
     lines.append(f"🪵 چوب {fa_num(user.wood)} | ⛏️ آهن {fa_num(user.iron)}")
+    has_factory = any(factory_level(user, k) > 0 for k in config.FACTORIES)
+    if company_locked(user) and has_factory:
+        lines.append(f"🔒 شرکتت تا لول {fa_num(config.COMPANY_MIN_LEVEL)} قفله، کارخونه‌ات سر جاشه و با رسیدن لول باز میشه")
     if got and (got["wood"] or got["iron"]):
         parts = []
         if got["wood"]:
