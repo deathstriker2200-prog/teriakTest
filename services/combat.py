@@ -20,13 +20,50 @@ def _levels_map(items) -> dict[str, int]:
     return {k: 1 for k in items}
 
 
-def weapon_power(item_keys, user_level: int) -> int:
-    """قدرت موثر بهترین سلاح با لول ارتقاش، مبنای دمیج کاروان"""
+def skill_pct(user: User, key: str) -> float:
+    """ضریب اثر یه قابلیت مهارت (۰٫۰۲ یعنی +۲ درصد)، قدرت | سرعت | دفاع | غارت"""
+    info = config.SKILLS.get(key)
+    if not info:
+        return 0.0
+    lv = min(max(int(getattr(user, f"skill_{key}", 0) or 0), 0), config.SKILL_MAX_LEVEL)
+    return lv * info["per"]
+
+
+def weapon_choice(user: User, item_keys) -> str | None:
+    """سلاح موثر نبرد: تجهیزشده اگه هنوز تو انباره، وگرنه پرقدرت‌ترین"""
     levels = _levels_map(item_keys)
-    base = max(
-        (economy.gear_stat("weap", k, levels.get(k, 1)) for k in levels if k in config.WEAPONS),
-        default=0,
-    )
+    eq = getattr(user, "equipped_weapon", None)
+    if eq and eq in levels and eq in config.WEAPONS:
+        return eq
+    owned = [k for k in levels if k in config.WEAPONS]
+    if not owned:
+        return None
+    return max(owned, key=lambda k: economy.gear_stat("weap", k, levels.get(k, 1)))
+
+
+def armor_choice(user: User, item_keys) -> str | None:
+    """زره موثر نبرد: تجهیزشده اگه هنوز تو انباره، وگرنه قوی‌ترین"""
+    levels = _levels_map(item_keys)
+    eq = getattr(user, "equipped_armor", None)
+    if eq and eq in levels and eq in config.ARMORS:
+        return eq
+    owned = [k for k in levels if k in config.ARMORS]
+    if not owned:
+        return None
+    return max(owned, key=lambda k: economy.gear_stat("arm", k, levels.get(k, 1)))
+
+
+def weapon_power(item_keys, user_level: int, user: User | None = None) -> int:
+    """قدرت موثر سلاح استفاده‌شده (تجهیزشده یا بهترین) با بونس لول، مبنای دمیج کاروان"""
+    levels = _levels_map(item_keys)
+    if user is not None:
+        key = weapon_choice(user, levels)
+        base = economy.gear_stat("weap", key, levels.get(key, 1)) if key else 0
+    else:
+        base = max(
+            (economy.gear_stat("weap", k, levels.get(k, 1)) for k in levels if k in config.WEAPONS),
+            default=0,
+        )
     return _effective_bonus(base, user_level)
 
 
@@ -40,14 +77,10 @@ def combat_stats(user: User, item_keys, dogs: list) -> tuple[int, int]:
     atk = config.ATK_BASE + config.ATK_PER_LEVEL * user.level
     dfn = config.DEF_BASE + config.DEF_PER_LEVEL * user.level
 
-    weapon_bonus = max(
-        (economy.gear_stat("weap", k, levels.get(k, 1)) for k in levels if k in config.WEAPONS),
-        default=0,
-    )
-    armor_bonus = max(
-        (economy.gear_stat("arm", k, levels.get(k, 1)) for k in levels if k in config.ARMORS),
-        default=0,
-    )
+    wkey = weapon_choice(user, levels)
+    akey = armor_choice(user, levels)
+    weapon_bonus = economy.gear_stat("weap", wkey, levels.get(wkey, 1)) if wkey else 0
+    armor_bonus = economy.gear_stat("arm", akey, levels.get(akey, 1)) if akey else 0
 
     atk += _effective_bonus(weapon_bonus, user.level)
     dfn += _effective_bonus(armor_bonus, user.level)
@@ -61,12 +94,18 @@ def combat_stats(user: User, item_keys, dogs: list) -> tuple[int, int]:
     artis = users.artifact_keys(levels)
     atk = int(atk * users.artifact_atk_mult(artis))
     dfn = int(dfn * users.artifact_def_mult(artis))
+
+    # مهارت‌های 💥 قدرت و 🛡 دفاع درصدی به استت نهایی اضافه می‌کنن
+    atk = int(atk * (1 + skill_pct(user, "power")))
+    dfn = int(dfn * (1 + skill_pct(user, "defense")))
     return atk, dfn
 
 
-def best_weapon_key(item_keys) -> str | None:
-    """کلید بهترین سلاح انبار با لول ارتقا، نداشت None"""
+def best_weapon_key(item_keys, user: User | None = None) -> str | None:
+    """کلید سلاح استفاده‌شده (تجهیزشده یا بهترین انبار)، نداشت None"""
     levels = _levels_map(item_keys)
+    if user is not None:
+        return weapon_choice(user, levels)
     owned = [k for k in levels if k in config.WEAPONS]
     if not owned:
         return None

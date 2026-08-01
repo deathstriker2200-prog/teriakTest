@@ -27,7 +27,8 @@ def _today() -> str:
 
 
 def team_name_norm(name: str) -> str:
-    return normalize_fa(name)
+    """یکدست‌سازی اسم تیم برای مقایسه، بزرگی/کوچکی حروف لاتین فرقی نمی‌کنه (Master = master)"""
+    return normalize_fa(name).lower()
 
 
 # ───────── لول و ظرفیت تیم ⭐ ─────────

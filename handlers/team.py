@@ -41,7 +41,7 @@ def _no_team_text() -> str:
 
 def _team_stats_text(data: dict) -> str:
     team = data["team"]
-    created = jalali_str(team.created_at) if team.created_at else "—"
+    created = jalali_str(team.created_at) if team.created_at else "-"
 
     lines = [f"<b>🏴 تیم «{esc(team.name)}»</b>"]
     if team.bio:
@@ -50,42 +50,48 @@ def _team_stats_text(data: dict) -> str:
     lines.append(f"👑 رهبر: {esc(data['owner_name'])}")
     tlevel = team.level or 1
     if tlevel >= config.TEAM_MAX_LEVEL:
-        lines.append(f"⭐ لول تیم {fa_num(tlevel)} 👑 مکس")
+        lines.append(f"⭐️ لول {fa_num(tlevel)} 👑 مکس")
     else:
         need = teams.team_xp_need(tlevel)
-        lines.append(f"⭐ لول تیم {fa_num(tlevel)} | ✨ {bar(team.xp or 0, need)} {fa_num(team.xp or 0)}/{fa_num(need)}")
-    lines.append(f"👥 اعضا: {fa_num(data['count'])} از {fa_num(teams.team_capacity(team))}")
+        lines.append(f"⭐️ لول {fa_num(tlevel)} | ✨ {fa_num(team.xp or 0)}/{fa_num(need)}")
+    lines.append(f"👥 اعضا: {fa_num(data['count'])}/{fa_num(teams.team_capacity(team))}")
     lines.append(f"🏦 خزانه: {money(team.bank)}")
     lines.append("")
-    lines.append("━━━━━━ 📊 آمار تیم ━━━━━━")
-    lines.append(f"⚔️ برد اعضا {fa_num(data['wins'])} | ❌ باخت {fa_num(data['losses'])}")
-    lines.append(f"🎖️ مجموع مدال‌ها {fa_num(data['medals']['all'])}")
-    lines.append(f"🎯 کشتارهای تیم {fa_num(team.total_kills)} | 🌾 برداشت‌های تیم {fa_num(team.total_harvests)}")
-    lines.append(f"📅 مدال این هفته {fa_num(data['medals']['week'])} | ☀️ مدال امروز {fa_num(data['medals']['day'])}")
+    lines.append("<b>📊 آمار</b>")
+    lines.append(f"🎖 مدال‌ها: {fa_num(data['medals']['all'])}")
+    lines.append(f"⚔️ برد: {fa_num(data['wins'])} | ❌ باخت: {fa_num(data['losses'])}")
+    lines.append(f"🎯 کشتار: {fa_num(team.total_kills)} | 🌾 برداشت: {fa_num(team.total_harvests)}")
+    lines.append(f"📅 امروز: {fa_num(data['medals']['day'])} | این هفته: {fa_num(data['medals']['week'])}")
+    lines.append("")
+    lines.append("<b>🏗 ساختمان‌ها</b>")
     atk_pct = int(config.TEAM_ATK_BONUS_PER_LEVEL * (team.atk_bld or 0) * 100)
     def_pct = int(config.TEAM_DEF_BONUS_PER_LEVEL * (team.def_bld or 0) * 100)
-    lines.append(f"🏗 ساختمان حمله لول {fa_num(team.atk_bld or 0)} (+{fa_num(atk_pct)}%)")
-    lines.append(f"🛡️ ساختمان دفاع لول {fa_num(team.def_bld or 0)} (+{fa_num(def_pct)}%)")
-    lines.append(f"📅 ساخته شده {created}")
+    lines.append(f"⚔️ حمله: Lv.{fa_num(team.atk_bld or 0)} (+{fa_num(atk_pct)}%)")
+    lines.append(f"🛡 دفاع: Lv.{fa_num(team.def_bld or 0)} (+{fa_num(def_pct)}%)")
     lines.append("")
-    lines.append("━━━━━━ 👥 اعضا ━━━━━━")
+    lines.append("<b>👥 اعضا</b>")
 
     by_id = {u.id: u for u in data["users"]}
+    pairs = [(m, by_id.get(m.user_id)) for m in data["members"]]
+    # اسم‌ها بر اساس لول، از بالا به پایین
+    pairs.sort(key=lambda p: (-(p[1].level if p[1] else 0), -(p[1].wins if p[1] else 0)))
     shown = 0
-    for m in data["members"]:
-        u = by_id.get(m.user_id)
+    for m, u in pairs:
         if not u or shown >= 12:
             continue
         tag = {"owner": "👑", "admin": "🛡"}.get(m.role, "🔸")
         name = "👻 نامرئی" if u.lb_hidden else (u.first_name or u.username or "؟")
-        lines.append(f"{tag} {esc(name)} | لول {fa_num(u.level)}")
+        temoji, _ = users.title_of(u)
+        lines.append(f"{tag} {esc(name)} {temoji} | Lv.{fa_num(u.level)}")
         shown += 1
     if data["count"] > shown:
         lines.append(f"🔸 و {fa_num(data['count'] - shown)} نفر دیگه")
 
     lines.append("")
-    lines.append("━━━━━━ 📜 کوئست امروز ━━━━━━")
+    lines.append("<b>🎯 کوئست‌های امروز</b>")
     lines.extend(_quest_lines(data["daily"]))
+    lines.append("")
+    lines.append(f"📅 تأسیس: {created}")
     return "\n".join(lines)
 
 
@@ -93,10 +99,9 @@ def _quest_lines(daily) -> list[str]:
     lines: list[str] = []
     for q in teams.quests_view(daily):
         if q["done"]:
-            state = f"✅ انجام شد، {money(q['reward'])} به همه رسید"
+            lines.append(f"{q['emoji']} {esc(q['title'])} ✅ انجام شد")
         else:
-            state = f"{fa_num(q['progress'])} از {fa_num(q['target'])}"
-        lines.append(f"{q['emoji']} {esc(q['title'])}، {state}")
+            lines.append(f"{q['emoji']} {esc(q['title'])} ({fa_num(q['progress'])}/{fa_num(q['target'])})")
     return lines
 
 
@@ -450,7 +455,7 @@ async def team_confirm_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         user, _ = await users.get_or_create(s, update.effective_user)
         if action == "leave":
             ok, res = await teams.leave_team(s, user)
-            msg = f"🚪 از تیم «{res}» رفتی برو بیرون 😅" if ok else res
+            msg = f"🚪 از تیم «{res}» خارج شدی" if ok else res
         elif action == "rename":
             new_name = (context.user_data or {}).pop("pending_team_rename", None)
             if new_name is None:
@@ -696,7 +701,8 @@ async def roster_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             continue
         tag = {"owner": "👑", "admin": "🛡"}.get(m.role, "🔸")
         name = esc(u.first_name or u.username or "؟")
-        lines.append(f"{tag} {name} | لول {fa_num(u.level)} | ⚔️ {fa_num(u.wins)} برد")
+        temoji, _ = users.title_of(u)
+        lines.append(f"{tag} {name} {temoji} | Lv.{fa_num(u.level)} | ⚔️ {fa_num(u.wins)} برد")
     lines.append("")
     lines.append("آمار کامل تیم با «تیم پروفایل»")
     await respond(update, "\n".join(lines), kb.team_back_kb())
@@ -1099,6 +1105,101 @@ async def team_kick_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
 
 # ───────── 🛡 مدیر گذاشتن (فقط رهبر) ─────────
+
+# ───────── «تیم اد ادمین X» و «تیم حذف ادمین X» با اسم جزئی + تأییدیه ─────────
+# بخشی از اسم کافیه، حروف بزرگ/کوچیک فرقی نداره، قبل از اجرا تأیید می‌گیریم
+
+async def team_admin_role_text(update: Update, context: ContextTypes.DEFAULT_TYPE, make_admin: bool) -> None:
+    txt = strip_bot_cmd(update.message.text or "")
+    m2 = re.match(r"^تیم[\s‌]+(?:اد|حذف)[\s‌]+ادمین[\s‌]+(.+)$", txt)
+    query = (m2.group(1) if m2 else "").strip()
+    if not query:
+        return await respond(update, "🤷 این‌جوری بنویس: «تیم اد ادمین اسم عضو» یا «تیم حذف ادمین اسم عضو»")
+
+    async with session_scope() as s:
+        user, _ = await users.get_or_create(s, update.effective_user)
+        me = await teams.get_membership(s, user.id)
+        if not me or me.role != "owner":
+            await s.commit()
+            return await respond(update, "👑 فقط رهبر می‌تونه مدیر بذاره یا برداره")
+        hit = await teams.find_team_member(s, me.team_id, query)
+        if not hit:
+            await s.commit()
+            return await respond(update, "🤷 عضوی با این مشخصات تو تیم پیدا نشد، دقیق‌تر بنویس")
+        mrow, target = hit
+        if mrow.role == "owner":
+            await s.commit()
+            return await respond(update, "👑 خودت رهبری دیگه")
+        if make_admin and mrow.role == "admin":
+            await s.commit()
+            return await respond(update, "🛡 همین الان مدیره")
+        if not make_admin and mrow.role != "admin":
+            await s.commit()
+            return await respond(update, "👤 اصلا مدیر نیس که بخوای برداریش")
+        member_id = mrow.id
+        name = esc(users.display_name(target))
+        team = await teams.get_team_of(s, user.id)
+        tname = esc(team.name if team else "؟")
+        await s.commit()
+
+    verb = "🛡 مدیر تیم کنم؟" if make_admin else "👤 مدیریتش رو بگیرم؟"
+    text = (
+        f"<b>{verb}</b>\n\n"
+        f"👤 عضو پیدا شده: {name}\n"
+        f"🏴 تیم: «{tname}»\n\n"
+        "مطمئنی؟"
+    )
+    await respond(update, text, kb.team_admin_confirm_kb(member_id, "add" if make_admin else "del"))
+
+
+async def team_admin_add_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await team_admin_role_text(update, context, True)
+
+
+async def team_admin_del_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await team_admin_role_text(update, context, False)
+
+
+async def team_admin_confirm_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """تأیید مدیر کردن/برداشتن بعد از پیدا شدن عضو با اسم جزئی"""
+    _, action, member_id = parts(update)
+    async with session_scope() as s:
+        user, _ = await users.get_or_create(s, update.effective_user)
+        me = await teams.get_membership(s, user.id)
+        mrow = await s.get(TeamMember, int(member_id))
+        if not me or me.role != "owner" or not mrow or mrow.team_id != me.team_id:
+            await s.commit()
+            return await respond(update, "❌ این درخواست دیگه معتبر نیس", kb.team_back_kb())
+        target = await s.get(User, mrow.user_id)
+        name = esc(users.display_name(target)) if target else "؟"
+        if mrow.role == "owner":
+            await s.commit()
+            return await respond(update, "❌ رهبر که نمیشه", kb.team_back_kb())
+        if action == "add":
+            if mrow.role == "admin":
+                await s.commit()
+                return await respond(update, "🛡 همین الان مدیره", kb.team_back_kb())
+            mrow.role = "admin"
+        else:
+            if mrow.role != "admin":
+                await s.commit()
+                return await respond(update, "👤 اصلا مدیر نبود", kb.team_back_kb())
+            mrow.role = "member"
+        target_tg = target.telegram_id if target else None
+        team = await teams.get_team_of(s, user.id)
+        tname = esc(team.name if team else "؟")
+        await s.commit()
+
+    if action == "add":
+        await _dm(context, target_tg, f"<b>🎉 تو تیم «{tname}» مدیر شدی</b>\n\nبخش 👑 مدیریت تیم برات بازه")
+        return await respond(update, f"<b>🛡 «{name}» مدیر تیم شد</b>", kb.team_back_kb())
+    await _dm(context, target_tg, f"<b>👤 مدیریتت تو تیم «{tname}» گرفته شد</b>")
+    await respond(update, f"<b>👤 «{name}» دیگه مدیر نیس</b>", kb.team_back_kb())
+
+
+async def team_admin_cancel_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await respond(update, "❌ لغو شد", kb.team_back_kb())
+
 
 async def team_admin_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """«تیم ادمین @یوزر»، عضو عادی ↔ مدیر، فقط رهبر"""

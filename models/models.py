@@ -113,6 +113,20 @@ class User(Base):
     # حالت نامرئی لیدربرد (فقط ادمین ربات) — ۱ یعنی تو هیچ لیدربردی دیده نمیشه
     lb_hidden: Mapped[int] = mapped_column(Integer, default=0)
 
+    # ⭐️ مهارت‌ها — امتیاز خرج‌نشده (NULL یعنی هنوز پس‌دررو مقداردهی نشده) + لول ۴ قابلیت (۰ تا ۸)
+    skill_points: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    skill_power: Mapped[int] = mapped_column(Integer, default=0)
+    skill_speed: Mapped[int] = mapped_column(Integer, default=0)
+    skill_defense: Mapped[int] = mapped_column(Integer, default=0)
+    skill_loot: Mapped[int] = mapped_column(Integer, default=0)
+
+    # 🛡 تجهیزات — سلاح/زره انتخاب‌شده کاربر (NULL یعنی خودکار همون بهترین)
+    equipped_weapon: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    equipped_armor: Mapped[str | None] = mapped_column(String(32), nullable=True)
+
+    # 💀 سم Viper-X — تا این زمان حمله و دفاع کاربر کمتره
+    poison_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc, index=True)
 
     plots: Mapped[list["Plot"]] = relationship(back_populates="user", cascade="all, delete-orphan")

@@ -55,20 +55,22 @@ def _btn(text: str, data: str, style: str | None = PRIMARY) -> InlineKeyboardBut
 # ───────── عمومی ─────────
 
 def main_menu_kb() -> InlineKeyboardMarkup:
+    """چینش جدید منو (درخواست کارفرما): ترکیب ردیف‌های تکی و دوتایی و سه‌تایی"""
     rows = [
-        [_btn("🏠 پروفایل", "menu:profile", PRIMARY),
-         _btn("🌱 مزرعه من", "menu:farm", PRIMARY)],
-        [_btn("🛒 فروشگاه", "menu:shop", PRIMARY),
+        [_btn("🌾 مزرعه من", "menu:farm", PRIMARY)],
+        [_btn("🏪 فروشگاه", "menu:shop", PRIMARY),
          _btn("⚔️ حمله", "menu:attack", PRIMARY)],
-        [_btn("🐕 سگ‌های من", "menu:dogs", PRIMARY),
-         _btn("🏴 تیم من", "menu:team", PRIMARY)],
-        [_btn("⛏ کنده کاری", "menu:mine", PRIMARY),
-         _btn("🏭 شرکت", "menu:company", PRIMARY)],
-        [_btn("🏚 انبار", "menu:shelter", PRIMARY),
-         _btn("🏦 بانک", "menu:bank", PRIMARY)],
-        [_btn("📊 رتبه‌بندی", "menu:rank", PRIMARY),
-         _btn("📅 کوئست‌های روزانه", "menu:dquests", PRIMARY)],
-        [_btn("📖 راهنما", "help:menu", PRIMARY)],
+        [_btn("🎒 انبار", "menu:shelter", PRIMARY),
+         _btn("⛏️ کنده‌کاری", "menu:mine", PRIMARY)],
+        [_btn("🏦 بانک", "menu:bank", PRIMARY)],
+        [_btn("⭐️ مهارت", "menu:skills", PRIMARY),
+         _btn("🛡 تجهیزات", "menu:gear", PRIMARY)],
+        [_btn("🐕 سگ‌ها", "menu:dogs", PRIMARY),
+         _btn("🎯 مأموریت", "menu:dquests", PRIMARY),
+         _btn("🏢 شرکت", "menu:company", PRIMARY)],
+        [_btn("🏆 رتبه‌بندی", "menu:rank", PRIMARY),
+         _btn("📖 راهنما", "help:menu", PRIMARY),
+         _btn("🚩 تیم من", "menu:team", PRIMARY)],
     ]
     if BOT_USERNAME:
         rows.append([InlineKeyboardButton(
@@ -197,6 +199,9 @@ HELP_MENU = [
     ("team",      "👥 تیم"),
     ("resources", "🎒 منابع"),
     ("shop",      "🛒 فروشگاه"),
+    ("skills",    "⭐️ مهارت‌ها"),
+    ("gear",      "🛡 تجهیزات"),
+    ("titles",    "🏅 لقب‌ها"),
     ("casino",    "🎰 قمارخانه"),
     ("bank",      "🏦 بانک"),
     ("quests",    "📋 ماموریت روزانه"),
@@ -310,8 +315,7 @@ def shop_sections_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
         [_btn("🔫 سلاح‌ها", "shop:sec:weap", PRIMARY),
          _btn("🛡 زره‌ها", "shop:sec:arm", PRIMARY)],
-        [_btn("⬆️ ارتقای سلاح", "shop:sec:wup", PRIMARY),
-         _btn("⬆️ ارتقای زره", "shop:sec:aup", PRIMARY)],
+        [_btn("🛡 تجهیزات و آپگرید", "menu:gear", PRIMARY)],
         [_btn("🧿 آرتیفکت", "shop:sec:arti", PRIMARY),
          _btn("🎒 منابع", "shop:sec:res", PRIMARY)],
         [_btn("🌱 بذرها", "shop:sec:seed", PRIMARY),
@@ -351,6 +355,76 @@ def shop_arti_kb(user: User, owned: set[str]) -> InlineKeyboardMarkup:
             )])
     rows.append([_btn("🔙 بخش‌های شاپ", "menu:shop", PRIMARY)])
     return InlineKeyboardMarkup(rows)
+
+
+def skills_kb(user: User) -> InlineKeyboardMarkup:
+    """کیبورد بخش مهارت، بالا بردن هر قابلیت ۱ امتیاز می‌خواد + دکمه ریست"""
+    rows = []
+    for key, sk in config.SKILLS.items():
+        lv = min(max(int(getattr(user, f"skill_{key}", 0) or 0), 0), config.SKILL_MAX_LEVEL)
+        if lv >= config.SKILL_MAX_LEVEL:
+            rows.append([_btn(f"👑 {sk['name']} | لول مکس", "noop:maxskill", None)])
+        else:
+            rows.append([_btn(
+                f"{sk['name']} | {fa_num(lv)} ← {fa_num(lv + 1)}",
+                f"sk:up:{key}", SUCCESS,
+            )])
+    rows.append([_btn(f"♻️ ریست مهارت‌ها | {money_tp(config.SKILL_RESET_COST)}", "sk:reset", DANGER)])
+    rows.append([_btn("🏠 منوی اصلی", "menu:home", PRIMARY)])
+    return InlineKeyboardMarkup(rows)
+
+
+def gear_kb(user: User, owned_lvls: dict[str, int], tab: str = "weap") -> InlineKeyboardMarkup:
+    """کیبورد بخش تجهیزات: تب سلاح/زره + انتخاب هر کدوم + دست خالی + آپگرید"""
+    is_w = tab == "weap"
+    catalog = config.WEAPONS if is_w else config.ARMORS
+    eq = user.equipped_weapon if is_w else user.equipped_armor
+    rows = [[
+        _btn("🔫 سلاح‌ها", "gear:tab:weap", SUCCESS if is_w else PRIMARY),
+        _btn("🛡 زره‌ها", "gear:tab:arm", PRIMARY if is_w else SUCCESS),
+    ]]
+    order = list(catalog.keys())
+    for key in sorted((k for k in owned_lvls if k in catalog), key=order.index):
+        item = catalog[key]
+        lv = owned_lvls.get(key, 1)
+        lvtxt = f" +{fa_num(lv - 1)}" if lv and lv > 1 else ""
+        if key == eq:
+            rows.append([_btn(f"✅ {item['name']}{lvtxt}", "noop:own", None)])
+        else:
+            rows.append([_btn(f"🖐 {item['name']}{lvtxt} | برداشتن", f"gear:eq:{tab}:{key}", SUCCESS)])
+    if eq:
+        rows.append([_btn(
+            "👊 دست خالی" if is_w else "🦺 بدون زره",
+            f"gear:un:{tab}", DANGER,
+        )])
+    rows.append([_btn("⬆️ آپگرید تجهیزات", "gear:upg", PRIMARY)])
+    rows.append([_btn("🏠 منوی اصلی", "menu:home", PRIMARY)])
+    return InlineKeyboardMarkup(rows)
+
+
+def gear_upgrade_kb() -> InlineKeyboardMarkup:
+    """انتخاب نوع آپگرید تو بخش تجهیزات"""
+    return InlineKeyboardMarkup([
+        [_btn("⬆️ ارتقای سلاح", "shop:sec:wup", PRIMARY),
+         _btn("⬆️ ارتقای زره", "shop:sec:aup", PRIMARY)],
+        [_btn("🔙 تجهیزات", "menu:gear", PRIMARY)],
+    ])
+
+
+def buyseed_confirm_kb(seed_key: str, qty: int) -> InlineKeyboardMarkup:
+    """تایید فاکتور خرید بذر با تعداد (مثل فلوی آهن و چوب)"""
+    return InlineKeyboardMarkup([[
+        _btn("✅ تایید", f"cf:shopseed:{seed_key}:{qty}", SUCCESS),
+        _btn("❌ لغو", "cl:shopseed", DANGER),
+    ]])
+
+
+def team_admin_confirm_kb(member_id: int, action: str) -> InlineKeyboardMarkup:
+    """تاییدیه «تیم اد ادمین» (add) و «تیم حذف ادمین» (del) بعد از پیدا شدن عضو با اسم جزئی"""
+    return InlineKeyboardMarkup([[
+        _btn("✅ تایید", f"tadm:{action}:{member_id}", SUCCESS),
+        _btn("❌ لغو", "tadm:no", DANGER),
+    ]])
 
 
 def gear_up_kb(kind: str, owned_lvls: dict[str, int], user: User) -> InlineKeyboardMarkup:

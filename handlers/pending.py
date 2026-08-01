@@ -186,6 +186,38 @@ async def capture(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             )
             raise ApplicationHandlerStop()
 
+        # ── تعداد بذر (بعد از زدن روی بذر تو شاپ)، مثل فلوی آهن و چوب ──
+        if action == "seedbuy":
+            seed_key = user.pending_value or ""
+            info = config.SEEDS.get(seed_key)
+            if not info or info.get("legendary"):
+                users.set_pending(user, None)
+                await s.commit()
+                await update.message.reply_html("❌ مشکلی پیش اومد، دوباره از شاپ شروع کن")
+                raise ApplicationHandlerStop()
+
+            qty = parse_amount(text)
+            if qty is None:
+                await s.commit()
+                await update.message.reply_html(
+                    "❌ فقط یه عدد صحیح بفرست، مثلا: 5\n\n❌ اگر هم پشیمون شدی بنویس «لغو»"
+                )
+                raise ApplicationHandlerStop()
+
+            users.set_pending(user, None)
+            total = info["price"] * qty
+            await s.commit()
+            await update.message.reply_html(
+                f"<b>🧾 فاکتور خرید {info.get('emoji', '🌱')} {esc(info['name'])}</b>\n\n"
+                f"🔢 تعداد: {fa_num(qty)} بذر\n"
+                f"💸 قیمت هر بذر: {money_tp(info['price'])}\n"
+                f"💰 جمع فاکتور: {money(total)}\n"
+                f"⏱ رشد هرکدوم {fa_num(info['grow_min'])} دقیقه | فروش هرساقه {money_tp(info['sell'])}\n\n"
+                "معامله‌ست؟",
+                reply_markup=kb.buyseed_confirm_kb(seed_key, qty),
+            )
+            raise ApplicationHandlerStop()
+
         # ── پیام همگانی ادمین (📣 از پنل): هر پیامی، دامنه و مدش با دکمه انتخاب میشه ──
         if action == "bcast":
             if update.effective_user.id not in config.ADMIN_IDS:

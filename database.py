@@ -74,6 +74,14 @@ _NEW_COLUMNS = {
         ("lb_hidden", "INTEGER NOT NULL DEFAULT 0"),
         ("pending_at", "DATETIME"),
         ("pending_chat_id", "BIGINT"),
+        ("skill_points", "INTEGER"),
+        ("skill_power", "INTEGER NOT NULL DEFAULT 0"),
+        ("skill_speed", "INTEGER NOT NULL DEFAULT 0"),
+        ("skill_defense", "INTEGER NOT NULL DEFAULT 0"),
+        ("skill_loot", "INTEGER NOT NULL DEFAULT 0"),
+        ("equipped_weapon", "VARCHAR(32)"),
+        ("equipped_armor", "VARCHAR(32)"),
+        ("poison_until", "DATETIME"),
     ],
     "group_activity": [
         ("title", "VARCHAR(128)"),
@@ -168,6 +176,30 @@ def _migrate_data(sync_conn) -> None:
         sync_conn.execute(
             text("UPDATE users SET level=:cap WHERE level > :cap"), {"cap": _cfg.MAX_LEVEL}
         )
+    except Exception:
+        pass
+
+    # حذف شلیک‌کن پلاسما: دارنده‌هاش گاتلینگ می‌گیرن (کسی که گاتلینگ داشته ردیف پلاسماش پاک میشه)
+    try:
+        sync_conn.execute(text(
+            "DELETE FROM inventory WHERE item_key='plasma' "
+            "AND user_id IN (SELECT user_id FROM inventory WHERE item_key='minigun')"
+        ))
+        sync_conn.execute(text("UPDATE inventory SET item_key='minigun' WHERE item_key='plasma'"))
+    except Exception:
+        pass
+
+    # جستجوی تیم به بزرگی/کوچکی حروف حساس نباشه (تیم Master همون تیم master)
+    try:
+        sync_conn.execute(text("UPDATE teams SET name_norm = LOWER(name_norm)"))
+    except Exception:
+        pass
+
+    # امتیاز مهارت پس‌دررو برای بازیکنای قدیمی: به تعداد (لول - ۱) امتیاز آزاد می‌گیرن
+    try:
+        sync_conn.execute(text(
+            "UPDATE users SET skill_points = MAX(level - 1, 0) WHERE skill_points IS NULL"
+        ))
     except Exception:
         pass
 

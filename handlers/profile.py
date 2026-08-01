@@ -19,32 +19,15 @@ def _bar(energy: int) -> str:
     return bar(energy, config.MAX_ENERGY)
 
 
-def _weapon_line(item_keys: list[str]) -> str:
-    """خط سلاح پروفایل، اسلحه‌ها با 🔫 دور اسمشون، سردها با 🔪، دست خالی با 👊"""
-    key = combat.best_weapon_key(item_keys)
-    if not key:
-        return "👊 دست خالی"
-    w = config.WEAPONS[key]
-    return f"🔫 {esc(w['name'])}" if w.get("gun") else f"🔪 {esc(w['name'])}"
-
-
-def _xp_line(user) -> str:
-    """خط لول و تجربه، بعد از مکس فقط تجربه جمع‌شده نوشته میشه"""
-    if user.level >= config.MAX_LEVEL:
-        return f"🌟 لول {fa_num(config.MAX_LEVEL)} 👑 - {fa_num(user.xp)} تجربه"
-    return f"🌟 لول {fa_num(user.level)} - {fa_num(user.xp)}/{fa_num(economy.xp_need(user.level))} تجربه"
-
-
 async def _profile_caption(session, user) -> str:
     item_keys = await users.get_item_keys(session, user.id)
+    lvls = await users.get_item_levels(session, user.id)
     user_dogs = await dog_svc.get_user_dogs(session, user.id)
     atk, dfn = combat.combat_stats(user, item_keys, user_dogs)
     plots = await farming.get_user_plots(session, user.id)
 
     growing = sum(1 for p in plots if p.current_status()[0] == "growing")
     ready = sum(1 for p in plots if p.current_status()[0] == "ready")
-
-    armor = combat.best_armor_name(item_keys) or "بدون زره"
 
     rank = (await session.execute(
         select(func.count(User.id)).where(User.cash > user.cash)
@@ -53,34 +36,51 @@ async def _profile_caption(session, user) -> str:
 
     name = esc(short_name(users.display_name(user)))
     uname = f"@{esc(user.username)}" if user.username else "بدون یوزرنیم"
+    temoji, tname = users.title_of(user)
     # تاریخ عضویت به شمسی
-    joined = jalali_str(user.created_at) if user.created_at else "—"
+    joined = jalali_str(user.created_at) if user.created_at else "-"
+    # سلاح و زره فعال (تجهیزشده یا بهترین انبار)
+    wkey = combat.weapon_choice(user, lvls)
+    if wkey:
+        w = config.WEAPONS[wkey]
+        weapon_line = f"🔫 {esc(w['name'])}" if w.get("gun") else f"🔪 {esc(w['name'])}"
+    else:
+        weapon_line = "👊 دست خالی"
+    akey = combat.armor_choice(user, lvls)
+    armor_line = f"🦺 {esc(config.ARMORS[akey]['name'])}" if akey else "🦺 بدون زره"
     # سگ فقط به تعداد نمایش داده میشه، نه اسم نه نژاد
-    dog_line = f"🐕 سگ {fa_num(len(user_dogs))} عدد" if user_dogs else "🐕 سگ نداری"
+    dog_line = f"🐕 سگ {fa_num(len(user_dogs))} عدد" if user_dogs else "🐕 بدون سگ"
+
+    if user.level >= config.MAX_LEVEL:
+        xp_line = f"🌟 لول {fa_num(config.MAX_LEVEL)} 👑 • ✨ {fa_num(user.xp)}"
+    else:
+        xp_line = f"🌟 لول {fa_num(user.level)} • ✨ {fa_num(user.xp)}/{fa_num(economy.xp_need(user.level))}"
 
     return (
         f"╭━━━━━━━━━━━━━━╮\n"
-        f"👤 {name}\n"
+        f" 👤 {name}\n"
         f"╰━━━━━━━━━━━━━━╯\n"
-        f"🆔 {uname}\n\n"
-        f"{_xp_line(user)}\n"
-        f"⚡ انرژی {_bar(user.energy)} {fa_num(user.energy)}/{fa_num(config.MAX_ENERGY)}\n"
-        f"🏆 رتبه {fa_num(rank)} از {fa_num(total)} بازیکن\n"
-        f"🗓 تاریخ عضویت {joined}\n\n"
-        f"━━━━━━ 💰 دارایی ━━━━━━\n"
+        f"🆔 {uname}\n"
+        f"🏅 {temoji} {tname}\n"
+        f"{xp_line}\n"
+        f"⚡️ انرژی {_bar(user.energy)} {fa_num(user.energy)}/{fa_num(config.MAX_ENERGY)}\n"
+        f"🏆 رتبه {fa_num(rank)} از {fa_num(total)}\n"
+        f"📅 عضویت: {joined}\n\n"
+        f"<b>💰 دارایی</b>\n"
         f"🪙 {money(user.cash)}\n"
-        f"🏦 بانک {money(user.bank_balance)}\n\n"
-        f"━━━━━━ 🏗 اموال ━━━━━━\n"
-        f"🌱 تعداد زمین‌ها {fa_num(len(plots))}\n"
-        f"🌾 در حال رشد {fa_num(growing)}\n"
-        f"✅ آماده برداشت {fa_num(ready)}\n\n"
-        f"{_weapon_line(item_keys)}\n"
-        f"🛡 {esc(armor)}\n"
+        f"🏦 بانک: {fa_num(user.bank_balance)}\n\n"
+        f"<b>🏡 مزرعه</b>\n"
+        f"🌱 زمین: {fa_num(len(plots))}\n"
+        f"🌾 در حال رشد: {fa_num(growing)}\n"
+        f"✅ آماده برداشت: {fa_num(ready)}\n\n"
+        f"<b>🛡 تجهیزات</b>\n"
+        f"{weapon_line}\n"
+        f"{armor_line}\n"
         f"{dog_line}\n\n"
-        f"━━━━━━ ⚔️ آمار جنگی ━━━━━━\n"
-        f"💪 قدرت حمله {fa_num(atk)}\n"
-        f"🛡 دفاع {fa_num(dfn)}\n"
-        f"✅ برد {fa_num(user.wins)} | ❌ باخت {fa_num(user.losses)}"
+        f"<b>⚔️ آمار</b>\n"
+        f"💪 حمله: {fa_num(atk)}\n"
+        f"🛡 دفاع: {fa_num(dfn)}\n"
+        f"✅ برد: {fa_num(user.wins)} | ❌ باخت: {fa_num(user.losses)}"
     )
 
 

@@ -133,16 +133,27 @@ async def main() -> None:
 
     # ── بالانس آیتم‌های آخر بازی و زره‌ها ──
     check("زره‌های آخر بازی دفاعشون باف شده",
-          config.ARMORS["legend"]["defense"] == 130 and config.ARMORS["titan"]["defense"] == 105
-          and config.ARMORS["nano"]["defense"] == 80 and config.ARMORS["swat"]["defense"] == 52)
-    check("قیمت سلاح‌ها و زره‌های آخر بازی بالاتر رفته",
-          config.WEAPONS["rpg"]["price"] == 130000 and config.WEAPONS["minigun"]["price"] == 95000
-          and config.WEAPONS["plasma"]["price"] == 60000
-          and config.ARMORS["legend"]["price"] == 100000 and config.ARMORS["titan"]["price"] == 60000
-          and config.ARMORS["nano"]["price"] == 30000)
+          config.ARMORS["legend"]["defense"] == 150 and config.ARMORS["titan"]["defense"] == 120
+          and config.ARMORS["nano"]["defense"] == 90 and config.ARMORS["swat"]["defense"] == 52)
+    check("پلاسما پاک شده و گاتلینگ و آرپی‌جی رفتن تو گرمی با یه لول زودتر",
+          "plasma" not in config.WEAPONS
+          and config.WEAPONS["minigun"]["sec"] == "hot" and config.WEAPONS["minigun"]["min_level"] == 12
+          and config.WEAPONS["rpg"]["sec"] == "hot" and config.WEAPONS["rpg"]["min_level"] == 14
+          and config.WEAPONS["minigun"]["price"] == 60000 and config.WEAPONS["rpg"]["price"] == 95000)
+    check("پنج سلاح ویژه لول 16 تا 20 با دمیج برابر 250 و قابلیت",
+          [(k, w["min_level"], w["attack"], w["sec"], w["ability"]["kind"]) for k, w in
+           [(x, config.WEAPONS[x]) for x in ("viperx", "hellfire", "vampire", "shadowfang", "oblivion")]]
+          == [("viperx", 16, 250, "special", "poison"),
+              ("hellfire", 17, 250, "special", "hellfire"),
+              ("vampire", 18, 250, "special", "vampire"),
+              ("shadowfang", 19, 250, "special", "shadow"),
+              ("oblivion", 20, 250, "special", "oblivion")])
     check("ترتیب قیمت و قدرت سلاح‌ها بعد از گرونی محفوظه",
-          config.WEAPONS["plasma"]["price"] < config.WEAPONS["minigun"]["price"] < config.WEAPONS["rpg"]["price"]
-          and config.WEAPONS["plasma"]["attack"] < config.WEAPONS["minigun"]["attack"] < config.WEAPONS["rpg"]["attack"])
+          config.WEAPONS["minigun"]["price"] < config.WEAPONS["rpg"]["price"] < config.WEAPONS["viperx"]["price"]
+          and config.WEAPONS["minigun"]["attack"] < config.WEAPONS["rpg"]["attack"] < config.WEAPONS["viperx"]["attack"]
+          and config.WEAPONS["viperx"]["price"] < config.WEAPONS["hellfire"]["price"]
+          < config.WEAPONS["vampire"]["price"] < config.WEAPONS["shadowfang"]["price"]
+          < config.WEAPONS["oblivion"]["price"])
 
     legends = [k for k, a in config.ARMORS.items() if a.get("legendary")]
     check("فقط یه زره افسانه‌ای هست", legends == ["legend"])
@@ -188,7 +199,7 @@ async def main() -> None:
           str([economy.plot_required_level(i) for i in range(5)]))
 
     # ── سلاح‌ها و زره‌های جدید ──
-    check("13 تا سلاح داریم", len(config.WEAPONS) == 13, str(len(config.WEAPONS)))
+    check("17 تا سلاح داریم", len(config.WEAPONS) == 17, str(len(config.WEAPONS)))
     guns = sum(1 for w in config.WEAPONS.values() if w.get("gun"))
     check("هشت تفنگ اضافه شده", guns >= 8, str(guns))
     check("کلاش و آرپی‌جی هست", "ak47" in config.WEAPONS and "rpg" in config.WEAPONS)
@@ -203,8 +214,12 @@ async def main() -> None:
     check("ترتیب نمایش سلاح‌ها از ضعیف به قویه (شوکر قبل کلت)",
           list(config.WEAPONS.keys()).index("shocker") < list(config.WEAPONS.keys()).index("colt"))
     w_sorted = sorted(config.WEAPONS.values(), key=lambda w: w["price"])
-    check("قدرت سلاح با قیمت صعودیه", all(a["attack"] < b["attack"] for a, b in zip(w_sorted, w_sorted[1:])),
+    check("قدرت سلاح با قیمت صعودیه (۵ تای ویژه برابرن، درخواست کارفرما)",
+          all(a["attack"] <= b["attack"] for a, b in zip(w_sorted, w_sorted[1:])),
           str([(w["name"], w["price"], w["attack"]) for w in w_sorted][:5]))
+    check("جز ویژه‌ها قدرت اکیداً صعودیه",
+          all(a["attack"] < b["attack"] for a, b in zip(w_sorted, w_sorted[1:])
+              if not (a.get("sec") == "special" and b.get("sec") == "special")))
 
     y1 = economy.crop_yield("teriak", 1, 1)
     y2 = economy.crop_yield("teriak", 2, 1)
@@ -316,7 +331,7 @@ async def main() -> None:
 
         # ── گیت لول فروشگاه ──
         u1.level = 1
-        ok, msg = await shop_svc.purchase(s, u1, "weap", "plasma")
+        ok, msg = await shop_svc.purchase(s, u1, "weap", "viperx")
         check("سلاح قفل‌روی‌لول رد میشه", not ok and "لول" in msg)
         u1.cash = 500000
         u1.iron = 1000
@@ -1291,14 +1306,14 @@ async def main() -> None:
               abs(team_svc.atk_bonus(team) - config.TEAM_ATK_BONUS_PER_LEVEL) < 1e-9)
         # متن پروفایل تیم: تاریخ شمسی + ساختمان‌ها هرکدوم خط خودشون
         st_text = team_h._team_stats_text(await team_svc.team_stats_data(s, team))
-        check("تاریخ ساخت تیم تو پروفایل تیم شمسیه",
-              "📅 ساخته شده 14" in st_text, st_text.splitlines()[:22].__str__()[:200])
+        check("تاریخ تأسیس تیم تو پروفایل تیم شمسیه",
+              "📅 تأسیس: 14" in st_text, st_text.splitlines()[-3:].__str__()[:200])
         check("ساختمان حمله و دفاع تیم دو خط جدا با درصد",
-              "🏗 ساختمان حمله لول 1 (+3%)" in st_text and "🛡️ ساختمان دفاع لول 1 (+3%)" in st_text,
+              "⚔️ حمله: Lv.1 (+3%)" in st_text and "🛡 دفاع: Lv.1 (+3%)" in st_text,
               st_text.replace("\n", " | ")[:260])
         check("هدر و بخش‌های پروفایل تیم سر جاش",
-              all(x in st_text for x in ["🏴 تیم «فوتبالیست‌ها»", "👑 رهبر:", "👥 اعضا: 3 از 10",
-                                         "📊 آمار تیم", "📜 کوئست امروز", "🏦 خزانه:"]),
+              all(x in st_text for x in ["🏴 تیم «فوتبالیست‌ها»", "👑 رهبر:", "👥 اعضا: 3/10",
+                                         "<b>📊 آمار</b>", "<b>🎯 کوئست‌های امروز</b>", "🏦 خزانه:"]),
               st_text[:120])
         tb = await team_svc.top_teams_by_points(s, 5)
         check("لیدربرد بر اساس امتیاز مرتبه", tb and tb[0][0].points >= tb[-1][0].points)
@@ -1408,6 +1423,7 @@ async def main() -> None:
     async with session_scope() as s:
         o = await users.get_by_tg(s, 7705)
         o.pending_action = "teamname"
+        o.cash = 100000  # ساخت تیم ۵۰هزارتایی شده، پولشو شارژ می‌کنیم
         cash_t_before = o.cash
         await s.commit()
     upd = _text_update("فوتبالیست‌ها ۲", uid=7705, uname="ownx", fname="رهبر")
@@ -1546,14 +1562,18 @@ async def main() -> None:
               "🐕 سگ 2 عدد" in cap and "اصغر" not in cap and "شبح" not in cap, cap[:120])
         check("خط بانک تو پروفایل هست", "🏦 بانک" in cap)
         check("تایم ایران از پروفایل برداشته شد (تاریخ عضویت کافیه)",
-              "🕰 تایم ایران" not in cap and "📅" not in cap)
-        check("تاریخ عضویت شمسی با فرمت جدیده", "🗓 تاریخ عضویت 14" in cap and "🗓 عضو 14" not in cap, cap[:200])
+              "🕰 تایم ایران" not in cap and "📅 عضویت: 14" in cap)
         check("یوزرنیم خط خودشو داره", "🆔 @ali" in cap)
-        check("خط زمین‌ها تو پروفایل هست (قالب سه‌خطی جدید)",
-              "🌱 تعداد زمین‌ها 2\n🌾 در حال رشد 0\n✅ آماده برداشت 0" in cap, cap[:250])
+        check("لقب تو پروفایل میاد",
+              "🏅 " in cap and any(t[2] in cap for t in config.TITLES), cap[:200])
+        check("بخش‌های پروفایل با تیتر بولد سر جاش",
+              all(x in cap for x in ["<b>💰 دارایی</b>", "<b>🏡 مزرعه</b>", "<b>🛡 تجهیزات</b>", "<b>⚔️ آمار</b>"]),
+              cap[:250])
+        check("خط زمین‌ها تو پروفایل هست (قالب جدید)",
+              "🌱 زمین: 2\n🌾 در حال رشد: 0\n✅ آماده برداشت: 0" in cap, cap[:250])
         u_b = await users.get_by_tg(s, 7711)
         cap2 = await profile_h._profile_caption(s, u_b)
-        check("بدون سگ: «سگ نداری»", "🐕 سگ نداری" in cap2)
+        check("بدون سگ: «بدون سگ»", "🐕 بدون سگ" in cap2)
         await s.commit()
 
     # ═══ فلو pending بانک (دکمه واریز → مبلغ با پیام بعدی) ═══
@@ -2751,9 +2771,9 @@ async def main() -> None:
     check("ترتیب بخش‌ها مثل قالبه: عملکرد، بازیکنان، اقتصاد، فعالیت و تهش گروه‌ها",
           stats_txt.index("<b>⚡️ عملکرد</b>") < stats_txt.index("<b>👥 بازیکنان</b>")
           < stats_txt.index("<b>💰 اقتصاد</b>") < stats_txt.index("<b>🔥 فعالیت ۲۴ ساعت اخیر</b>")
-          < stats_txt.index("<b>🏘 گروه‌ها</b>") < stats_txt.index("⏱ آمار"))
+          < stats_txt.index("<b>🏘 گروه‌ها</b>") < stats_txt.index("⏱️ آمار"))
     check("آمار به خط رفرش زنده ختم میشه",
-          stats_txt.endswith("⏱ آمار زنده‌ست، با 🔃 به‌روزرسانی میشه"))
+          stats_txt.endswith("⏱️ آمار زنده‌ست، با 🔃 به‌روزرسانی میشه"))
 
     # ── 📊 بخش‌های جدید آمار پنل ادمین ──
     import re as _re
@@ -2785,8 +2805,8 @@ async def main() -> None:
               "👤 فعال ۲۴ ساعت اخیر:", "🆕 بازیکنان جدید:", "🌍 کل بازیکنان:",
               "🌐 کل گروه‌ها:", "👥 فعال ۲۴ ساعت اخیر:",
               "🏴 تیم‌ها:", "🐕 سگ‌ها:", "💵 تی‌پوینت کل:", "🏦 موجودی بانک:", "💸 دست بازیکنان:",
-              "📊 مجموع اکشن‌ها:", "⏱ آمار زنده‌ست، با 🔃 به‌روزرسانی میشه",
-          ]) and st_all.endswith("⏱ آمار زنده‌ست، با 🔃 به‌روزرسانی میشه"))
+              "📊 مجموع اکشن‌ها:", "⏱️ آمار زنده‌ست، با 🔃 به‌روزرسانی میشه",
+          ]) and st_all.endswith("⏱️ آمار زنده‌ست، با 🔃 به‌روزرسانی میشه"))
     check("بدون بات، پینگ و زمان پاسخ نامعلومن و کرش نمی‌ده",
           "📡 پینگ تلگرام: ➖ نامعلوم" in st_all and "🚀 زمان پاسخ ربات: ➖ نامعلوم" in st_all)
 
@@ -2816,15 +2836,16 @@ async def main() -> None:
         s.add(GroupPlayer(chat_id=-99000202, user_tg=7309))
         await s.commit()
     st_top = await admin_h._stats_text()
-    check("بخش فعال‌ترین گروه‌های این ساعت با مدال و شمارنده پیام میاد",
+    check("بخش فعال‌ترین گروه‌های این ساعت با مدال و شمارنده دستور میاد",
           "<b>🏆 فعال‌ترین گروه‌های این ساعت</b>" in st_top
-          and "🥇 گروه داغ محله ⌨️ 777 دستور" in st_top
-          and "گروه دوم بازار ⌨️ 12 دستور" in st_top,
-          " | ".join(st_top.splitlines()[-9:-3])[:220])
-    check("تعداد پلیرای هر گروه (فعال ۲۴ ساعت اخیرش) جلوی اسمش میاد",
-          "🥇 گروه داغ محله ⌨️ 777 دستور │ 👥 2" in st_top
-          and "گروه دوم بازار ⌨️ 12 دستور │ 👥 1" in st_top,
-          " | ".join(st_top.splitlines()[-9:-3])[:260])
+          and "🥇 گروه داغ محله" in st_top
+          and "تعداد دستورات 1ساعت اخیر: 777" in st_top
+          and "تعداد دستورات 1ساعت اخیر: 12" in st_top,
+          " | ".join(st_top.splitlines()[-10:-3])[:220])
+    check("پلیرای فعال هر گروه (۱ ساعت اخیرش) زیر اسمش میاد",
+          "پلیرای فعال: 2 | تعداد دستورات 1ساعت اخیر: 777" in st_top
+          and "پلیرای فعال: 1 | تعداد دستورات 1ساعت اخیر: 12" in st_top,
+          " | ".join(st_top.splitlines()[-10:-3])[:260])
     check("گروه سطل قدیمی ساعت دیگه تو فعال‌ترین‌ها نمیاد",
           "گروه کهنه دیشب" not in st_top)
 
@@ -3588,9 +3609,17 @@ async def main() -> None:
     check("ارقام هلپ همه لاتینن",
           not any(_re.search(r"[۰-۹]", v) for v in start_h2.HELP_SECTIONS.values()))
     HS = start_h2.HELP_SECTIONS
-    check("هلپ ۱۴ بخش داره و همه بخش‌های منو کلیدشون پوشش داده شده",
+    check("هلپ ۱۷ بخش داره و همه بخش‌های منو کلیدشون پوشش داده شده",
           set(HS) == {"start", "battle", "farm", "dogs", "company", "shelter", "team", "resources", "shop",
-                      "mine", "casino", "bank", "quests", "misc"})
+                      "mine", "casino", "bank", "quests", "misc", "skills", "gear", "titles"})
+    check("هلپ مهارت‌ها (بخش جدید)",
+          all(x in HS["skills"] for x in ["⭐️ مهارت", "امتیاز مهارت", "💥 قدرت", "⚡ سرعت",
+                                          "🛡 دفاع", "💰 غارت", "لول 8", "25,000", "ریست"]))
+    check("هلپ تجهیزات (بخش جدید)",
+          all(x in HS["gear"] for x in ["🛡 تجهیزات", "سلاح و زره فعال", "دو تب", "دست خالی",
+                                        "قابلیت مخصوص", "آپگرید تجهیزات"]))
+    check("هلپ لقب‌ها (بخش جدید)",
+          all(x in HS["titles"] for x in ["🏅 لقب", "Newbie", "Teriaky Lord", "لیدربرد", "تیم"]))
     check("هلپ کنده‌کاری (بخش جدید)",
           all(x in HS["mine"] for x in ["⛏ کنده‌کاری", "«تریاکی کنده کاری»", "«کنده کاری»", "60 ثانیه",
                                         "🪓 تبر", "⛏️ کلنگ", "لول 5", "«شکار کمیاب»"]))
@@ -4960,11 +4989,11 @@ async def main() -> None:
         await s.commit()
     cap_xp = next((ln for ln in cap.split("\n") if ln.startswith("🌟 لول")), "")
     check("پروفایل خط لول و تجربه قالب جدید رو داره",
-          cap_xp.startswith("🌟 لول 10 - ") and cap_xp.endswith("تجربه") and "/" in cap_xp, cap_xp)
-    check("پروفایل اموالش سه خطه",
-          "🌱 تعداد زمین‌ها" in cap and "\n🌾 در حال رشد" in cap and "\n✅ آماده برداشت" in cap)
+          cap_xp.startswith("🌟 لول 10 • ✨ ") and "/" in cap_xp, cap_xp)
+    check("پروفایل مزرعه‌ش سه خطه",
+          "🌱 زمین:" in cap and "\n🌾 در حال رشد:" in cap and "\n✅ آماده برداشت:" in cap)
     check("پروفایل رتبه و آمار جنگی داره",
-          "🏆 رتبه" in cap and "━━━━━━ ⚔️ آمار جنگی ━━━━━━" in cap and "💪 قدرت حمله" in cap)
+          "🏆 رتبه" in cap and "<b>⚔️ آمار</b>" in cap and "💪 حمله:" in cap)
 
     async with session_scope() as s:
         pf2, _ = await users.get_or_create(s, tg(8896, "maxi", "ماکسی"))
@@ -4974,7 +5003,7 @@ async def main() -> None:
         await s.commit()
     cap2_xp = next((ln for ln in cap2.split("\n") if ln.startswith("🌟 لول")), "")
     check("بعد لول مکس فقط تجربه جمع‌شده نوشته میشه",
-          cap2_xp == "🌟 لول 20 👑 - 10,958 تجربه" and "/" not in cap2_xp, cap2_xp)
+          cap2_xp == "🌟 لول 20 👑 • ✨ 10,958" and "/" not in cap2_xp, cap2_xp)
 
     # ── سقف لول ۲۰: لول قفل میشه ولی تجربه جمع میشه ──
     async with session_scope() as s:
@@ -5004,12 +5033,16 @@ async def main() -> None:
         ru, _ = await users.get_or_create(s, tg(9601, "resu", "منبعی"))
         ru.shelter_level = 0
         check("ظرفیت چوب و آهن پایه",
-              res_svc.wood_cap(ru) == config.RES_WOOD_CAP_BASE and res_svc.iron_cap(ru) == config.RES_IRON_CAP_BASE)
+              res_svc.wood_cap(ru) == config.RES_WOOD_CAP_TABLE[0] == 200
+              and res_svc.iron_cap(ru) == config.RES_IRON_CAP_TABLE[0] == 100)
         check("ظرفیت با لول مخفیگاه بیشتر میشه",
-              res_svc.wood_cap(SimpleNamespace(shelter_level=2)) == config.RES_WOOD_CAP_BASE + 2 * config.RES_WOOD_CAP_PER_LEVEL)
-        ru.wood = config.RES_WOOD_CAP_BASE - 5
+              res_svc.wood_cap(SimpleNamespace(shelter_level=2)) == config.RES_WOOD_CAP_TABLE[2])
+        check("ظرفیت انبار لول‌های پایین مثل قبله و لول ۱۰ به‌اندازه خروجی کارخونه مکس",
+              config.RES_WOOD_CAP_TABLE[:3] == [200, 350, 500] and config.RES_IRON_CAP_TABLE[:3] == [100, 180, 260]
+              and config.RES_WOOD_CAP_TABLE[10] >= 2880 and config.RES_IRON_CAP_TABLE[10] >= 3600)
+        ru.wood = config.RES_WOOD_CAP_TABLE[0] - 5
         got = res_svc.add_res(ru, "wood", 100)
-        check("واریز منبع سقف انبار رو رد نمی‌کنه", got == 5 and ru.wood == config.RES_WOOD_CAP_BASE, str(got))
+        check("واریز منبع سقف انبار رو رد نمی‌کنه", got == 5 and ru.wood == config.RES_WOOD_CAP_TABLE[0], str(got))
         check("برداشت منبع بدون موجودی کافی نمیشه", not res_svc.take_res(ru, "iron", 1))
         await s.commit()
 
@@ -5343,7 +5376,7 @@ async def main() -> None:
     sm_kb = kb3.shop_sections_kb()
     sm_datas = [b.callback_data for row in sm_kb.inline_keyboard for b in row]
     check("منوی شاپ ارتقاها و آرتیفکت و منابع رو داره",
-          all(d in sm_datas for d in ("shop:sec:wup", "shop:sec:aup", "shop:sec:arti", "shop:sec:res")),
+          all(d in sm_datas for d in ("menu:gear", "shop:sec:arti", "shop:sec:res")),
           str(sm_datas))
 
     # ── مخفیگاه: متن با ظرفیت چوب و آهن ──
@@ -5885,7 +5918,7 @@ async def main() -> None:
         check("آمار تیم جمع لول نداره و مدال داره",
               "level_sum" not in data_md and data_md["medals"]["all"] == 220, str(data_md.get("medals")))
         st_md = team_h._team_stats_text(data_md)
-        check("خط مجموع مدال‌ها تو پروفایل تیمه", "🎖️ مجموع مدال‌ها" in st_md, st_md[:160])
+        check("خط مدال‌ها تو پروفایل تیمه", "🎖 مدال‌ها" in st_md and "<b>📊 آمار</b>" in st_md, st_md[:160])
         await s.commit()
 
     # ── لیدربرد بازیکن: تب‌دار، پیش‌فرض هفتگی، مدال‌محور ──
@@ -7003,8 +7036,8 @@ async def main() -> None:
           and f"📦 انبار کارخونه: {fa_num(comp_svc.factory_stock_cap('ironmill', 1))}/{fa_num(comp_svc.factory_stock_cap('ironmill', 1))}" in ctx_full,
           ctx_full.replace("\n", " | ")[:240])
     check("ظرفیت انبار کارخونه دقیق ۱۲ ساعت تولیده",
-          comp_svc.factory_stock_cap("lumber", 1) == 360 and comp_svc.factory_stock_cap("ironmill", 1) == 504
-          and comp_svc.factory_stock_cap("ironmill", 2) == 1008,
+          comp_svc.factory_stock_cap("lumber", 1) == 288 and comp_svc.factory_stock_cap("ironmill", 1) == 360
+          and comp_svc.factory_stock_cap("ironmill", 2) == 720,
           f"{comp_svc.factory_stock_cap('lumber', 1)}/{comp_svc.factory_stock_cap('ironmill', 1)}")
 
     # ── متن ابزار (ادغام‌شده تو صفحه اصلی کنده‌کاری) با تی‌پوینت کامل ──
@@ -7027,7 +7060,18 @@ async def main() -> None:
     check("بذر افسانه‌ای توی لیست انبار نمیاد",
           "جهنم" not in sht and "ابلیس" not in sht and "جهش‌یافته" not in sht)
     mm_flat = [b.text for r in kb3.main_menu_kb().inline_keyboard for b in r]
-    check("دکمه منوی اصلی «انبار» ـه", "🏚 انبار" in mm_flat, str(mm_flat))
+    check("دکمه منوی اصلی «انبار» با ایموجی جدیده", "🎒 انبار" in mm_flat, str(mm_flat))
+    check("چیدمان دقیق منوی جدید (ترتیب ردیف‌ها)",
+          [[b.text for b in r] for r in kb3.main_menu_kb().inline_keyboard] ==
+          [["🌾 مزرعه من"],
+           ["🏪 فروشگاه", "⚔️ حمله"],
+           ["🎒 انبار", "⛏️ کنده‌کاری"],
+           ["🏦 بانک"],
+           ["⭐️ مهارت", "🛡 تجهیزات"],
+           ["🐕 سگ‌ها", "🎯 مأموریت", "🏢 شرکت"],
+           ["🏆 رتبه‌بندی", "📖 راهنما", "🚩 تیم من"],
+           ["➕ افزودن به گروه"]],
+          str([[b.text for b in r] for r in kb3.main_menu_kb().inline_keyboard]))
     check("بخش هلپ انبار اسم جدید رو داره",
           start_h3.HELP_SECTIONS["shelter"].startswith("<b>🏚 انبار</b>"))
     check("هلپ نبرد سلامت گفته نه HP",
@@ -7089,7 +7133,7 @@ async def main() -> None:
         n12 = users.add_xp(lv12, economy.xp_need(11))
         _j12 = "\n".join(n12 or [])
         check("تو متن لول 12 اسم بذر جهنم نیس ولی سلاح و زره همون لول هستن",
-              n12 and "جهنم" not in _j12 and "شلیک‌کن پلاسما" in _j12 and "زره تیتانیومی" in _j12,
+              n12 and "جهنم" not in _j12 and "گاتلینگ" in _j12 and "زره تیتانیومی" in _j12,
               _j12[:120])
         lv18, _ = await users.get_or_create(s, tg(7361, "lv18", "هجدهی"))
         lv18.level, lv18.xp = 17, 0
@@ -7109,8 +7153,8 @@ async def main() -> None:
               n9 and n9[0].startswith("🎉 تبریک، لول‌آپ شدی (8←9)")
               and "🔓 آیتم های جدید باز شدن" not in _j9 and "💪" in _j9, _j9[:150])
         await s.commit()
-    check("لول 18 هم چون فقط بذر ابلیس داشت الان خط دلگرمی می‌گیره",
-          "💪" in _j18 and "🔓 آیتم های جدید باز شدن" not in _j18, _j18[:150])
+    check("لول 18 سلاح ویژه Vampire باز می‌کنه (دیگه بذر ابلیس حساب نمیشه)",
+          "🩸 Vampire" in _j18 and "🔓 آیتم های جدید باز شدن" in _j18, _j18[:150])
 
     # ── پنل ادمین: ایموجی مخصوص هر کامند و botoff/boton ته لیست ──
     pan = admin_h._panel_text(SimpleNamespace(cash=0, level=1, xp=0))
@@ -8497,6 +8541,652 @@ async def main() -> None:
                                  "بزن Start و رایگان شروع کن 🚀"]),
           sct[:70])
     check("کولدان جستجو 10 دقیقه‌ست", config.SEARCH_COOLDOWN_MINUTES == 10)
+
+    # ═════════ بچ جدید: سلاح‌های ویژه + مهارت + لقب + تجهیزات + منوی جدید + ادمین تیم + خرید بذر تعدادی + کارخونه گران‌تر + انبار بزرگ‌تر ═════════
+
+    # ── باز شدن سلاح‌های ویژه تو متن لول‌آپ ──
+    async with session_scope() as s:
+        lv16u, _ = await users.get_or_create(s, tg(9871, "ulvl16", "شانزدهی"))
+        lv16u.level, lv16u.xp = 15, 0
+        n16 = users.add_xp(lv16u, economy.xp_need(15))
+        _j16 = "\n".join(n16 or [])
+        check("لول 16 اولین سلاح ویژه Viper-X رو باز می‌کنه",
+              "🔓 آیتم های جدید باز شدن" in _j16 and "💀 Viper-X" in _j16, _j16[:130])
+        lv16u.level, lv16u.xp = 19, 0
+        n20 = users.add_xp(lv16u, economy.xp_need(19))
+        _j20 = "\n".join(n20 or [])
+        check("لول 20 هم Oblivion باز میشه هم پیام لول مکس",
+              "👑 Oblivion" in _j20 and "👑 لولت مکس شد" in _j20, _j20[:170])
+        await s.commit()
+
+    # ── بخش سلاح ویژه تو شاپ ──
+    sw_kb = kb3.shop_weap_kb(SimpleNamespace(level=20), set(), "special")
+    sw_txt = [b.text for row in sw_kb.inline_keyboard for b in row]
+    _sp_names = [config.WEAPONS[k]["name"] for k in ("viperx", "hellfire", "vampire", "shadowfang", "oblivion")]
+    check("بخش سلاح ویژه هر پنج سلاح رو سبز و قابل خرید نشون میده",
+          sum(1 for t in sw_txt if t in _sp_names) == 5, str(sw_txt))
+    sl_kb = kb3.shop_weap_sections_kb(SimpleNamespace(level=15))
+    sec_lock = [(b.text, b.style) for row in sl_kb.inline_keyboard for b in row if "ویژه" in b.text]
+    check("سکشن سلاح ویژه زیر لول 16 با قفل قرمزه",
+          sec_lock and sec_lock[0][1] == "danger" and "به لول 16" in sec_lock[0][0], str(sec_lock))
+    sl_kb16 = kb3.shop_weap_sections_kb(SimpleNamespace(level=16))
+    sec_open = [(b.text, b.callback_data, b.style) for row in sl_kb16.inline_keyboard for b in row if "ویژه" in b.text]
+    check("روی لول 16 سکشن ویژه سبز باز میشه",
+          sec_open and sec_open[0][1] == "shop:sec:wspecial" and sec_open[0][2] == "success", str(sec_open))
+
+    # ── بتل: قابلیت‌های پنج سلاح ویژه (نبرد واقعی با دمیج سنجیده‌شده) ──
+    _orig_roll = battle_svc.roll_damage
+    _orig_night = battle_svc._is_night
+    _orig_rand = battle_svc.random
+    _orig_pchance = config.POISON_CHANCE
+    battle_svc.roll_damage = lambda atk, dfn, vm: (50, False)
+    from models import InventoryItem as _InvB
+    async with session_scope() as s:
+        await world_svc._meta_set(s, "weather_key", "normal")
+        await world_svc._meta_set(s, "weather_until", (now_utc() + timedelta(seconds=7200)).isoformat())
+        aw1, _ = await users.get_or_create(s, tg(9887, "abilatk", "ابیلیتی‌زن"))
+        aw1.level = 16
+        vi1, _ = await users.get_or_create(s, tg(9888, "abilv1", "طعمه‌یک"))
+        vi1.level = 3
+        lo1, _ = await users.get_or_create(s, tg(9889, "abilv2", "طعمه‌دو"))
+        lo1.level = 5
+        s.add(_InvB(user_id=aw1.id, item_key="viperx", level=1))
+        await s.commit()
+
+        def _reset_hit(att, vic):
+            att.last_attack_at = None
+            att.energy = config.MAX_ENERGY
+            att.dead_until = None
+            vic.dead_until = None
+
+        # 💀 سم با شانس ۱۰۰٪
+        config.POISON_CHANCE = 1.0
+        _reset_hit(aw1, vi1)
+        vi1.hp = battle_svc.max_hp(vi1.level)
+        res_p = await battle_svc.execute_hit(s, aw1, vi1)
+        check("💀 سم Viper-X اثر می‌گیره و تا ۱۰ دقیقه طرف مسمومه",
+              res_p["ok"] and any("💀" in l and "Viper-X" in l for l in res_p["abil_lines"])
+              and vi1.poison_until is not None and vi1.poison_until > now_utc(),
+              str(res_p.get("abil_lines")))
+        await s.flush()
+
+        # اثر سم روی دفاع (با پاک کردن و برگردوندن سم، قبل/بعد سنجیده میشه)
+        poisoned_until = vi1.poison_until
+        vi1.poison_until = None
+        _, dfn_base, _ = await battle_svc.battle_powers(s, aw1, vi1)
+        vi1.poison_until = poisoned_until
+        _, dfn_pois, info_p2 = await battle_svc.battle_powers(s, aw1, vi1)
+        check("قربانی مسموم 15% دفاعش کمتره",
+              dfn_pois == max(1, int(dfn_base * (1 - config.POISON_CUT))) and info_p2.get("poison_target") is True,
+              f"{dfn_base}->{dfn_pois}")
+        atk_self, _, info_self = await battle_svc.battle_powers(s, vi1, aw1)
+        atk_self_clean = None
+        vi1.poison_until = None
+        atk_clean, _, _ = await battle_svc.battle_powers(s, vi1, aw1)
+        vi1.poison_until = poisoned_until
+        check("طرف مسموم وقتی حمله می‌کنه هم 15% ضعیف‌تره",
+              info_self.get("poison_self") is True and atk_self == max(1, int(atk_clean * (1 - config.POISON_CUT))),
+              f"{atk_clean}->{atk_self}")
+        await s.commit()
+
+        # 🔥 هفایر روی حریف زیر 30% سلامت
+        aw1.equipped_weapon = "hellfire"
+        s.add(_InvB(user_id=aw1.id, item_key="hellfire", level=1))
+        await s.flush()
+        _reset_hit(aw1, lo1)
+        lo1.hp = int(0.29 * battle_svc.max_hp(lo1.level))
+        res_h = await battle_svc.execute_hit(s, aw1, lo1)
+        check("🔥 Hellfire به حریف نیمه‌جان (زیر 30%) دمیج 10% بیشتر می‌زنه",
+              res_h["ok"] and res_h["dmg"] == max(1, round(50 * (1 + config.HELLFIRE_BONUS * 1)))
+              and any("🔥" in l and "Hellfire" in l for l in res_h["abil_lines"]),
+              f"{res_h.get('dmg')} {res_h.get('abil_lines')}")
+        _reset_hit(aw1, lo1)
+        lo1.hp = battle_svc.max_hp(lo1.level)
+        res_h0 = await battle_svc.execute_hit(s, aw1, lo1)
+        check("حریف سالم (بالای 30%) بونس هفایر نمی‌گیره",
+              res_h0["ok"] and res_h0["dmg"] == 50 and not any("🔥" in l for l in res_h0["abil_lines"]),
+              str(res_h0.get("abil_lines")))
+
+        # رشد درصد قابلیت با لول ارتقای سلاح (لول 5 → ×1.8)
+        growth5 = 1 + config.SPECIAL_ABILITY_GROWTH * (5 - 1)
+        inh5 = (await s.execute(select(_InvB).where(_InvB.user_id == aw1.id, _InvB.item_key == "hellfire"))).scalar_one()
+        inh5.level = 5
+        await s.flush()
+        _reset_hit(aw1, lo1)
+        lo1.hp = int(0.29 * battle_svc.max_hp(lo1.level))
+        res_h5 = await battle_svc.execute_hit(s, aw1, lo1)
+        check("با لول ارتقای سلاح درصد قابلیت بیشتر میشه (لول 5 → ×1.8)",
+              res_h5["ok"] and res_h5["dmg"] == max(1, round(50 * (1 + config.HELLFIRE_BONUS * growth5)))
+              and any("18%" in l for l in res_h5["abil_lines"]),
+              f"{res_h5.get('dmg')} {res_h5.get('abil_lines')}")
+        inh5.level = 1
+
+        # 🩸 وامپایر بخشی از سلامت رو برمی‌گردونه
+        aw1.equipped_weapon = "vampire"
+        s.add(_InvB(user_id=aw1.id, item_key="vampire", level=1))
+        await s.flush()
+        hp_max_a = battle_svc.max_hp(aw1.level)
+        aw1.hp = hp_max_a - 100
+        _reset_hit(aw1, lo1)
+        aw1.hp = hp_max_a - 100
+        lo1.hp = battle_svc.max_hp(lo1.level)
+        res_v = await battle_svc.execute_hit(s, aw1, lo1)
+        check("🩸 Vampire ده درصد دمیج رو به سلامت خودم برمی‌گردونه",
+              res_v["ok"] and aw1.hp == hp_max_a - 100 + max(0, round(50 * config.VAMPIRE_LEECH * 1))
+              and any("🩸" in l and "Vampire" in l for l in res_v["abil_lines"]),
+              f"{aw1.hp} {res_v.get('abil_lines')}")
+        _reset_hit(aw1, lo1)
+        aw1.hp = hp_max_a - 3
+        lo1.hp = battle_svc.max_hp(lo1.level)
+        res_v2 = await battle_svc.execute_hit(s, aw1, lo1)
+        check("هیل وامپایر از سقف HP رد نمیشه", res_v2["ok"] and aw1.hp == hp_max_a, str(aw1.hp))
+
+        # 🌑 شدوفنگ فقط شبانه
+        aw1.equipped_weapon = "shadowfang"
+        s.add(_InvB(user_id=aw1.id, item_key="shadowfang", level=1))
+        await s.flush()
+        battle_svc._is_night = lambda: True
+        _reset_hit(aw1, lo1)
+        lo1.hp = battle_svc.max_hp(lo1.level)
+        res_sh = await battle_svc.execute_hit(s, aw1, lo1)
+        check("🌑 Shadow Fang شبانه (18 تا 4) دمیج 20% بیشتر می‌زنه",
+              res_sh["ok"] and res_sh["dmg"] == max(1, round(50 * (1 + config.SHADOW_BONUS * 1)))
+              and any("🌑" in l and "Shadow Fang" in l for l in res_sh["abil_lines"]),
+              f"{res_sh.get('dmg')} {res_sh.get('abil_lines')}")
+        battle_svc._is_night = lambda: False
+        _reset_hit(aw1, lo1)
+        lo1.hp = battle_svc.max_hp(lo1.level)
+        res_d = await battle_svc.execute_hit(s, aw1, lo1)
+        check("روز شدوفنگ هیچ بونسی نداره",
+              res_d["ok"] and res_d["dmg"] == 50 and not any("🌑" in l for l in res_d["abil_lines"]),
+              str(res_d.get("abil_lines")))
+
+        # 👑 ابلیویون: هر ضربه یه قابلیت رندوم از چهارتا
+        aw1.equipped_weapon = "oblivion"
+        s.add(_InvB(user_id=aw1.id, item_key="oblivion", level=1))
+        await s.flush()
+        battle_svc.random = SimpleNamespace(
+            choice=lambda seq: "hellfire", random=random.random, uniform=random.uniform)
+        _reset_hit(aw1, lo1)
+        lo1.hp = int(0.29 * battle_svc.max_hp(lo1.level))
+        res_o = await battle_svc.execute_hit(s, aw1, lo1)
+        check("👑 Oblivion هر بار یه قابلیت رندوم فعال می‌کنه و خط قابلیت اسم خودشو میاره",
+              res_o["ok"] and any(l.startswith("👑 Oblivion این بار:") for l in res_o["abil_lines"]),
+              str(res_o.get("abil_lines")))
+        battle_svc.random = _orig_rand
+        battle_svc._is_night = _orig_night
+
+        # 💰 مهارت غارت روی غارت ضربه (8 لول → 24% بیشتر)
+        aw1.skill_loot = 8
+        xp_att = aw1.xp
+        _reset_hit(aw1, lo1)
+        lo1.hp = battle_svc.max_hp(lo1.level)
+        lo1.cash = 10000
+        pre_cash = lo1.cash
+        res_lt = await battle_svc.execute_hit(s, aw1, lo1)
+        exp_steal = int(int(pre_cash * config.BATTLE_STEAL_MAX_PCT
+                            * min(1.0, 50 / battle_svc.max_hp(lo1.level))) * (1 + 0.03 * 8))
+        check("مهارت غارت مبلغ دزدی هر ضربه رو بیشتر می‌کنه",
+              res_lt["ok"] and res_lt["steal"] == exp_steal and res_lt["steal"] > 0,
+              f"{res_lt.get('steal')} vs {exp_steal}")
+        aw1.skill_loot = 0
+        await s.commit()
+    battle_svc.roll_damage = _orig_roll
+    config.POISON_CHANCE = _orig_pchance
+    check("ثابت‌های قابلیت ویژه",
+          config.SPECIAL_ABILITY_GROWTH == 0.20 and config.POISON_CUT == 0.15 and config.POISON_SECONDS == 600
+          and config.HELLFIRE_THRESHOLD == 0.30 and config.VAMPIRE_LEECH == 0.10
+          and config.SHADOW_BONUS == 0.20 and config.SHADOW_NIGHT_FROM == 18 and config.SHADOW_NIGHT_TO == 4)
+    check("متن هر پنج قابلیت ویژه تو کانفیگ هست",
+          set(config.WEAPON_ABILITY_TEXT) == {"poison", "hellfire", "vampire", "shadow", "oblivion"})
+
+    # ── مهارت‌ها: خدمات پایه ──
+    async with session_scope() as s:
+        sk1, _ = await users.get_or_create(s, tg(9893, "skiller", "مهارتی"))
+        sk1.level = 6
+        sk1.skill_points = None
+        sk1.skill_power = None
+        sk1.skill_speed = None
+        sk1.skill_defense = None
+        sk1.skill_loot = None
+        users.ensure_skills(sk1)
+        check("امتیاز مهارت پس‌دررو برای کاربر قدیمی = لول منهای یک",
+              sk1.skill_points == 5 and all(getattr(sk1, f"skill_{k}") == 0 for k in config.SKILLS),
+              str(sk1.skill_points))
+        ok_s1, _ = users.spend_skill_point(sk1, "power")
+        check("خرج یه امتیاز مهارت، لول قابلیت رو بالا می‌بره",
+              ok_s1 and sk1.skill_power == 1 and sk1.skill_points == 4)
+        check("هر لول قدرت دو درصده", combat.skill_pct(sk1, "power") == 0.02)
+        sk1.skill_power = config.SKILL_MAX_LEVEL
+        ok_s2, why_s2 = users.spend_skill_point(sk1, "power")
+        check("قابلیت بیشتر از لول 8 بالا نمیره", not ok_s2 and "مکس" in why_s2)
+        sk1.skill_power = 0
+        sk1.skill_points = 0
+        ok_s3, _ = users.spend_skill_point(sk1, "speed")
+        check("بدون امتیاز مهارت رد میشه", not ok_s3)
+        sk1.skill_points = 12
+        sk1.skill_power, sk1.skill_speed, sk1.skill_defense, sk1.skill_loot = 4, 2, 1, 1
+        sk1.cash = 100
+        ok_r0, why_r0 = users.reset_skills(sk1)
+        check("ریست بدون 25,000 تی‌پوینت رد میشه و قیمتش تو کانفیگه",
+              not ok_r0 and config.SKILL_RESET_COST == 25000)
+        sk1.cash = 30000
+        ok_r, back_r = users.reset_skills(sk1)
+        check("ریست همه امتیازهای خرج‌شده رو برمی‌گردونه و صفر می‌کنه",
+              ok_r and back_r == 8 and sk1.skill_points == 20 and sk1.cash == 30000 - 25000
+              and all(users.skill_level(sk1, k) == 0 for k in config.SKILLS), f"back={back_r}")
+        ok_r2, _ = users.reset_skills(sk1)
+        check("ریست دوم وقتی چیزی خرج نشده رد میشه", not ok_r2)
+        await s.commit()
+
+    # ── مهارت‌ها تو استت و کولدان نبرد ──
+    async with session_scope() as s:
+        sk1 = await users.get_by_tg(s, 9893)
+        sk1.skill_power = 8
+        a8, d8 = combat.combat_stats(sk1, {}, [])
+        check("8 لول قدرت، حمله رو 16% می‌بره بالا",
+              a8 == int((config.ATK_BASE + config.ATK_PER_LEVEL * sk1.level) * 1.16),
+              f"{a8} base={config.ATK_BASE + config.ATK_PER_LEVEL * sk1.level}")
+        sk1.skill_power = 0
+        sk1.skill_defense = 8
+        _, d8b = combat.combat_stats(sk1, {}, [])
+        check("8 لول دفاع، دفاع رو 16% می‌بره بالا",
+              d8b == int((config.DEF_BASE + config.DEF_PER_LEVEL * sk1.level) * 1.16), str(d8b))
+        sk1.skill_defense = 0
+        sk1.skill_speed = 8
+        sk1.last_attack_at = now_utc()
+        left8 = await battle_svc.cooldown_left(s, sk1)
+        sk1.skill_speed = 0
+        left0 = await battle_svc.cooldown_left(s, sk1)
+        check("8 لول سرعت کولدان 30 ثانیه رو 16% کمتر می‌کنه",
+              left8 < left0 and left8 <= int(config.BATTLE_COOLDOWN_SECONDS * 0.84),
+              f"{left8}/{left0}")
+        sk1.last_attack_at = None
+        await s.commit()
+
+    # ── مهارت تو لول‌آپ ──
+    async with session_scope() as s:
+        skx, _ = await users.get_or_create(s, tg(9894, "lvskill", "لول‌آپی"))
+        skx.level, skx.xp = 1, 0
+        notes_x = users.add_xp(skx, economy.xp_need(1))
+        check("هر لول‌آپ 1 امتیاز مهارت میده و خبرش میاد",
+              skx.skill_points == 1 and any("🎖" in n and "امتیاز مهارت" in n for n in notes_x),
+              str(skx.skill_points))
+        skx.xp = 0
+        users.add_xp(skx, economy.xp_need(2))
+        check("امتیازها با هر لول جمع میشن", skx.skill_points == 2, str(skx.skill_points))
+        await s.commit()
+
+    # ── صفحه مهارت و هندلرها ──
+    from handlers import skills as skills_h
+    from handlers import gear as gear_h
+    async with session_scope() as s:
+        ge, _ = await users.get_or_create(s, tg(9896, "skillpage", "صفحه‌ای"))
+        ge.level = 15
+        ge.skill_points = 3
+        ge.cash = 30000
+        await s.commit()
+    upd_mk = _fake_update("menu:skills", uid=9896)
+    await skills_h.skills_cb(upd_mk, None)
+    ed_mk = next((c for c in upd_mk.callback_query.calls if c[0] == "edit"), None)
+    check("صفحه مهارت: هدر، شمار امتیاز و چهار قابلیت",
+          ed_mk is not None and "<b>⭐️ مهارت‌ها</b>" in ed_mk[1] and "🎖 امتیاز مهارت: 3" in ed_mk[1]
+          and all(config.SKILLS[k]["name"] in ed_mk[1] for k in ("power", "speed", "defense", "loot")),
+          ed_mk[1][:150] if ed_mk else "-")
+    mk_datas = {(b.callback_data) for row in ed_mk[2]["reply_markup"].inline_keyboard for b in row}
+    check("دکمه‌های صفحه مهارت‌ها",
+          all(f"sk:up:{k}" in mk_datas for k in config.SKILLS) and "sk:reset" in mk_datas, str(mk_datas))
+    upd_su = _fake_update("sk:up:power", uid=9896)
+    await skills_h.skill_up_cb(upd_su, None)
+    async with session_scope() as s:
+        ge = await users.get_by_tg(s, 9896)
+        check("دکمه بعلاوه قدرت، امتیاز خرج می‌کنه و لولش بالا میره",
+              ge.skill_power == 1 and ge.skill_points == 2,
+              f"{ge.skill_power}/{ge.skill_points}")
+        await s.commit()
+    check("الرت سبز ارتقای مهارت",
+          any(c[0] == "answer" and c[1] and "قدرت" in str(c[1][0]) for c in upd_su.callback_query.calls),
+          str(upd_su.callback_query.calls)[:120])
+    upd_sr = _fake_update("sk:reset", uid=9896)
+    await skills_h.skill_reset_confirm(upd_sr, None)
+    ed_sr = next((c for c in upd_sr.callback_query.calls if c[0] == "edit"), None)
+    sr_datas = {b.callback_data for row in ed_sr[2]["reply_markup"].inline_keyboard for b in row} if ed_sr else set()
+    check("تأییدیه ریست مهارت با هزینه 25,000",
+          ed_sr is not None and "ریست مهارت" in ed_sr[1] and "25,000" in ed_sr[1] and "cf:sk:reset" in sr_datas,
+          ed_sr[1][:120] if ed_sr else "-")
+    upd_cfr = _fake_update("cf:sk:reset", uid=9896)
+    await skills_h.skill_reset_execute(upd_cfr, None)
+    async with session_scope() as s:
+        ge = await users.get_by_tg(s, 9896)
+        check("تایید ریست: امتیاز برمی‌گرده و پول کم میشه",
+              ge.skill_power == 0 and ge.skill_points == 3 and ge.cash == 30000 - 25000,
+              f"{ge.skill_points}/{ge.cash}")
+        await s.commit()
+
+    # ── لقب‌ها ──
+    check("لقب روی مرزها درسته",
+          users.title_of(SimpleNamespace(level=1)) == ("🌱", "Newbie")
+          and users.title_of(SimpleNamespace(level=2)) == ("🥉", "Rookie")
+          and users.title_of(SimpleNamespace(level=3)) == ("🥉", "Rookie")
+          and users.title_of(SimpleNamespace(level=4)) == ("🔹", "Member")
+          and users.title_of(SimpleNamespace(level=19)) == ("☠️", "Godfather")
+          and users.title_of(SimpleNamespace(level=20)) == ("💎", "Teriaky Lord"), str(users.title_of(SimpleNamespace(level=4))))
+    check("جدول لقب 11 ردیف و سر جاش از لول 1 تا 20",
+          len(config.TITLES) == 11 and config.TITLES[0][0] == 1 and config.TITLES[-1][0] == 20
+          and all(config.TITLES[i][0] < config.TITLES[i + 1][0] for i in range(10)))
+
+    # ── پروفایل: خط لقب و لقب لیدربرد ──
+    async with session_scope() as s:
+        pft, _ = await users.get_or_create(s, tg(9895, "proftit", "لقبی"))
+        pft.level = 20
+        cap_t = await profile_h2._profile_caption(s, pft)
+        await s.commit()
+    check("پروفایل خط «🏅 ایموجی لقب» داره",
+          "🏅 💎 Teriaky Lord" in cap_t and "<b>🛡 تجهیزات</b>" in cap_t and "<b>💰 دارایی</b>" in cap_t,
+          cap_t.splitlines()[4] if cap_t else "-")
+
+    # ── تجهیزات: انتخاب سلاح و زره فعال ──
+    async with session_scope() as s:
+        gw, _ = await users.get_or_create(s, tg(9897, "gearw", "گیری"))
+        gw.level = 8
+        from models import InventoryItem as _InvG
+        s.add(_InvG(user_id=gw.id, item_key="knife", level=1))
+        s.add(_InvG(user_id=gw.id, item_key="colt", level=1))
+        s.add(_InvG(user_id=gw.id, item_key="jacket", level=1))
+        s.add(_InvG(user_id=gw.id, item_key="kevlar", level=1))
+        await s.commit()
+        gw = await users.get_by_tg(s, 9897)
+        lv_g = await users.get_item_levels(s, gw.id)
+        check("بدون تجهیز دستی، بهترین سلاح و زره خودکار انتخاب میشن",
+              combat.weapon_choice(gw, lv_g) == "colt" and combat.armor_choice(gw, lv_g) == "kevlar")
+        atk_best, dfn_best = combat.combat_stats(gw, lv_g, [])
+        await s.commit()
+    upd_gw = _fake_update("menu:gear", uid=9897)
+    await gear_h.gear_cb(upd_gw, None)
+    ed_gw = next((c for c in upd_gw.callback_query.calls if c[0] == "edit"), None)
+    check("صفحه تجهیزات: هدر، استت و سلاح/زره فعال",
+          ed_gw is not None and "<b>🛡 تجهیزات</b>" in ed_gw[1]
+          and "🔫 سلاح فعال: کلت کمری 🔫" in ed_gw[1] and "🦺 زره فعال: جلیقه کِولار" in ed_gw[1]
+          and "💪 حمله:" in ed_gw[1] and "🛡 دفاع:" in ed_gw[1],
+          ed_gw[1][:160] if ed_gw else "-")
+    gw_datas = {b.callback_data for row in ed_gw[2]["reply_markup"].inline_keyboard for b in row}
+    check("دکمه‌های تجهیزات: تب‌ها، برداشتن هر آیتم و آپگرید",
+          {"gear:tab:weap", "gear:tab:arm", "gear:upg", "gear:eq:weap:knife", "gear:eq:weap:colt"} <= gw_datas,
+          str(gw_datas))
+    upd_tab = _fake_update("gear:tab:arm", uid=9897)
+    await gear_h.gear_tab_cb(upd_tab, None)
+    ed_tab = next((c for c in upd_tab.callback_query.calls if c[0] == "edit"), None)
+    check("تب زره‌ها لیست زره‌ها رو نشون میده",
+          ed_tab is not None and "gear:eq:arm:kevlar" in
+          {b.callback_data for row in ed_tab[2]["reply_markup"].inline_keyboard for b in row},
+          ed_tab[1][:80] if ed_tab else "-")
+    upd_eq = _fake_update("gear:eq:weap:knife", uid=9897)
+    await gear_h.gear_equip_cb(upd_eq, None)
+    async with session_scope() as s:
+        gw = await users.get_by_tg(s, 9897)
+        lv_g2 = await users.get_item_levels(s, gw.id)
+        check("تجهیز چاقو ذخیره میشه و مبنای نبرد قرار می‌گیره (هرچند ضعیف‌تره)",
+              gw.equipped_weapon == "knife" and combat.weapon_choice(gw, lv_g2) == "knife", gw.equipped_weapon)
+        atk_weak, _ = combat.combat_stats(gw, lv_g2, [])
+        check("استت با سلاح ضعیف‌ترِ تجهیزشده کمتره", atk_weak < atk_best, f"{atk_weak}<{atk_best}")
+        await s.commit()
+    ed_eq = next((c for c in upd_eq.callback_query.calls if c[0] == "edit"), None)
+    check("بعد تجهیز، تیک ✅ میوفته رو آیتم",
+          ed_eq is not None and "🔫 سلاح فعال: 🔪 چاقو" in ed_eq[1], ed_eq[1][:120] if ed_eq else "-")
+    check("الرت تجهیز نشون میده",
+          any(c[0] == "answer" and c[1] and "دستت شد" in str(c[1][0]) for c in upd_eq.callback_query.calls))
+    upd_eq_none = _fake_update("gear:eq:weap:rpg", uid=9897)
+    await gear_h.gear_equip_cb(upd_eq_none, None)
+    check("تجهیز آیتمی که نداری رد میشه",
+          any(c[0] == "answer" and c[1] and "نداری" in str(c[1][0]) for c in upd_eq_none.callback_query.calls),
+          str([c for c in upd_eq_none.callback_query.calls if c[0] == "answer"])[:120])
+    upd_un = _fake_update("gear:un:weap", uid=9897)
+    await gear_h.gear_unequip_cb(upd_un, None)
+    async with session_scope() as s:
+        gw = await users.get_by_tg(s, 9897)
+        check("👊 دست خالی، انتخاب خودکار دوباره فعال میشه",
+              gw.equipped_weapon is None and combat.weapon_choice(gw, lv_g2) == "colt")
+        await s.commit()
+    upd_gu = _fake_update("gear:upg", uid=9897)
+    await gear_h.gear_upg_cb(upd_gu, None)
+    ed_gu = next((c for c in upd_gu.callback_query.calls if c[0] == "edit"), None)
+    gu_datas = {b.callback_data for row in ed_gu[2]["reply_markup"].inline_keyboard for b in row} if ed_gu else set()
+    check("آپگرید تجهیزات از همون بخش تجهیزاته و به wup/aup میره",
+          ed_gu is not None and "⬆️ آپگرید تجهیزات" in ed_gu[1] and {"shop:sec:wup", "shop:sec:aup"} <= gu_datas,
+          str(gu_datas))
+
+    # صفحه تجهیزات با سلاح ویژه، متن قابلیت رو چاپ می‌کنه
+    async with session_scope() as s:
+        ga2, _ = await users.get_or_create(s, tg(9898, "abilpage", "ابلیفون"))
+        ga2.level = 18
+        s.add(_InvB(user_id=ga2.id, item_key="vampire", level=1))
+        ga2.equipped_weapon = "vampire"
+        await s.commit()
+    upd_gv = _fake_update("menu:gear", uid=9898)
+    await gear_h.gear_cb(upd_gv, None)
+    ed_gv = next((c for c in upd_gv.callback_query.calls if c[0] == "edit"), None)
+    check("تجهیزات وقتی سلاح ویژه فعاله، قابلیتشو نشون میده",
+          ed_gv is not None and ("🎯 قابلیت ویژه: " + config.WEAPON_ABILITY_TEXT["vampire"]) in ed_gv[1],
+          ed_gv[1][:200] if ed_gv else "-")
+
+    # ── پول ساخت تیم 50,000 و کیس‌اینسنسیتیو جستجوی تیم ──
+    check("هزینه ساخت تیم 50,000 شد", config.TEAM_CREATE_COST == 50000)
+    async with session_scope() as s:
+        tbo, _ = await users.get_or_create(s, tg(9883, "tboss", "رئیس‌کلاب"))
+        tbo.level = 10
+        tbo.cash = 200000
+        ok_cl, disp_cl = await team_svc.create_team(s, tbo, "Master Club")
+        check("تیم لاتینی ساخته شد", ok_cl, disp_cl)
+        found_up = await team_svc.get_team_by_name(s, "MASTER CLUB")
+        found_low = await team_svc.get_team_by_name(s, "master club")
+        check("جستجوی تیم به بزرگی/کوچکی حروف حساس نیس («تیم Master» همون «تیم master»)",
+              found_up is not None and found_low is not None and found_up.id == found_low.id)
+        tbo2, _ = await users.get_or_create(s, tg(9884, "tboss2", "رئیس‌دوم"))
+        tbo2.level = 10
+        tbo2.cash = 200000
+        ok_dup, dup_msg = await team_svc.create_team(s, tbo2, "MASTER club")
+        check("تیم با همون اسم و کیس متفاوت تکراریه", not ok_dup and "از قبل هست" in dup_msg, dup_msg)
+        await s.commit()
+
+    # ─-─ ادمین‌سازی تیم با بخشی از اسم + تأییدیه ──
+    from handlers import team as team_h_tadm
+    async with session_scope() as s:
+        owna, _ = await users.get_or_create(s, tg(9884, "owna", "موخ‌باز"))
+        owna = await users.get_by_tg(s, 9884)
+        owna.level = 10
+        owna.cash = 200000
+        ok_ta, msg_ta = await team_svc.create_team(s, owna, "موخ‌لند")
+        check("تیم تست ادمین‌سازی ساخته شد", ok_ta, msg_ta)
+        team_ta = await team_svc.get_team_of(s, owna.id)
+        memc, _ = await users.get_or_create(s, tg(9885, "cosholat", "کوشولات"))
+        memc.level = 4
+        s.add(TeamMember(team_id=team_ta.id, user_id=memc.id, role="member",
+                         join_medals=0, joined_at=now_utc()))
+        await s.commit()
+        mrow_c = await team_svc.get_membership(s, memc.id)
+        member_c_id = mrow_c.id
+
+    upd_ad_no = _text_update("تیم اد ادمین cos", uid=9885, uname="cosholat", fname="کوشولات")
+    await team_h_tadm.team_admin_add_text(upd_ad_no, None)
+    check("غیر رهبر نمی‌تونه مدیر بذاره",
+          any("فقط رهبر" in c[1] for c in upd_ad_no.message.calls), str(upd_ad_no.message.calls)[:140])
+    upd_ad_z = _text_update("تیم اد ادمین zzz", uid=9884, uname="owna", fname="موخ‌باز")
+    await team_h_tadm.team_admin_add_text(upd_ad_z, None)
+    check("اسم ناشناس رد میشه",
+          any("پیدا نشد" in c[1] for c in upd_ad_z.message.calls), str(upd_ad_z.message.calls)[:140])
+    upd_ad1 = _text_update("تیم اد ادمین cos", uid=9884, uname="owna", fname="موخ‌باز")
+    await team_h_tadm.team_admin_add_text(upd_ad1, None)
+    ad1 = upd_ad1.message.calls[-1]
+    ad1_datas = {b.callback_data for row in ad1[2]["reply_markup"].inline_keyboard for b in row}
+    check("«تیم اد ادمین cos» با بخشی از اسم مچ میکنه و تأییدیه می‌گیره",
+          "عضو پیدا شده" in ad1[1] and "کوشولات" in ad1[1]
+          and {f"tadm:add:{member_c_id}", "tadm:no"} <= ad1_datas,
+          f"{ad1[1][:120]} {ad1_datas}")
+    upd_ad_self = _text_update("تیم اد ادمین owna", uid=9884, uname="owna", fname="موخ‌باز")
+    await team_h_tadm.team_admin_add_text(upd_ad_self, None)
+    check("رهبر که نمیشه مدیر بشه", any("خودت رهبری" in c[1] for c in upd_ad_self.message.calls))
+
+    upd_tac = _fake_update(f"tadm:add:{member_c_id}", uid=9884)
+    await team_h_tadm.team_admin_confirm_cb(upd_tac, None)
+    async with session_scope() as s:
+        mrow_c2 = await team_svc.get_membership(s, (await users.get_by_tg(s, 9885)).id)
+        check("تأیید مدیر کردن، نقش عضو رو admin می‌کنه", mrow_c2.role == "admin", mrow_c2.role)
+        await s.commit()
+    ed_tac = next((c for c in upd_tac.callback_query.calls if c[0] == "edit"), None)
+    check("متن تأیید مدیر شدن", ed_tac is not None and "مدیر تیم شد" in ed_tac[1], ed_tac[1][:90] if ed_tac else "-")
+    upd_ad2 = _text_update("تیم اد ادمین cosh", uid=9884, uname="owna", fname="موخ‌باز")
+    await team_h_tadm.team_admin_add_text(upd_ad2, None)
+    check("مدیر دوباره مدیر نمیشه", any("همین الان مدیره" in c[1] for c in upd_ad2.message.calls))
+
+    upd_del = _text_update("تیم حذف ادمین COSH", uid=9884, uname="owna", fname="موخ‌باز")
+    await team_h_tadm.team_admin_del_text(upd_del, None)
+    dl1 = upd_del.message.calls[-1]
+    dl_datas = {b.callback_data for row in dl1[2]["reply_markup"].inline_keyboard for b in row}
+    check("«تیم حذف ادمین COSH» با حروف بزرگ هم پیداش میکنه",
+          "عضو پیدا شده" in dl1[1] and f"tadm:del:{member_c_id}" in dl_datas, f"{dl1[1][:100]} {dl_datas}")
+    upd_tdc = _fake_update(f"tadm:del:{member_c_id}", uid=9884)
+    await team_h_tadm.team_admin_confirm_cb(upd_tdc, None)
+    async with session_scope() as s:
+        mrow_c3 = await team_svc.get_membership(s, (await users.get_by_tg(s, 9885)).id)
+        check("تأیید حذف مدیر، برمی‌گرده عضو عادی", mrow_c3.role == "member", mrow_c3.role)
+        await s.commit()
+    upd_tno = _fake_update("tadm:no", uid=9884)
+    await team_h_tadm.team_admin_cancel_cb(upd_tno, None)
+    check("لغو تأییدیه تیم ادمین", any("لغو شد" in str(c[1]) for c in upd_tno.callback_query.calls if c[0] == "edit"))
+
+    import handlers as _h_adminpats
+    names_reg = [n for n, _, _ in _h_adminpats.TEXT_HANDLERS]
+    pats_reg = {n: p for n, p, _ in _h_adminpats.TEXT_HANDLERS}
+    import re as _re_admpat
+    check("پترن «تیم اد/حذف ادمین» قبل از کاتچ‌آل «تیم» رجیستر شده و مچ میکنه",
+          names_reg.index("team_admin_add") < names_reg.index("team") and names_reg.index("team_admin_del") < names_reg.index("team")
+          and _re_admpat.compile(pats_reg["team_admin_add"]).match("تریاکی تیم اد ادمین cosholat")
+          and _re_admpat.compile(pats_reg["team_admin_del"]).match("تیم حذف ادمین cosholat"))
+
+    # ── خروج از تیم با متن محترمانه ──
+    upd_lv = _fake_update(f"tmcf:leave:{9885}", uid=9885)
+    await team_h_tadm.team_confirm_cb(upd_lv, None)
+    ed_lv = next((c for c in upd_lv.callback_query.calls if c[0] == "edit"), None)
+    check("خروج از تیم با متن تمیز «🚪 از تیم «X» خارج شدی»",
+          ed_lv is not None and "🚪 از تیم «" in ed_lv[1] and "خارج شدی" in ed_lv[1]
+          and "برو بیرون" not in ed_lv[1] and "😅" not in ed_lv[1],
+          ed_lv[1][:110] if ed_lv else "-")
+
+    # ── مایگریشن پلاسما → گاتلینگ ──
+    async with session_scope() as s:
+        pm1, _ = await users.get_or_create(s, tg(9881, "pm1user", "پلاسما۱"))
+        pm2, _ = await users.get_or_create(s, tg(9882, "pm2user", "پلاسما۲"))
+        s.add(_InvB(user_id=pm1.id, item_key="plasma", level=3))
+        s.add(_InvB(user_id=pm2.id, item_key="plasma", level=1))
+        s.add(_InvB(user_id=pm2.id, item_key="minigun", level=2))
+        await s.commit()
+        pm1_id, pm2_id = pm1.id, pm2.id
+    await init_db()  # مایگریشن اینجا ردیف‌های پلاسما رو می‌بره رو گاتلینگ
+    async with session_scope() as s:
+        lv_m1 = await users.get_item_levels(s, pm1_id)
+        lv_m2 = await users.get_item_levels(s, pm2_id)
+    check("دارنده پلاسما بدون گاتلینگ، گاتلینگ با همون لول می‌گیره",
+          lv_m1.get("minigun") == 3 and "plasma" not in lv_m1, str(lv_m1))
+    check("دارنده هر دو، فقط ردیف پلاسما پاک میشه (تداخل نمیخوره)",
+          lv_m2.get("minigun") == 2 and "plasma" not in lv_m2 and len(lv_m2) == 1, str(lv_m2))
+
+    # ── کارخونه‌ها: قیمت و تولید جدید ──
+    check("هزینه ارتقای کارخونه‌ها: لول‌های پایین ارزون، لول‌های بالا تصاعدی گرون",
+          comp_svc.upgrade_cost("lumber", 2) == (3000, 40) and comp_svc.upgrade_cost("lumber", 10) == (750000, 800)
+          and comp_svc.upgrade_cost("ironmill", 2) == (4500, 60) and comp_svc.upgrade_cost("ironmill", 10) == (1100000, 1210),
+          str(comp_svc.upgrade_cost("ironmill", 10)))
+    check("جدول‌های ارتقای کارخونه صعودی‌ان و به ازای هر لول یه ردیف",
+          len(config.FACTORIES["lumber"]["up_tp"]) == config.FACTORY_MAX_LEVEL - 1
+          and config.FACTORIES["lumber"]["up_tp"] == sorted(config.FACTORIES["lumber"]["up_tp"])
+          and config.FACTORIES["ironmill"]["up_wood"] == sorted(config.FACTORIES["ironmill"]["up_wood"]))
+    check("تولید هر تیک کمتر شده (چوب 4، آهن 5) و 12 ساعت لول مکس میشه 2880/3600",
+          config.FACTORIES["lumber"]["per_tick"] == 4 and config.FACTORIES["ironmill"]["per_tick"] == 5
+          and comp_svc.factory_stock_cap("lumber", 10) == 2880 and comp_svc.factory_stock_cap("ironmill", 10) == 3600)
+
+    # ── خرید بذر تعدادی: خدمات ──
+    async with session_scope() as s:
+        sl1, _ = await users.get_or_create(s, tg(9891, "lowseed", "تازه‌بذر"))
+        sl1.level = 1
+        sl1.cash = 10 ** 9
+        ok1, m1 = await shop_svc.purchase_seed(s, sl1, "eblis", 1)
+        ok2, m2 = await shop_svc.purchase_seed(s, sl1, "peyote", 1)
+        ok3, _ = await shop_svc.purchase_seed(s, sl1, "marijuana", 0)
+        check("گیت‌های خرید بذر: افسانه‌ای رد میشه، گیت لول، تعداد حداقل 1",
+              not ok1 and "افسانه‌ای" in m1 and not ok2 and "لول 4" in m2 and not ok3, f"{m1[:40]}|{m2[:30]}")
+        sl1.cash = 0
+        ok4, m4 = await shop_svc.purchase_seed(s, sl1, "marijuana", 1)
+        check("پول ناکافی خرید بذر رو رد می‌کنه", not ok4 and "کافی نیس" in m4, m4[:60])
+        await s.commit()
+
+    # ── خرید بذر تعدادی: فلوی کامل اینلاین ──
+    async with session_scope() as s:
+        sb, _ = await users.get_or_create(s, tg(9892, "seedbuyer", "بذرباز"))
+        sb.level = 10
+        sb.cash = 100000
+        sb.shelter_level = 0
+        await s.commit()
+    upd_sb = _fake_update("shop:buy:seed:marijuana", uid=9892)
+    await shop_h2.buy_confirm(upd_sb, None)
+    ed_sb = next((c for c in upd_sb.callback_query.calls if c[0] == "edit"), None)
+    async with session_scope() as s:
+        sb = await users.get_by_tg(s, 9892)
+    check("دکمه بذر سؤال «چندتا بذر میخوای بخری؟» رو pending می‌کنه",
+          sb.pending_action == "seedbuy" and sb.pending_value == "marijuana"
+          and ed_sb is not None and "چندتا بذر ماری‌جوانا میخوای بخری؟" in ed_sb[1]
+          and "قیمت هر بذر 120 TP" in ed_sb[1],
+          ed_sb[1][:130] if ed_sb else "-")
+    upd_bad = _text_update("سلام", uid=9892, uname="seedbuyer", fname="بذرباز")
+    try:
+        await pending_h.capture(upd_bad, None)
+    except Exception:
+        pass
+    async with session_scope() as s:
+        sb = await users.get_by_tg(s, 9892)
+        check("عدد غلط pending بذر رو نگه می‌داره",
+              sb.pending_action == "seedbuy" and any("فقط یه عدد صحیح" in c[1] for c in upd_bad.message.calls))
+    upd_q3 = _text_update("3", uid=9892, uname="seedbuyer", fname="بذرباز")
+    try:
+        await pending_h.capture(upd_q3, None)
+    except Exception:
+        pass
+    fak = upd_q3.message.calls[-1]
+    fak_datas = {b.callback_data for row in fak[2]["reply_markup"].inline_keyboard for b in row}
+    check("فاکتور بذر با قالب فاکتور منابع: تعداد، جمع، رشد و فروش",
+          "🧾 فاکتور خرید 🌿 ماری‌جوانا" in fak[1] and "تعداد: 3 بذر" in fak[1]
+          and "جمع فاکتور: 360 تی‌پوینت" in fak[1] and "رشد هرکدوم 5 دقیقه" in fak[1]
+          and "فروش هرساقه 300 TP" in fak[1] and {"cf:shopseed:marijuana:3", "cl:shopseed"} <= fak_datas,
+          fak[1][:200])
+    async with session_scope() as s:
+        sb = await users.get_by_tg(s, 9892)
+        check("بعد فاکتور pending بذر پاک شده", sb.pending_action is None)
+    upd_cfs = _fake_update("cf:shopseed:marijuana:3", uid=9892)
+    await shop_h2.buyseed_execute(upd_cfs, None)
+    async with session_scope() as s:
+        sb = await users.get_by_tg(s, 9892)
+        st_sb = await farming.get_stock(s, sb.id)
+        check("تأیید فاکتور: 3 بذر خریده شد و پول کم شد",
+              st_sb.get("marijuana") == 3 and sb.cash == 100000 - 3 * 120, f"{st_sb} {sb.cash}")
+        await s.commit()
+    check("الرت موفقیت خرید بذر نشون داده میشه",
+          any(c[0] == "answer" and c[1] and "خریدی" in str(c[1][0]) for c in upd_cfs.callback_query.calls))
+
+    # سقف انبار بذر: الان 3 تا داریم و ظرفیت 5 تاست، خرید 3 دیگه رد میشه
+    upd_q4 = _text_update("3", uid=9892, uname="seedbuyer", fname="بذرباز")
+    await shop_h2.buy_confirm(_fake_update("shop:buy:seed:marijuana", uid=9892), None)
+    try:
+        await pending_h.capture(upd_q4, None)
+    except Exception:
+        pass
+    upd_cfx = _fake_update("cf:shopseed:marijuana:3", uid=9892)
+    await shop_h2.buyseed_execute(upd_cfx, None)
+    async with session_scope() as s:
+        sb = await users.get_by_tg(s, 9892)
+        st_sb2 = await farming.get_stock(s, sb.id)
+    ans_x = [c for c in upd_cfx.callback_query.calls if c[0] == "answer" and c[1]]
+    check("خریدی که از ظرفیت انبار بذر رد کنه با پیام دقیق رد میشه (فقط 2 تا جا)",
+          st_sb2.get("marijuana") == 3 and ans_x and "انبار بذرت جا نداره" in str(ans_x[0][1][0])
+          and "فقط 2 تا دیگه جا داری" in str(ans_x[0][1][0]) and sb.cash == 100000 - 360,
+          str(ans_x[0][1][0])[:140] if ans_x else "-")
 
     # ── تمیزکاری ته تست‌ها ──
     fj_svc._MEMBER_CACHE.clear()

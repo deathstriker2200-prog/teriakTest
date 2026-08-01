@@ -23,6 +23,7 @@ async def get_or_create(session: AsyncSession, tg_user) -> tuple[User, bool]:
         user.first_name = tg_user.first_name
         user.last_seen_at = now_utc()
         battle_svc.ensure_hp(user)  # کاربرای قدیمی بدون HP
+        ensure_skills(user)  # امتیاز مهارت پس‌دررو برای کاربرای قدیمی
         await bank_svc.ensure_bank_acc(session, user)  # کاربرای قدیمی بدون شماره حساب
         return user, False
 
@@ -103,6 +104,11 @@ async def wipe_account(session: AsyncSession, user: User) -> None:
     user.medals_day_date = None
     user.medals_week = 0
     user.medals_week_id = None
+    user.skill_points = 0
+    for _k in config.SKILLS:
+        setattr(user, f"skill_{_k}", 0)
+    user.equipped_weapon = user.equipped_armor = None
+    user.poison_until = None
 
     from services import battle as battle_svc
     # بعد ریست هم زمین هدیه نمیشه، مثل ثبت‌نام تازه خودش رایگان می‌خره
@@ -154,6 +160,64 @@ def set_pending(user: User, action: str | None, value: str | None = None, chat_i
 
 def display_name(user: User) -> str:
     return user.first_name or user.username or "رفیق"
+
+
+def title_of(user: User) -> tuple[str, str]:
+    """(ایموجی, اسم) لقب کاربر بر اساس لولش، بالاترین ردیافی که لول >= حداقلشه"""
+    emoji, name = "", ""
+    for min_lv, e, n in config.TITLES:
+        if (user.level or 1) >= min_lv:
+            emoji, name = e, n
+        else:
+            break
+    return emoji, name
+
+
+def ensure_skills(user: User) -> None:
+    """امتیاز مهارت کاربرای قدیمی NULL‌ه، با امتیاز پس‌دررو (لول منهای یک) مقداردهی میشه"""
+    if user.skill_points is None:
+        user.skill_points = max(0, (user.level or 1) - 1) * config.SKILL_POINT_PER_LEVEL
+    for key in config.SKILLS:
+        if getattr(user, f"skill_{key}", None) is None:
+            setattr(user, f"skill_{key}", 0)
+
+
+def skill_level(user: User, key: str) -> int:
+    """لول یه قابلیت مهارت، همیشه بین صفر و سقف"""
+    return min(max(int(getattr(user, f"skill_{key}", 0) or 0), 0), config.SKILL_MAX_LEVEL)
+
+
+def spend_skill_point(user: User, key: str) -> tuple[bool, str]:
+    """
+    خرج ۱ امتیاز مهارت برای بالا بردن یه قابلیت
+    خروجی: (موفق, دلیل ناموفقی)، ناموفق: امتیاز نداره | مکسه
+    """
+    ensure_skills(user)
+    if (user.skill_points or 0) < 1:
+        return False, "🎖 امتیاز مهارت نداری، با هر لول‌آپ یه دونه می‌گیری"
+    if skill_level(user, key) >= config.SKILL_MAX_LEVEL:
+        return False, "👑 این قابلیت مکسه"
+    user.skill_points -= 1
+    setattr(user, f"skill_{key}", skill_level(user, key) + 1)
+    return True, ""
+
+
+def reset_skills(user: User) -> tuple[bool, str | int]:
+    """
+    ریست مهارت‌ها با هزینه، همه امتیازهای خرج‌شده برمی‌گردن
+    خروجی: (موفق, تعداد امتیاز برگشته یا دلیل ناموفقی)
+    """
+    ensure_skills(user)
+    if user.cash < config.SKILL_RESET_COST:
+        return False, f"💸 ریست مهارت‌ها {fa_num(config.SKILL_RESET_COST)} تی‌پوینته و پولت کمه"
+    back = sum(skill_level(user, k) for k in config.SKILLS)
+    if back <= 0:
+        return False, "🤷 هنوز امتیازی خرج نکردی که برگرده"
+    user.cash -= config.SKILL_RESET_COST
+    for key in config.SKILLS:
+        setattr(user, f"skill_{key}", 0)
+    user.skill_points += back
+    return True, back
 
 
 def apply_energy_regen(user: User) -> None:
@@ -275,10 +339,12 @@ def add_xp(user: User, amount: int) -> list[str]:
     notes: list[str] = []
     user.xp += amount
     award_medals(user, amount)
+    ensure_skills(user)  # کاربرای قدیمی مهارت پس‌دررو بگیرن
 
     while user.level < config.MAX_LEVEL and user.xp >= xp_need(user.level):
         user.xp -= xp_need(user.level)
         user.level += 1
+        user.skill_points = (user.skill_points or 0) + config.SKILL_POINT_PER_LEVEL
 
         reward = config.LEVEL_CASH_REWARD * user.level
         user.cash += reward
@@ -287,6 +353,7 @@ def add_xp(user: User, amount: int) -> list[str]:
         battle_svc.full_heal(user)  # لول‌آپ یعنی جان تازه
 
         note = f"🎉 تبریک، لول‌آپ شدی ({fa_num(user.level - 1)}←{fa_num(user.level)})"
+        note += f"\n🎖 {fa_num(config.SKILL_POINT_PER_LEVEL)} امتیاز مهارت گرفتی، برو تو «مهارت» خرجش کن"
         if user.level == config.MAX_LEVEL:
             note += "\n👑 لولت مکس شد، از این به بعد فقط تجربه جمع میشه"
 

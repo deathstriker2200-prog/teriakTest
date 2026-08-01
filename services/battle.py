@@ -16,7 +16,7 @@ from models import User
 from services import actionlog, combat
 from services import dogs as dog_svc
 from services import users as user_svc
-from utils import now_utc
+from utils import fa_num, now_utc
 
 
 # ───────── HP ❤️ ─────────
@@ -65,11 +65,26 @@ async def cooldown_left(session: AsyncSession, user: User) -> int:
         return 0
     dogs = await dog_svc.get_user_dogs(session, user.id)
     cd = config.BATTLE_COOLDOWN_SECONDS * dog_svc.breed_cooldown_mult(dogs)
+    cd *= (1 - combat.skill_pct(user, "speed"))  # مهارت ⚡ سرعت: هر لول ۲ درصد کولدان کمتر
     left = cd - (now_utc() - user.last_attack_at).total_seconds()
     return max(0, int(left))
 
 
 # ───────── قدرت نبرد 💪 ─────────
+
+
+def _poisoned(user: User) -> bool:
+    """سم Viper-X هنوز اثر داره؟"""
+    pu = getattr(user, "poison_until", None)
+    return bool(pu and pu > now_utc())
+
+
+def _is_night() -> bool:
+    """الان به وقت ایران شبه؟ (ساعت ۱۸ تا ۴ بامداد، دامنه Shadow Fang)"""
+    from utils import now_iran
+    h = now_iran().hour
+    return h >= config.SHADOW_NIGHT_FROM or h < config.SHADOW_NIGHT_TO
+
 
 async def battle_powers(session: AsyncSession, attacker: User, target: User) -> tuple[int, int, dict]:
     """
@@ -112,6 +127,14 @@ async def battle_powers(session: AsyncSession, attacker: User, target: User) -> 
     if def_cut:
         dfn = max(1, int(dfn * (1 - def_cut)))
         info["defcut"] = def_cut
+
+    # 💀 سم Viper-X: هر طرفی که مسمومه حمله و دفاعش کمتره
+    if _poisoned(attacker):
+        atk = max(1, int(atk * (1 - config.POISON_CUT)))
+        info["poison_self"] = True
+    if _poisoned(target):
+        dfn = max(1, int(dfn * (1 - config.POISON_CUT)))
+        info["poison_target"] = True
 
     info["a_items"] = a_items
     info["t_items"] = t_items
@@ -225,15 +248,65 @@ async def execute_hit(session: AsyncSession, attacker: User, target: User) -> di
     if dmg <= 0:
         return {"ok": True, "nodmg": True, "a_pow": atk, "d_pow": dfn, "info": info}
 
+    # ── قابلیت سلاح ویژه 🌟 (سلاح‌های لول ۱۶ به بعد، با لول ارتقای سلاح رشد می‌کنن) ──
+    abil_lines: list[str] = []
+    a_levels = await user_svc.get_item_levels(session, attacker.id)
+    wkey = combat.weapon_choice(attacker, a_levels)
+    wcfg = config.WEAPONS.get(wkey) if wkey else None
+    abil = (wcfg or {}).get("ability")
+    wlvl = (a_levels.get(wkey, 1) if wkey else 1) or 1
+    growth = 1 + config.SPECIAL_ABILITY_GROWTH * max(0, wlvl - 1)
+    wname = (wcfg or {}).get("name", "")
+    kind = abil.get("kind") if abil else None
+
+    def _pc(x: float) -> str:
+        return fa_num(int(round(x * 100)))
+
+    def _aline(emoji: str, txt: str) -> None:
+        # اسم سلاح‌های ویژه خودشون ایموجی شروع دارن، پس دوباره ایموجی نمی‌زنیم اولشون
+        if abil and abil.get("kind") == "oblivion":
+            abil_lines.append(f"{wname} این بار: {emoji} {txt}")
+        else:
+            abil_lines.append(f"{wname} {txt}")
+
+    if kind == "oblivion":
+        kind = random.choice(("poison", "hellfire", "vampire", "shadow"))
+
+    # Hellfire و Shadow روی دمیج قبل از کم شدن HP و غارت اثر می‌ذارن
+    if kind == "hellfire" and (target.hp or 0) < config.HELLFIRE_THRESHOLD * hp_max:
+        bonus = config.HELLFIRE_BONUS * growth
+        dmg = max(1, round(dmg * (1 + bonus)))
+        _aline("🔥", "حریف نیمه‌جان رو گرفت، %s%% دمیج بیشتر" % _pc(bonus))
+    if kind == "shadow" and _is_night():
+        bonus = config.SHADOW_BONUS * growth
+        dmg = max(1, round(dmg * (1 + bonus)))
+        _aline("🌑", f"تو تاریکی شب {_pc(bonus)}% دمیج بیشتر زد")
+
     target.hp = max(0, (target.hp or 0) - dmg)
+
+    # 💀 سم: برای ضربه‌های بعدی حریف ضعیف‌تر میشه
+    if kind == "poison" and random.random() < config.POISON_CHANCE * growth:
+        target.poison_until = now_utc() + timedelta(seconds=config.POISON_SECONDS)
+        _aline("💀", f"نیش سمی اثر گرفت، تا {fa_num(config.POISON_SECONDS // 60)} دقیقه حریف {_pc(config.POISON_CUT)}% ضعیف‌تره")
 
     steal, meta = steal_for_hit(
         dmg, hp_max, target.cash, info["a_dogs"], info["t_items"], info["t_dogs"],
         info["a_items"],
     )
     if steal:
+        steal = int(steal * (1 + combat.skill_pct(attacker, "loot")))  # مهارت 💰 غارت
         target.cash -= steal
         attacker.cash += steal
+
+    # 🩸 Vampire: بخشی از دمیج به HP مهاجم برمی‌گرده
+    if kind == "vampire":
+        healed = min(
+            max_hp(attacker.level) - (attacker.hp or 0),
+            max(0, round(dmg * config.VAMPIRE_LEECH * growth)),
+        )
+        if healed > 0:
+            attacker.hp = (attacker.hp or 0) + healed
+            _aline("🩸", f"{fa_num(healed)} HP از حریف مکید و بهت برگردوند")
 
     xp = xp_for_hit(dmg)
     xp = int(xp * dog_svc.battle_xp_mult(info["a_dogs"]))
@@ -268,6 +341,8 @@ async def execute_hit(session: AsyncSession, attacker: User, target: User) -> di
         "a_pow": atk,
         "d_pow": dfn,
         "info": info,
+        "abil_lines": abil_lines,
+        "poison_self": bool(info.get("poison_self")),
     }
 
 

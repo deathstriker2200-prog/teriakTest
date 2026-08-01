@@ -56,6 +56,45 @@ async def purchase_resource(
     return True, f"{info['emoji']} {fa_num(got)} {info['name']} خریدی، جمع {money(total)}"
 
 
+async def purchase_seed(
+    session: AsyncSession, user: User, key: str, qty: int
+) -> tuple[bool, str]:
+    """
+    خرید بذر با تعداد دلخواه (مثل فلوی آهن و چوب)
+    خروجی: (موفق, پیام)، گیت لول و سقف انبار هر بذر و موجودی چک میشه
+    """
+    from services.world import seed_storage_cap
+    from services.farming import get_stock
+
+    item = config.SEEDS.get(key)
+    if not item:
+        return False, "❌ همچین بذری نیس"
+    if item.get("legendary"):
+        return False, "❌ این بذر افسانه‌ایه و تو شاپ فروخته نمیشه، از جستجو یا کاروان برمی‌داری"
+    if user.level < item.get("min_level", 1):
+        return False, f"🔒 لول {fa_num(item['min_level'])} می‌خواد"
+    qty = int(qty)
+    if qty < 1:
+        return False, "❌ تعداد باید حداقل 1 باشه"
+
+    cap = seed_storage_cap(user)
+    stock = await get_stock(session, user.id)
+    have = stock.get(key, 0)
+    free = max(0, cap - have)
+    if qty > free:
+        return False, (
+            f"🌾 انبار بذرت جا نداره، ظرفیت هر بذر {fa_num(cap)} تاست\n"
+            f"الان {fa_num(have)} تا {item['name']} داری، فقط {fa_num(free)} تا دیگه جا داری؛ با «انبار» بیشترش کن"
+        )
+    total = item["price"] * qty
+    if user.cash < total:
+        return False, f"❌ تی‌پوینتت کافی نیس، {money(total)} می‌خواد"
+
+    user.cash -= total
+    await add_seed_stock(session, user.id, key, qty)
+    return True, f"{item.get('emoji', '🌱')} {fa_num(qty)} بذر {item['name']} خریدی، جمع {money(total)}، انبارت شد {fa_num(have + qty)} تا"
+
+
 async def purchase(
     session: AsyncSession, user: User, kind: str, key: str, dog_name: str | None = None
 ) -> tuple[bool, str]:

@@ -790,7 +790,7 @@ async def _stats_text(bot=None) -> str:
         if gids:
             pl_rows = (await s.execute(
                 select(GroupPlayer.chat_id, func.count(GroupPlayer.user_tg))
-                .where(GroupPlayer.chat_id.in_(gids), GroupPlayer.last_active_at >= day_ago)
+                .where(GroupPlayer.chat_id.in_(gids), GroupPlayer.last_active_at >= hour_ago)
                 .group_by(GroupPlayer.chat_id)
             )).all()
             players_in = {cid: int(n) for cid, n in pl_rows}
@@ -915,17 +915,19 @@ async def _stats_text(bot=None) -> str:
     ]
     if top_groups:
         # شمارنده ساعتی، «دستورهای» این ساعت گروهه نه همه پیام‌ها (فعالیت = دستور)
-        lines += ["", "<b>🏆 فعال‌ترین گروه‌های این ساعت</b>"]
+        # هر گروه دو خط: اسم | پلیرای فعال و تعداد دستورات ۱ ساعت اخیر (درخواست کارفرما)
+        lines += ["", "<b>🏆 فعال‌ترین گروه‌های این ساعت</b>", ""]
         badges = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣"]
         for i, g in enumerate(top_groups):
             gname = esc(g.title) if g.title else f"گروه {fa_num(g.chat_id)}"
+            lines.append(f"{badges[i]} {gname}")
             lines.append(
-                f"{badges[i]} {gname} ⌨️ {fa_num(g.msgs_hour or 0)} دستور"
-                f" │ 👥 {fa_num(players_in.get(g.chat_id, 0))}"
+                f"پلیرای فعال: {fa_num(players_in.get(g.chat_id, 0))}"
+                f" | تعداد دستورات 1ساعت اخیر: {fa_num(g.msgs_hour or 0)}"
             )
     lines += [
         "",
-        "⏱ آمار زنده‌ست، با 🔃 به‌روزرسانی میشه",
+        "⏱️ آمار زنده‌ست، با 🔃 به‌روزرسانی میشه",
     ]
     return "\n".join(lines)
 

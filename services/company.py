@@ -54,9 +54,10 @@ def build_cost(fac_key: str) -> tuple[int, int]:
 
 
 def upgrade_cost(fac_key: str, to_level: int) -> tuple[int, int]:
-    """(تی‌پوینت, چوب) ارتقا به لول to_level"""
+    """(تی‌پوینت, چوب) ارتقا به لول to_level از جدول دستی کانفیگ (اندیس ۰ = رفتن به لول ۲)"""
     cfg = config.FACTORIES[fac_key]
-    return cfg["up_tp"] * to_level, cfg["up_wood"] * to_level
+    idx = min(max(to_level - 2, 0), len(cfg["up_tp"]) - 1)
+    return cfg["up_tp"][idx], cfg["up_wood"][idx]
 
 
 # ───────── تسویه تولید ─────────

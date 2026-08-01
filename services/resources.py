@@ -13,12 +13,17 @@ from models import User
 
 # ───────── ظرفیت ─────────
 
+def _table_cap(table: list, level: int) -> int:
+    idx = min(max(int(level or 0), 0), len(table) - 1)
+    return table[idx]
+
+
 def wood_cap(user: User) -> int:
-    return config.RES_WOOD_CAP_BASE + config.RES_WOOD_CAP_PER_LEVEL * user.shelter_level
+    return _table_cap(config.RES_WOOD_CAP_TABLE, user.shelter_level)
 
 
 def iron_cap(user: User) -> int:
-    return config.RES_IRON_CAP_BASE + config.RES_IRON_CAP_PER_LEVEL * user.shelter_level
+    return _table_cap(config.RES_IRON_CAP_TABLE, user.shelter_level)
 
 
 def res_cap(user: User, res: str) -> int:

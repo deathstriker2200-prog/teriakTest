@@ -11,7 +11,7 @@
 
 from telegram.ext import Application, CallbackQueryHandler, ChatMemberHandler, CommandHandler, MessageHandler, filters
 
-from handlers import admin, attack, backup, bank, battle, common, company, dogs, dquests, farm, gate, mine, pending, power, profile, rank, seen, shop, start, team, textcmd, world
+from handlers import admin, attack, backup, bank, battle, common, company, dogs, dquests, farm, gate, gear, mine, pending, power, profile, rank, seen, shop, skills, start, team, textcmd, world
 
 ZWNJ = "‌"
 S = rf"[\s{ZWNJ}]"  # فاصله یا نیم‌فاصله
@@ -56,6 +56,8 @@ TEXT_HANDLERS: list[tuple[str, str, object]] = [
     ("team_rename", rf"{TP}تیم{S}+تغییر{S}+نام{S}+(.+)$", team.rename_text),
     ("team_req", rf"{TP}تیم{S}+درخواست{S}+(\S+)(?:{S}+(قبول|رد|اکسپت|ریجکت))?!?$", team.team_request_text),
     ("team_kick", rf"{TP}تیم{S}+کیک{S}+(.+)$", team.team_kick_text),
+    ("team_admin_add", rf"{TP}تیم{S}+اد{S}+ادمین{S}+(.+)$", team.team_admin_add_text),
+    ("team_admin_del", rf"{TP}تیم{S}+حذف{S}+ادمین{S}+(.+)$", team.team_admin_del_text),
     ("team_admin", rf"{TP}تیم{S}+ادمین{S}+(.+)$", team.team_admin_text),
     ("quests", rf"{TP}کوئست!?$|{TP}استعلام{S}*کوئست!?$", dquests.daily_quests_cb),  # «کوئست» تنها فقط کوئست روزانه بازیکن
     ("team", rf"{TP}تیم(?:{S}+(.+))?!?$", team.team_text),
@@ -169,6 +171,19 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CallbackQueryHandler(mine.mine_home_cb, pattern=r"^menu:mine$"))
     app.add_handler(CallbackQueryHandler(company.company_cb, pattern=r"^menu:company$"))
     app.add_handler(CallbackQueryHandler(world.shelter_cmd, pattern=r"^menu:shelter$"))
+    app.add_handler(CallbackQueryHandler(skills.skills_cb, pattern=r"^menu:skills$"))
+    app.add_handler(CallbackQueryHandler(gear.gear_cb, pattern=r"^menu:gear$"))
+
+    # ── مهارت (دکمه‌ها) ──
+    app.add_handler(CallbackQueryHandler(skills.skill_up_cb, pattern=r"^sk:up:\w+$"))
+    app.add_handler(CallbackQueryHandler(skills.skill_reset_confirm, pattern=r"^sk:reset$"))
+    app.add_handler(CallbackQueryHandler(skills.skill_reset_execute, pattern=r"^cf:sk:reset$"))
+
+    # ── تجهیزات (دکمه‌ها) ──
+    app.add_handler(CallbackQueryHandler(gear.gear_tab_cb, pattern=r"^gear:tab:(?:weap|arm)$"))
+    app.add_handler(CallbackQueryHandler(gear.gear_equip_cb, pattern=r"^gear:eq:(?:weap|arm):\w+$"))
+    app.add_handler(CallbackQueryHandler(gear.gear_unequip_cb, pattern=r"^gear:un:(?:weap|arm)$"))
+    app.add_handler(CallbackQueryHandler(gear.gear_upg_cb, pattern=r"^gear:upg$"))
 
     # ── کنده‌کاری (دکمه‌ها) ──
     app.add_handler(CallbackQueryHandler(mine.mine_roll_cb, pattern=r"^mine:roll$"))
@@ -203,6 +218,8 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CallbackQueryHandler(shop.gear_up_cancel, pattern=r"^cl:gup:(?:weap|arm)$"))
     app.add_handler(CallbackQueryHandler(shop.buyres_execute, pattern=r"^cf:shopres:\w+:\d+$"))
     app.add_handler(CallbackQueryHandler(shop.buyres_cancel, pattern=r"^cl:shopres$"))
+    app.add_handler(CallbackQueryHandler(shop.buyseed_execute, pattern=r"^cf:shopseed:\w+:\d+$"))
+    app.add_handler(CallbackQueryHandler(shop.buyseed_cancel, pattern=r"^cl:shopseed$"))
 
     # ── سگ‌ها ──
     app.add_handler(CallbackQueryHandler(dogs.feed_picker, pattern=r"^dogs:feed:\d+$"))
@@ -226,6 +243,8 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CallbackQueryHandler(team.team_kick_cb, pattern=r"^team:kick$"))
     app.add_handler(CallbackQueryHandler(team.team_kick_execute, pattern=r"^tkick:\d+$"))
     app.add_handler(CallbackQueryHandler(team.team_kick_cancel, pattern=r"^tkcl$"))
+    app.add_handler(CallbackQueryHandler(team.team_admin_confirm_cb, pattern=r"^tadm:(?:add|del):\d+$"))
+    app.add_handler(CallbackQueryHandler(team.team_admin_cancel_cb, pattern=r"^tadm:no$"))
     app.add_handler(CallbackQueryHandler(team.buildings_cb, pattern=r"^team:bld$"))
     app.add_handler(CallbackQueryHandler(team.team_bank_text, pattern=r"^team:bank$"))
     app.add_handler(CallbackQueryHandler(team.team_upgrade_cb, pattern=r"^tbup:(?:atk|def):\d+$"))

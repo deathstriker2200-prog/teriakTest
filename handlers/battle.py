@@ -50,6 +50,12 @@ def hit_text(result: dict, target_name: str) -> str:
         text += "💰 جیب حریف خالی بود\n"
     text += f"✨ {fa_num(result['xp'])} تجربه گرفتی"
 
+    # خطوط قابلیت سلاح ویژه (💀 سم | 🔥 آخرکار | 🩸 مکش | 🌑 شب | 👑 رندوم)
+    for line in result.get("abil_lines") or []:
+        text += f"\n{line}"
+    if result.get("poison_self"):
+        text += "\n💀 خودت هم مسمومی، تا اثرش تموم شه حمله و دفاعت کمتره"
+
     if result.get("killed"):
         text += (
             f"\n\n<b>☠️ حریف «{target_name}» شکست خورد</b>\n\n"
