@@ -81,8 +81,8 @@ def _team_stats_text(data: dict) -> str:
             continue
         tag = {"owner": "👑", "admin": "🛡"}.get(m.role, "🔸")
         name = "👻 نامرئی" if u.lb_hidden else (u.first_name or u.username or "؟")
-        temoji, _ = users.title_of(u)
-        lines.append(f"{tag} {esc(name)} {temoji} | Lv.{fa_num(u.level)}")
+        temoji, tname = users.title_of(u)
+        lines.append(f"{tag} {temoji} {esc(name)} <b>「{tname}」</b> | لول {fa_num(u.level)}")
         shown += 1
     if data["count"] > shown:
         lines.append(f"🔸 و {fa_num(data['count'] - shown)} نفر دیگه")
@@ -701,8 +701,8 @@ async def roster_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             continue
         tag = {"owner": "👑", "admin": "🛡"}.get(m.role, "🔸")
         name = esc(u.first_name or u.username or "؟")
-        temoji, _ = users.title_of(u)
-        lines.append(f"{tag} {name} {temoji} | Lv.{fa_num(u.level)} | ⚔️ {fa_num(u.wins)} برد")
+        temoji, tname = users.title_of(u)
+        lines.append(f"{tag} {temoji} {name} <b>「{tname}」</b> | لول {fa_num(u.level)} | ⚔️ {fa_num(u.wins)} برد")
     lines.append("")
     lines.append("آمار کامل تیم با «تیم پروفایل»")
     await respond(update, "\n".join(lines), kb.team_back_kb())

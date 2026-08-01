@@ -3619,7 +3619,7 @@ async def main() -> None:
           all(x in HS["gear"] for x in ["🛡 تجهیزات", "سلاح و زره فعال", "دو تب", "دست خالی",
                                         "قابلیت مخصوص", "آپگرید تجهیزات"]))
     check("هلپ لقب‌ها (بخش جدید)",
-          all(x in HS["titles"] for x in ["🏅 لقب", "Newbie", "Teriaky Lord", "لیدربرد", "تیم"]))
+          all(x in HS["titles"] for x in ["🏅 لقب", "Newbie", "Drug Lord", "لیدربرد", "تیم"]))
     check("هلپ کنده‌کاری (بخش جدید)",
           all(x in HS["mine"] for x in ["⛏ کنده‌کاری", "«تریاکی کنده کاری»", "«کنده کاری»", "60 ثانیه",
                                         "🪓 تبر", "⛏️ کلنگ", "لول 5", "«شکار کمیاب»"]))
@@ -6242,9 +6242,9 @@ async def main() -> None:
     upd_rlx = _fake_update("menu:rank", uid=1001)
     await rank_h2.rank_cb(upd_rlx, None)
     ed_rlx = next((c for c in upd_rlx.callback_query.calls if c[0] == "edit"), None)
-    check("ردیف لیدربرد بازیکن هم قالب «[Lv.XX] │ اسم 🎖️ عدد» رو داره",
+    check("ردیف لیدربرد بازیکن قالب دوخطی با لقب بولد تو「» رو داره",
           ed_rlx is not None
-          and (bool(_reon.search(r"🥇 \[Lv\.\d\d\] │ .+ 🎖️ [\d,]+", ed_rlx[1])) or "هنوز کسی" in ed_rlx[1]),
+          and (bool(_reon.search(r"🥇 .+? \[Lv\.\d\d\] │ .+\n<b>「.+」</b> 🎖️ [\d,]+", ed_rlx[1])) or "هنوز کسی" in ed_rlx[1]),
           (ed_rlx[1] if ed_rlx else "-")[:150])
     _init_src = open(os.path.join(_base_dir, "handlers", "__init__.py"), encoding="utf-8").read()
     check("ثبت دستورهای جدید تو رجیستری: تیم تغییر نام و /hideboard و /update",
@@ -8718,13 +8718,18 @@ async def main() -> None:
         battle_svc._is_night = _orig_night
 
         # 💰 مهارت غارت روی غارت ضربه (8 لول → 24% بیشتر)
+        # ابلیویون هنوز دستشه و رندوم واقعی فعاله، به قابلیت هلفایر قفلش می‌کنیم
+        # (هدف HP کامل داره پس هیچ قابلیتی فایر نمیشه و دمیج دقیقاً 50 می‌مونه، مستقل از رندوم و ساعت شب/روز)
         aw1.skill_loot = 8
         xp_att = aw1.xp
+        battle_svc.random = SimpleNamespace(
+            choice=lambda seq: "hellfire", random=random.random, uniform=random.uniform)
         _reset_hit(aw1, lo1)
         lo1.hp = battle_svc.max_hp(lo1.level)
         lo1.cash = 10000
         pre_cash = lo1.cash
         res_lt = await battle_svc.execute_hit(s, aw1, lo1)
+        battle_svc.random = _orig_rand
         exp_steal = int(int(pre_cash * config.BATTLE_STEAL_MAX_PCT
                             * min(1.0, 50 / battle_svc.max_hp(lo1.level))) * (1 + 0.03 * 8))
         check("مهارت غارت مبلغ دزدی هر ضربه رو بیشتر می‌کنه",
@@ -8871,7 +8876,7 @@ async def main() -> None:
           and users.title_of(SimpleNamespace(level=3)) == ("🥉", "Rookie")
           and users.title_of(SimpleNamespace(level=4)) == ("🔹", "Member")
           and users.title_of(SimpleNamespace(level=19)) == ("☠️", "Godfather")
-          and users.title_of(SimpleNamespace(level=20)) == ("💎", "Teriaky Lord"), str(users.title_of(SimpleNamespace(level=4))))
+          and users.title_of(SimpleNamespace(level=20)) == ("💎", "Drug Lord"), str(users.title_of(SimpleNamespace(level=4))))
     check("جدول لقب 11 ردیف و سر جاش از لول 1 تا 20",
           len(config.TITLES) == 11 and config.TITLES[0][0] == 1 and config.TITLES[-1][0] == 20
           and all(config.TITLES[i][0] < config.TITLES[i + 1][0] for i in range(10)))
@@ -8883,7 +8888,7 @@ async def main() -> None:
         cap_t = await profile_h2._profile_caption(s, pft)
         await s.commit()
     check("پروفایل خط «🏅 ایموجی لقب» داره",
-          "🏅 💎 Teriaky Lord" in cap_t and "<b>🛡 تجهیزات</b>" in cap_t and "<b>💰 دارایی</b>" in cap_t,
+          "🏅 💎 Drug Lord" in cap_t and "<b>🛡 تجهیزات</b>" in cap_t and "<b>💰 دارایی</b>" in cap_t,
           cap_t.splitlines()[4] if cap_t else "-")
 
     # ── تجهیزات: انتخاب سلاح و زره فعال ──
@@ -9398,6 +9403,102 @@ async def main() -> None:
               ok_p1 and ok_p2 and sec8 < sec0 and sec8 <= int(sec0 / 1.16) + 1,
               f"{sec0:.0f} → {sec8:.0f}")
         await s.commit()
+
+    # ═══ این دور: لقب تو لیدربرد (دوخطی) و لیست اعضای تیم (بولد「») + لقب آخر 💎 Drug Lord ═══
+
+    check("لقب لول 20 اسمش Drug Lord-ه",
+          users.title_of(SimpleNamespace(level=20)) == ("💎", "Drug Lord"),
+          str(users.title_of(SimpleNamespace(level=20))))
+
+    # ── لیدربرد بازیکنان: هر ردیف دوخطی، ایموجی لقب + اسم لقب بولد تو「» ──
+    async with session_scope() as s:
+        lb1, _ = await users.get_or_create(s, tg(9951, "lb_a", "امیررضا تست"))
+        lb1.level, lb1.medals = 19, 90000000
+        lb2, _ = await users.get_or_create(s, tg(9952, "lb_b", "سینا تست"))
+        lb2.level, lb2.medals = 5, 89000000
+        lb3, _ = await users.get_or_create(s, tg(9953, "lb_c", "تازه تست"))
+        lb3.level, lb3.medals = 1, 88000000
+        await s.commit()
+    upd_lb = _fake_update("menu:rank", uid=9950)
+    await rank_h2.rank_cb(upd_lb, None, tab="all")
+    ed_lb = next((c for c in upd_lb.callback_query.calls if c[0] == "edit"), None)
+    t_lb = ed_lb[1] if ed_lb else ""
+    lns_lb = t_lb.splitlines()
+    _i1 = next((i for i, ln in enumerate(lns_lb) if "امیررضا تست" in ln), -1)
+    check("ردیف لیدربرد: نشان رتبه + ایموجی لقب + [Lv.] │ اسم",
+          _i1 >= 0 and bool(re.search(r"^\S+ ☠️ \[Lv\.19\] │ امیررضا تست$", lns_lb[_i1])),
+          lns_lb[_i1] if _i1 >= 0 else t_lb[:140])
+    check("خط دوم ردیف: اسم لقب بولد تو「» + مدال",
+          _i1 >= 0 and lns_lb[_i1 + 1] == "<b>「Godfather」</b> 🎖️ 90,000,000",
+          lns_lb[_i1 + 1] if _i1 >= 0 else "-")
+    _i2 = next((i for i, ln in enumerate(lns_lb) if "سینا تست" in ln), -1)
+    check("ردیف لول 5: ایموجی 🔹 و لقب Member",
+          _i2 >= 0 and bool(re.search(r"^\S+ 🔹 \[Lv\.05\] │ سینا تست$", lns_lb[_i2]))
+          and lns_lb[_i2 + 1] == "<b>「Member」</b> 🎖️ 89,000,000",
+          (lns_lb[_i2] + " ~ " + lns_lb[_i2 + 1]) if _i2 >= 0 else "-")
+    _i3 = next((i for i, ln in enumerate(lns_lb) if "تازه تست" in ln), -1)
+    check("حتی لول 1 هم لقب داره (🌱 Newbie)، هیچ لقب خالی نیس",
+          _i3 >= 0 and lns_lb[_i3 + 1] == "<b>「Newbie」</b> 🎖️ 88,000,000"
+          and "「」" not in t_lb,
+          (lns_lb[_i3 + 1] if _i3 >= 0 else "-"))
+
+    # ── اعضای تیم: لقب بولد تو「» کنار اسم، با ایموجی لقب ──
+    async with session_scope() as s:
+        from models import TeamMember as _TMemT
+        tow, _ = await users.get_or_create(s, tg(9960, "t_own_t", "رهبر تست"))
+        tow.level, tow.cash = 18, 100000
+        ok_tt, _ = await team_svc.create_team(s, tow, "تیم لقبی‌ها")
+        check("تیم تست لقب ساخته شد", ok_tt, _)
+        tm1t, _ = await users.get_or_create(s, tg(9961, "t_m1", "عضو پنج"))
+        tm1t.level = 5
+        tm2t, _ = await users.get_or_create(s, tg(9962, "t_m2", "عضو یکی"))
+        tm2t.level = 1
+        team_tt = await team_svc.get_team_of(s, tow.id)
+        s.add(_TMemT(team_id=team_tt.id, user_id=tm1t.id, role="member", join_medals=0))
+        s.add(_TMemT(team_id=team_tt.id, user_id=tm2t.id, role="member", join_medals=0))
+        await s.flush()
+        data_tt = await team_svc.team_stats_data(s, team_tt)
+        txt_tt = team_h._team_stats_text(data_tt)
+        await s.commit()
+    check("ردیف عضو: تگ نقش + ایموجی لقب + اسم + لقب بولد「» | لول",
+          any(ln == "👑 ☠️ رهبر تست <b>「Godfather」</b> | لول 18" for ln in txt_tt.splitlines())
+          and any(ln == "🔸 🔹 عضو پنج <b>「Member」</b> | لول 5" for ln in txt_tt.splitlines())
+          and any(ln == "🔸 🌱 عضو یکی <b>「Newbie」</b> | لول 1" for ln in txt_tt.splitlines()),
+          " | ".join(ln for ln in txt_tt.splitlines() if "「" in ln)[:210])
+    check("قالب قدیمی «| Lv.» دیگه تو اعضا نیس",
+          "| Lv." not in txt_tt, txt_tt[:120])
+
+    # بیشتر از ۱۲ عضو، صفحه فقط ۱۲ تا رو میگه و «و n نفر دیگه» آخرش میاد
+    async with session_scope() as s:
+        from models import TeamMember as _TMemT2
+        team_tt = await team_svc.get_team_of(s, (await users.get_by_tg(s, 9960)).id)
+        for j in range(14):
+            extra, _ = await users.get_or_create(s, tg(9970 + j, f"t_x{j}", f"عضو اضافه {j + 1}"))
+            extra.level = 2
+            s.add(_TMemT2(team_id=team_tt.id, user_id=extra.id, role="member", join_medals=0))
+        await s.flush()
+        data_tt2 = await team_svc.team_stats_data(s, team_tt)
+        txt_tt2 = team_h._team_stats_text(data_tt2)
+        await s.commit()
+    check("فقط ۱۲ عضو اول با لقب نشون داده میشن و بقیشون «و n نفر دیگه»",
+          txt_tt2.count("<b>「") == 12 and "🔸 و 5 نفر دیگه" in txt_tt2,
+          f"{txt_tt2.count('<b>「')} | " + next((ln for ln in txt_tt2.splitlines() if "نفر دیگه" in ln), "-"))
+
+    # ── تیم عضویت هم فرمت لقب‌دار داره ──
+    upd_ros = _text_update("تیم عضویت", uid=9960, uname="t_own_t", fname="رهبر تست")
+    await team_h.roster_text(upd_ros, None)
+    txt_ros = next((c[1] for c in upd_ros.message.calls if "اعضای تیم" in c[1]), "")
+    check("تیم عضویت: ردیف با لقب بولد + لول + برد",
+          "👑 ☠️ رهبر تست <b>「Godfather」</b> | لول 18 | ⚔️ 0 برد" in txt_ros,
+          " | ".join(ln for ln in txt_ros.splitlines() if "「" in ln)[:120])
+
+    # ── /update خط لقب تو گزارشش داره ──
+    upd_ut = _text_update("/update", uid=1001, uname="adm", fname="ادمین")
+    await admin_h.update_cmd(upd_ut, None)
+    rep_ut = next((c[1] for c in upd_ut.message.calls if "به‌روز" in c[1]), "")
+    check("گزارش /update خط لقب‌ها رو هم داره",
+          "🏅 لقب" in rep_ut and "Drug Lord" in rep_ut,
+          next((ln for ln in rep_ut.splitlines() if "🏅" in ln), "-"))
 
     # ── تمیزکاری ته تست‌ها ──
     fj_svc._MEMBER_CACHE.clear()

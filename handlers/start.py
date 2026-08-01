@@ -209,7 +209,7 @@ HELP_SECTIONS: dict[str, str] = {
         "کنار اسمت تو پروفایل و لیدربرد و لیست اعضای تیم دیده میشه\n\n"
         "🌱 Newbie از لول 1، 🥉 Rookie از 2، 🔹 Member از 4، 🚬 Dealer از 6\n"
         "🔫 Veteran از 8، 🦅 Captain از 10، ⭐️ Elite از 12، 👑 Boss از 14\n"
-        "💀 Kingpin از 16، ☠️ Godfather از 18 و 💎 Teriaky Lord روی لول 20\n\n"
+        "💀 Kingpin از 16، ☠️ Godfather از 18 و 💎 Drug Lord روی لول 20\n\n"
         "هرچی بالاتر بری لقب‌ت ترسناک‌تر میشه 💪"
     ),
     "shop": (

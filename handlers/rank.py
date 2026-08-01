@@ -45,8 +45,9 @@ async def rank_cb(update: Update, context: ContextTypes.DEFAULT_TYPE, tab: str |
             badge = _rank_badge(i)
             name = esc(users.display_name(u))
             me_mark = " 👈 تو" if u.id == me.id else ""
-            temoji, _ = users.title_of(u)
-            lines.append(f"{badge} [Lv.{u.level:02d}] │ {name} {temoji} 🎖️ {fa_num(users.medal_value(u, tab))}{me_mark}")
+            temoji, tname = users.title_of(u)
+            lines.append(f"{badge} {temoji} [Lv.{u.level:02d}] │ {name}{me_mark}")
+            lines.append(f"<b>「{tname}」</b> 🎖️ {fa_num(users.medal_value(u, tab))}")
 
         if not lines:
             lines.append("هنوز کسی مدالی نگرفته 🤷")
