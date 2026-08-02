@@ -79,6 +79,7 @@ class User(Base):
 
     # آخرین حمله پی‌وی که خودت زدی — کولدان حمله پی‌وی روی این حساب میشه
     pv_attack_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_spy_target_id: Mapped[int | None] = mapped_column(Integer, nullable=True)  # جاسوسی دوباره همون طرف رایگانه
 
     # نبرد HP گروهی — جان دائمی بین نبردها میمونه | NULL یعنی هنوز مقداردهی نشده (فول حساب میشه)
     hp: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -387,6 +388,47 @@ class SeedSale(Base):
     seed_key: Mapped[str] = mapped_column(String(32), index=True)
     qty: Mapped[int] = mapped_column(Integer, default=1)
     at: Mapped[datetime] = mapped_column(DateTime, default=now_utc, index=True)
+
+
+class ProductStock(Base):
+    """
+    انبار محصول کاربر، هر برداشت یه واحد محصول میاد اینجا
+    value = جمع ارزش فروشی که موقع برداشت قفل شده (کیفیت/لول/آب‌وهوا/بازار همان لحظه)
+    فروش جزئی به‌صورت تناسبی از value کم می‌کنه تا کیفیت میانگین حفظ بشه
+    """
+    __tablename__ = "product_stock"
+    __table_args__ = (UniqueConstraint("user_id", "crop", name="uq_user_product"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    crop: Mapped[str] = mapped_column(String(32))
+    qty: Mapped[int] = mapped_column(Integer, default=0)
+    value: Mapped[int] = mapped_column(Integer, default=0)
+
+    user: Mapped[User] = relationship()
+
+
+class Shipment(Base):
+    """
+    محموله‌های در راه، بعد از زمان ارسال یکی از سه حالت داره:
+    clean سالم رسید | police پلیس بخشی رو توقیف کرد و ۷۰% پرداخت شد | delayed راننده مسیر رو عوض کرد (یه بار تأخیر)
+    hops = ۰ یعنی هنوز تغییر مسیر نخورده، ۱ یعنی یه بار مسیر عوض شده و دفعه بعد سالم میرسه
+    """
+    __tablename__ = "shipments"
+    __table_args__ = (Index("ix_shipments_deliver_at", "deliver_at"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    crop: Mapped[str] = mapped_column(String(32))
+    qty: Mapped[int] = mapped_column(Integer, default=0)
+    value: Mapped[int] = mapped_column(Integer, default=0)   # ارزش محموله موقع ارسال
+    pay: Mapped[int] = mapped_column(Integer, default=0)     # مبلغی که قرار است موقع رسیدن پرداخت بشه
+    outcome: Mapped[str] = mapped_column(String(10), default="clean")  # clean | police | delayed
+    hops: Mapped[int] = mapped_column(Integer, default=0)
+    deliver_at: Mapped[datetime] = mapped_column(DateTime)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
+
+    user: Mapped[User] = relationship()
 
 
 class MessageOwner(Base):

@@ -301,7 +301,7 @@ async def update_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             cap = team_svc.team_capacity(t)
             if n > cap:
                 over.append((t.name, n, cap))
-        # لقب‌ها ذخیره نمیشن و زنده از روی لول حساب میشن، با ریلود کانفیگ اسم جدید 💎 Drug Lord روی همه افتاده
+        # لقب‌ها ذخیره نمیشن و زنده از روی لول حساب میشن، با ریلود کانفیگ اسم جدید 💎 Teriaky Lord روی همه افتاده
         titled_n = (await s.execute(sa_select(sa_func.count(_User.id)))).scalar() or 0
         await s.commit()
 
@@ -339,7 +339,7 @@ async def update_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         )
     else:
         lines.append("✅ هیچ تیمی سرریز ظرفیت نیس")
-    lines.append(f"🏅 لقب {fa_num(titled_n)} بازیکن به‌روزه (خودکار از روی لول، لول 20: 💎 Drug Lord)")
+    lines.append(f"🏅 لقب {fa_num(titled_n)} بازیکن به‌روزه (خودکار از روی لول، لول 20: 💎 Teriaky Lord)")
     lines.append("🧹 کش تنظیمات گیت و عضویت کاربرا ریست شد")
     lines.append("🌦 آب‌وهوا دست‌نخورده موند، سر مرزهای ساعت ایران عوض میشه")
     await update.message.reply_html("\n".join(lines))

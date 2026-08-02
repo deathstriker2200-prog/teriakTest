@@ -59,7 +59,8 @@ async def _target_view(s, user: User, victim: User) -> tuple[str, object]:
         "🕵 با جاسوسی جیب و قدرت دفاع و شانس بردت لو میره\n"
         "می‌زنیش یا یه هدف دیگه می‌خوای؟"
     )
-    return text, kb.pv_target_kb(victim.id, pvattack.reroll_cost(user.level), pvattack.spy_cost(user.level))
+    spy_c = 0 if pvattack.spy_is_free(user, victim) else pvattack.spy_cost(user.level)
+    return text, kb.pv_target_kb(victim.id, pvattack.reroll_cost(user.level), spy_c)
 
 
 async def target_go_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -123,12 +124,15 @@ async def target_spy_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         if cur is None:
             await s.commit()
             return await respond(update, NO_TARGET_TEXT, kb.pv_attack_kb())
+        free = pvattack.spy_is_free(user, cur)
         cost = pvattack.spy_cost(user.level)
-        if user.cash < cost:
+        if not free and user.cash < cost:
             text, markup = await _target_view(s, user, cur)
             await s.commit()
             return await respond(update, text, markup, alert="💸 پولت برای جاسوسی کمه")
-        user.cash -= cost
+        if not free:
+            user.cash -= cost
+        user.last_spy_target_id = cur.id
         a_atk, _ = await pvattack.powers(s, user)
         _, t_dfn = await pvattack.powers(s, cur)
         pct = round(pvattack.win_chance(a_atk, t_dfn) * 100)
@@ -142,6 +146,8 @@ async def target_spy_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         f"🛡 قدرت دفاع {fa_num(t_dfn)}\n"
         f"🎲 شانس بردت {fa_num(pct)} درصد"
     )
+    if free:
+        alert += "\n🔁 همون طرفی که جاسوش بودی، این یکی رایگان بود"
     await respond(update, text, markup, alert=alert)
 
 

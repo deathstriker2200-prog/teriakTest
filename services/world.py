@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 import config
 from models import GameMeta, GroupActivity, GroupPlayer, Plot, SeedSale, SeedStock, User
+from services import economy
 from services.farming import get_stock, add_seed_stock
 from services.users import add_xp
 from utils import esc, fa_dur, fa_num, money, now_iran, now_utc
@@ -503,11 +504,20 @@ async def do_search(session: AsyncSession, user: User, luck: float = 1.0) -> dic
     if left:
         return {"status": "cooldown", "left": left}
 
+    # استخر بذرها با گیت لول فیلتر میشه (درخواست کارفرما):
+    # کوکائین لول 3+ | جهنم/ابلیس لول 5+ | جهش‌یافته لول 8+، نتیجه با استخر خالی وزنش صفر میشه
+    pools: dict[str, list[str]] = {}
+    for o in config.SEARCH_OUTCOMES:
+        if "pool" in o:
+            pools[o["key"]] = [k for k in o["pool"] if economy.seed_drop_allowed(k, user.level)]
+
     # وزن‌ها با اثر شانس
     weights = []
     for o in config.SEARCH_OUTCOMES:
         w = o["chance"]
-        if o["key"] == "thief" and luck > 1:
+        if "pool" in o and not pools[o["key"]]:
+            w = 0.0  # لول برای هیچ بذر این نتیجه کمه، اصلاً نمیفته
+        elif o["key"] == "thief" and luck > 1:
             w /= luck
         elif o["key"] != "thief" and luck > 1:
             w *= luck
@@ -527,7 +537,7 @@ async def do_search(session: AsyncSession, user: User, luck: float = 1.0) -> dic
         return {"status": "thief", "lost": lost, "outcome": outcome}
 
     # بذرها
-    seed_key = random.choice(outcome["pool"])
+    seed_key = random.choice(pools[outcome["key"]])
     await add_seed_stock(session, user.id, seed_key, 1)
     return {"status": outcome["key"], "seed": seed_key, "outcome": outcome}
 
@@ -679,13 +689,9 @@ def police_report_text(rec: dict) -> str:
 
 
 def search_cooldown_text(left_seconds: float) -> str:
-    """متن کولدان جستجو، قالب درخواستی کارفرما (جمله تبلیغاتی شروع بازی هم آخرشه)"""
+    """متن کولدان جستجو، فقط همون خط کولدان (تبلیغ ته پیام به درخواست کارفرما حذف شد)"""
     return (
-        f"⏳ هر {fa_num(config.SEARCH_COOLDOWN_MINUTES)} دقیقه یک بار میتونی جستجو بزنی، {fa_dur(left_seconds)} دیگه برگرد\n\n"
-        "🔥 تریاکی | یه محله‌ست که تو باید پادشاهش بشی\n\n"
-        "زمین بخر، بذر بکار، کنده‌کاری کن، سلاح بگیر و به رقیبات حمله کن\n\n"
-        "با دوستات تیم بزن و تو رقابت‌های گروهی شرکت کن\n\n"
-        "بزن Start و رایگان شروع کن 🚀"
+        f"⏳ هر {fa_num(config.SEARCH_COOLDOWN_MINUTES)} دقیقه یک بار میتونی جستجو بزنی، {fa_dur(left_seconds)} دیگه برگرد"
     )
 
 

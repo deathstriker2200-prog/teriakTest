@@ -2,7 +2,7 @@
 حمله پی‌وی کلاسیک ⚔️، سیستم قدیمی بدون HP
 
 قدرت حمله مهاجم با دفاع حریف مقایسه میشه و شانس برد درصدی درمیاد
-هدف‌ها اول حوالی لول خودتن (±۴ لول)، هدف نبود فالبک: اول بالاترها بعد پایین‌ترها
+هدف‌ها اول حوالی لول خودتن (±۲ لول)، هر مرحله خالی بود یه لول بازتر تا ±۱۰، بعدش فالبک: اول بالاترها بعد پایین‌ترها
 بعد هر حمله قربانی ۶ ساعت مصونیت می‌گیره
 و از لیست حمله‌های پی‌وی خارج میشه
 ماژولاره: همه ضرایب توی config بخش «حمله پی‌وی کلاسیک» قابل تغییره
@@ -52,6 +52,11 @@ def reroll_cost(level: int) -> int:
     return int(lo + (hi - lo) * (lv - 1) / span)
 
 
+def spy_is_free(user: User, target: User) -> bool:
+    """جاسوسی دوباره همون طرف رایگانه، تا هدف جاسوسیش عوض شه"""
+    return user.last_spy_target_id is not None and user.last_spy_target_id == target.id
+
+
 def spy_cost(level: int) -> int:
     """هزینه دکمه جاسوسی، خطی با لول جست‌وجوگر بین حداقل و حداکثر کانفیگ"""
     lo, hi = config.PV_SPY_MIN_COST, config.PV_SPY_MAX_COST
@@ -84,7 +89,6 @@ async def pick_random_target(session: AsyncSession, user: User, exclude_id: int 
     exclude_id آیدی هدف فعلی پیش‌نمایشه که دکمه «هدف دیگه» باید ردش کنه
     هدفی نبود None برمی‌گرده
     """
-    rng = config.PV_ATTACK_LEVEL_RANGE
     base = [
         User.id != user.id,
         (User.shield_until.is_(None)) | (User.shield_until <= now_utc()),
@@ -92,11 +96,12 @@ async def pick_random_target(session: AsyncSession, user: User, exclude_id: int 
     ]
     if exclude_id:
         base.append(User.id != exclude_id)
-    # اول رنج ±۴ لول
-    q = select(User).where(*base, User.level >= user.level - rng, User.level <= user.level + rng)         .order_by(func.random()).limit(1)
-    t = (await session.execute(q)).scalar_one_or_none()
-    if t is not None:
-        return t
+    # اول نزدیک‌ترین بازه لول، هر مرحله که خالی بود یه لول بازتر میشه تا رنج مکس
+    for rng in range(config.PV_ATTACK_LEVEL_RANGE, config.PV_ATTACK_MAX_RANGE + 1):
+        q = select(User).where(*base, User.level >= user.level - rng, User.level <= user.level + rng)             .order_by(func.random()).limit(1)
+        t = (await session.execute(q)).scalar_one_or_none()
+        if t is not None:
+            return t
     # فالبک: هرکی بالاتره
     q = select(User).where(*base, User.level > user.level).order_by(func.random()).limit(1)
     t = (await session.execute(q)).scalar_one_or_none()

@@ -47,6 +47,7 @@ _NEW_COLUMNS = {
         ("last_seen_at", "DATETIME"),
         ("shield_until", "DATETIME"),
         ("pv_attack_at", "DATETIME"),
+        ("last_spy_target_id", "INTEGER"),
         ("dq_date", "VARCHAR(10)"),
         ("dq_data", "VARCHAR(1024)"),
         ("hp", "INTEGER"),

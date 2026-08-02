@@ -196,6 +196,7 @@ HELP_MENU = [
     ("dogs",      "🐕 سگ‌ها"),
     ("company",   "🏭 شرکت"),
     ("shelter",   "🏚 انبار"),
+    ("smuggle",   "🚚 محموله و کاروان"),
     ("team",      "👥 تیم"),
     ("resources", "🎒 منابع"),
     ("shop",      "🛒 فروشگاه"),
@@ -321,6 +322,8 @@ def shop_sections_kb() -> InlineKeyboardMarkup:
         [_btn("🌱 بذرها", "shop:sec:seed", PRIMARY),
          _btn("🐕 سگ‌ها", "shop:sec:dog", PRIMARY)],
         [_btn("🍖 غذای سگ", "shop:sec:food", PRIMARY)],
+        [_btn("📦 ارسال محموله", "shelter:cat:prod", PRIMARY),
+         _btn("🚚 کاروان قاچاق", "smc:page", PRIMARY)],
         [_btn("🏠 منوی اصلی", "menu:home", PRIMARY)],
     ])
 
@@ -630,10 +633,11 @@ def pv_result_kb() -> InlineKeyboardMarkup:
 
 
 def pv_target_kb(target_id: int, reroll_cost: int, spy_cost: int) -> InlineKeyboardMarkup:
-    """پیش‌نمایش هدف پی‌وی: حمله | جاسوسی هزینه‌دار | هدف دیگه پولی | بازگشت"""
+    """پیش‌نمایش هدف پی‌وی: حمله | جاسوسی (دوباره همون طرف رایگانه) | هدف دیگه پولی | بازگشت"""
+    spy_label = "🕵 جاسوسی | رایگان 🔁" if spy_cost <= 0 else f"🕵 جاسوسی | 🪙 {money_tp(spy_cost)}"
     return InlineKeyboardMarkup([
         [_btn("⚔️ حمله", f"patt:hit:{target_id}", DANGER)],
-        [_btn(f"🕵 جاسوسی | 🪙 {money_tp(spy_cost)}", f"patt:spy:{target_id}", PRIMARY)],
+        [_btn(spy_label, f"patt:spy:{target_id}", PRIMARY)],
         [_btn(f"🎯 هدف دیگه | 🪙 {money_tp(reroll_cost)}", f"patt:next:{target_id}", PRIMARY)],
         [_btn("🔙 بازگشت", "patt:back", PRIMARY)],
     ])
@@ -915,9 +919,17 @@ def company_confirm_kb(action: str, key: str) -> InlineKeyboardMarkup:
     ]])
 
 
-def shelter_kb(user: User) -> InlineKeyboardMarkup:
+def shelter_kb(user: User, caravan_on: bool = False) -> InlineKeyboardMarkup:
+    """کیبورد انبار با دسته‌بندی‌ها: محصولات | منابع | آیتم‌ها | فرمول‌ها + کاروان قاچاق"""
     from services.world import shelter_price, shelter_upgrade_min_level
-    rows: list[list[InlineKeyboardButton]] = []
+    rows: list[list[InlineKeyboardButton]] = [
+        [_btn("🌾 محصولات", "shelter:cat:prod", PRIMARY),
+         _btn("🧱 منابع", "shelter:cat:res", PRIMARY)],
+        [_btn("📦 آیتم‌ها", "shelter:cat:item", PRIMARY),
+         _btn("📜 فرمول‌ها", "shelter:cat:form", PRIMARY)],
+        [_btn("📦 ارسال محموله", "shelter:cat:prod", PRIMARY)],
+        [_btn("🚚 کاروان قاچاق" + (" 🟢 اینجاست" if caravan_on else ""), "smc:page", PRIMARY)],
+    ]
     if user.shelter_level < config.SHELTER_MAX_LEVEL:
         price = shelter_price(user.shelter_level + 1)
         req = shelter_upgrade_min_level(user.shelter_level + 1)
@@ -936,6 +948,84 @@ def shelter_kb(user: User) -> InlineKeyboardMarkup:
     rows.append([_btn("💰 فروش منابع", "shelter:sell", PRIMARY)])
     rows.append([_btn("🏠 منوی اصلی", "menu:home", PRIMARY)])
     return InlineKeyboardMarkup(rows)
+
+
+def shelter_back_kb() -> InlineKeyboardMarkup:
+    """ته صفحه‌های دسته‌بندی انبار"""
+    return InlineKeyboardMarkup([
+        [_btn("🎒 انبار", "menu:shelter", PRIMARY)],
+        [_btn("🏠 منوی اصلی", "menu:home", PRIMARY)],
+    ])
+
+
+def shelter_res_kb() -> InlineKeyboardMarkup:
+    """صفحه 🧱 منابع انبار، فروش منابع + برگشت"""
+    return InlineKeyboardMarkup([
+        [_btn("💰 فروش منابع", "shelter:sell", PRIMARY)],
+        [_btn("🎒 انبار", "menu:shelter", PRIMARY)],
+        [_btn("🏠 منوی اصلی", "menu:home", PRIMARY)],
+    ])
+
+
+def products_kb(products: dict) -> InlineKeyboardMarkup:
+    """صفحه 🌾 محصولات: برای هر محصول یه دکمه ارسال محموله"""
+    rows: list[list[InlineKeyboardButton]] = []
+    for key, sd in config.SEEDS.items():
+        row = products.get(key)
+        if not row or row.qty <= 0:
+            continue
+        rows.append([_btn(
+            f"📦 ارسال {sd.get('emoji', '🌱')} {sd['name']} ×{fa_num(row.qty)}",
+            f"sm:pick:{key}", PRIMARY,
+        )])
+    rows.append([_btn("🎒 انبار", "menu:shelter", PRIMARY)])
+    rows.append([_btn("🏠 منوی اصلی", "menu:home", PRIMARY)])
+    return InlineKeyboardMarkup(rows)
+
+
+def ship_qty_kb(crop: str, have: int) -> InlineKeyboardMarkup:
+    """انتخاب مقدار ارسال محموله: دکمه‌های ۱۰/۲۵/۵۰ تا جایی که موجودی می‌رسه + همه"""
+    rows: list[list[InlineKeyboardButton]] = []
+    row: list[InlineKeyboardButton] = []
+    for n in config.SHIPMENT_QTY_CHOICES:
+        if have >= n:
+            row.append(_btn(fa_num(n), f"sm:qty:{crop}:{n}", PRIMARY))
+    row.append(_btn("همه", f"sm:qty:{crop}:all", PRIMARY))
+    rows.append(row)
+    rows.append([_btn("🔙 محصولات", "shelter:cat:prod", PRIMARY)])
+    return InlineKeyboardMarkup(rows)
+
+
+def ship_confirm_kb(crop: str, qty: int) -> InlineKeyboardMarkup:
+    """تایید نهایی ارسال محموله"""
+    return InlineKeyboardMarkup([
+        [_btn("✅ ارسال محموله", f"sm:go:{crop}:{qty}", SUCCESS)],
+        [_btn("❌ لغو", "shelter:cat:prod", DANGER)],
+    ])
+
+
+def smcaravan_kb(have: int) -> InlineKeyboardMarkup:
+    """دکمه‌های مقدار فروش به کاروان قاچاق"""
+    rows: list[list[InlineKeyboardButton]] = []
+    row: list[InlineKeyboardButton] = []
+    for n in config.SHIPMENT_QTY_CHOICES:
+        if have >= n:
+            row.append(_btn(fa_num(n), f"smc:qty:{n}", PRIMARY))
+    if have > 0:
+        row.append(_btn("همه", "smc:qty:all", PRIMARY))
+    if row:
+        rows.append(row)
+    rows.append([_btn("🎒 انبار", "menu:shelter", PRIMARY)])
+    rows.append([_btn("🏠 منوی اصلی", "menu:home", PRIMARY)])
+    return InlineKeyboardMarkup(rows)
+
+
+def smcaravan_confirm_kb(qty: int) -> InlineKeyboardMarkup:
+    """تایید نهایی فروش به کاروان قاچاق"""
+    return InlineKeyboardMarkup([
+        [_btn("✅ فروش", f"smc:go:{qty}", SUCCESS)],
+        [_btn("❌ لغو", "smc:page", DANGER)],
+    ])
 
 
 def sell_menu_kb() -> InlineKeyboardMarkup:

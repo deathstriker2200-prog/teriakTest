@@ -159,6 +159,38 @@ async def caravan_refresh_job(context: ContextTypes.DEFAULT_TYPE) -> None:
             logger.debug("رفرش برد کاروان %s خطا: %s", chat_id, e)
 
 
+# ───────── محموله‌های در راه 🚚 ─────────
+
+async def shipment_job(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """محموله‌های رسیده تسویه میشن و نتیجه (سالم | توقیف | تأخیر) پی‌وی کاربر اطلاع میره"""
+    from services import smuggle as smg
+    async with session_scope() as s:
+        events = await smg.process_due_shipments(s)
+        await s.commit()
+    for ev in events:
+        await _send(context, ev["tg"], ev["text"])
+
+
+# ───────── کاروان قاچاق 🚚 ─────────
+
+async def smuggler_job(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """اسپون/انقضای کاروان قاچاق، پیام اعلان کاروان رفتنی به «جمع کرد رفت» ادیت میشه"""
+    from handlers import smuggle as smuggle_h
+    from services import smuggle as smg
+    async with session_scope() as s:
+        spawned, expired = await smg.caravan_tick(s)
+        await s.commit()
+    if expired:
+        text = smg.caravan_gone_text(expired)
+        for chat_id, mid in expired.get("msgs", []):
+            try:
+                await context.bot.edit_message_text(chat_id=chat_id, message_id=mid, text=text, parse_mode="HTML")
+            except Exception:
+                pass  # پیام پاک شده یا قدیمیه، مهم نیس
+    if spawned:
+        await smuggle_h.announce_caravan(context, spawned)
+
+
 # ───────── جاروی ورودی‌های معلق عددی ⏳ ─────────
 
 _NUMERIC_PENDING = ("bankdep", "bankwd", "resbuy", "trf_to", "trf_amt")
@@ -251,6 +283,8 @@ def register_jobs(app) -> None:
     jq.run_repeating(caravan_job, interval=config.CARAVAN_TICK_SECONDS, first=30, name="caravan")
     jq.run_repeating(caravan_refresh_job, interval=config.CARAVAN_BOARD_REFRESH_SECONDS, first=60, name="caravan-board")
     jq.run_repeating(pending_sweep_job, interval=config.PENDING_SWEEP_SECONDS, first=45, name="pending-sweep")
+    jq.run_repeating(shipment_job, interval=config.SHIPMENT_JOB_SECONDS, first=20, name="shipment")
+    jq.run_repeating(smuggler_job, interval=config.SMUGGLER_TICK_SECONDS, first=40, name="smuggler")
     if config.POLICE_ENABLED:
         jq.run_repeating(police_job, interval=config.POLICE_ROLL_SECONDS, first=120, name="police")
     jq.run_repeating(energy_pulse_job, interval=config.ENERGY_PULSE_SECONDS, first=config.ENERGY_PULSE_SECONDS, name="energy-pulse")
@@ -263,6 +297,6 @@ def register_jobs(app) -> None:
         name="stats-autoedit",
     )
     logger.info(
-        "جاب‌های زمان‌دار فعال شدن: آب‌وهوا | بازار | کاروان | برد کاروان | جاروی ورودی معلق | نبض انرژی | پاکسازی غیرعضو | ادیت ساعتی آمار%s",
+        "جاب‌های زمان‌دار فعال شدن: آب‌وهوا | بازار | کاروان | برد کاروان | جاروی ورودی معلق | محموله | کاروان قاچاق | نبض انرژی | پاکسازی غیرعضو | ادیت ساعتی آمار%s",
         " | پلیس" if config.POLICE_ENABLED else "",
     )

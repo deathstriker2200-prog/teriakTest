@@ -65,6 +65,13 @@ def plot_quality_bonus(plot_level: int) -> float:
     return config.PLOT_Q5_PER_LEVEL * max(0, plot_level - 1)
 
 
+def crop_xp(seed_key: str, stars: int) -> int:
+    """تجربه برداشت هر ساقه: از رنج (کف، سقف) بذر بر اساس کیفیت ⭐1 تا ⭐5 درونیابی میشه"""
+    lo, hi = config.SEEDS[seed_key]["xp"]
+    stars = min(max(int(stars or 1), 1), 5)
+    return lo + round((hi - lo) * (stars - 1) / 4)
+
+
 def crop_yield(seed_key: str, plot_level: int = 1, user_level: int = 1) -> int:
     """درآمد برداشت با بونس لول کاربر | لول زمین روی قیمت اثر مستقیم نداره (فقط کیفیت و سرعت)"""
     base = config.SEEDS[seed_key]["sell"]
@@ -80,6 +87,24 @@ def crop_grow_seconds(seed_key: str, plot_level: int = 1) -> int:
 
 def is_seed_unlocked(seed_key: str, user_level: int) -> bool:
     return user_level >= config.SEEDS[seed_key]["min_level"]
+
+
+# ───────── گیت لول دراپ بذر (جستجو و کوئست، درخواست کارفرما) ─────────
+
+def seed_drop_min_level(seed_key: str) -> int:
+    """حداقل لول برای افتادن بذر از جستجو/کوئست، بقیه بذرها از لول ۱"""
+    return config.SEED_DROP_MIN_LEVEL.get(seed_key, 1)
+
+
+def seed_drop_allowed(seed_key: str, user_level: int) -> bool:
+    """این بذر با این لول می‌تونه دراپ بشه؟ (کوکائین 3+ | جهنم/ابلیس 5+ | جهش‌یافته 8+)"""
+    return user_level >= seed_drop_min_level(seed_key)
+
+
+def allowed_normal_seeds(user_level: int) -> list[str]:
+    """بذرهای غیرافسانه‌ای که با این لول اجازه دراپ دارن، به ترتیب کاتالوگ"""
+    return [k for k, v in config.SEEDS.items()
+            if not v.get("legendary") and seed_drop_allowed(k, user_level)]
 
 
 # ───────── ارتقای سلاح و زره ⬆️ ─────────

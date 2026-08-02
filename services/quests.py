@@ -70,16 +70,24 @@ def scaled_values(kind: str, level: int) -> tuple[int, int, int]:
 
 
 def _roll_reward(kind: str, level: int) -> dict:
-    """قرعه جایزه بر اساس سختی کوئست، تی‌پوینت | تجربه | بذر، لول ۱۰+ با شانس کم جهنم/ابلیس"""
+    """
+    قرعه جایزه بر اساس سختی کوئست، تی‌پوینت | تجربه | بذر
+    گیت لول درخواست کارفرما: جهنم/ابلیس لول 5+ | جهش‌یافته لول 8+ | کوکائین لول 3+ (economy.seed_drop_allowed)
+    """
+    from services import economy
     _, tp, xp = scaled_values(kind, level)
     r = random.random()
     if r < config.DAILY_QUEST_TP_WEIGHT:
         return {"type": "tp", "amount": tp}
     if r < config.DAILY_QUEST_TP_WEIGHT + config.DAILY_QUEST_XP_WEIGHT:
         return {"type": "xp", "amount": xp}
-    if level >= config.DAILY_QUEST_LEGEND_MIN_LEVEL and r < config.DAILY_QUEST_TP_WEIGHT + config.DAILY_QUEST_XP_WEIGHT + config.DAILY_QUEST_LEGEND_CHANCE:
+    cut = config.DAILY_QUEST_TP_WEIGHT + config.DAILY_QUEST_XP_WEIGHT
+    if level >= config.DAILY_QUEST_MUTANT_MIN_LEVEL and r < cut + config.DAILY_QUEST_MUTANT_CHANCE:
+        return {"type": "seed", "seed": "mutant", "amount": 1}
+    cut += config.DAILY_QUEST_MUTANT_CHANCE
+    if level >= config.DAILY_QUEST_LEGEND_MIN_LEVEL and r < cut + config.DAILY_QUEST_LEGEND_CHANCE:
         return {"type": "seed", "seed": random.choice(config.QUEST_LEGEND_SEEDS), "amount": 1}
-    seeds = [k for k, v in config.SEEDS.items() if not v.get("legendary")]
+    seeds = economy.allowed_normal_seeds(level)
     return {"type": "seed", "seed": random.choice(seeds), "amount": 1}
 
 

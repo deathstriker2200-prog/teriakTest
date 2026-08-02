@@ -11,7 +11,7 @@
 
 from telegram.ext import Application, CallbackQueryHandler, ChatMemberHandler, CommandHandler, MessageHandler, filters
 
-from handlers import admin, attack, backup, bank, battle, common, company, dogs, dquests, farm, gate, gear, mine, pending, power, profile, rank, seen, shop, skills, start, team, textcmd, world
+from handlers import admin, attack, backup, bank, battle, common, company, dogs, dquests, farm, gate, gear, mine, pending, power, profile, rank, seen, shop, skills, smuggle, start, team, textcmd, world
 
 ZWNJ = "‌"
 S = rf"[\s{ZWNJ}]"  # فاصله یا نیم‌فاصله
@@ -84,6 +84,7 @@ TEXT_HANDLERS: list[tuple[str, str, object]] = [
     ("bankwd", rf"{T}برداشت{S}+([0-9۰-۹٠-٩,٬]+)$", bank.withdraw_text),
     ("help", rf"{T}راهنما!?$|{T}آموزشات!?$", start.help_cmd),
     ("caravan_spawn", rf"{T}اسپان{S}+کاروان!?$", world.caravan_spawn_cmd),  # فقط ادمین
+    ("smuggler_spawn", rf"{T}اسپان{S}+کاروان{S}+(.+?)!?$", smuggle.admin_spawn_text),  # کاروان قاچاق، فقط ادمین
 ]
 
 
@@ -254,6 +255,13 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CallbackQueryHandler(team.team_upgrade_execute, pattern=r"^tbcf:(?:atk|def):\d+$"))
 
     # ── سیستم‌های جهان (دکمه‌ها) ──
+    app.add_handler(CallbackQueryHandler(world.shelter_cat_cb, pattern=r"^shelter:cat:\w+$"))
+    app.add_handler(CallbackQueryHandler(smuggle.ship_qty_page, pattern=r"^sm:pick:\w+$"))
+    app.add_handler(CallbackQueryHandler(smuggle.ship_confirm_page, pattern=r"^sm:qty:\w+:(?:\d+|all)$"))
+    app.add_handler(CallbackQueryHandler(smuggle.ship_execute, pattern=r"^sm:go:\w+:\d+$"))
+    app.add_handler(CallbackQueryHandler(smuggle.caravan_page, pattern=r"^smc:page$"))
+    app.add_handler(CallbackQueryHandler(smuggle.caravan_confirm_page, pattern=r"^smc:qty:(?:\d+|all)$"))
+    app.add_handler(CallbackQueryHandler(smuggle.caravan_execute, pattern=r"^smc:go:\d+$"))
     app.add_handler(CallbackQueryHandler(world.shelter_up_confirm, pattern=r"^shelter:up$"))
     app.add_handler(CallbackQueryHandler(world.shelter_up_execute, pattern=r"^cf:shelter:up$"))
     app.add_handler(CallbackQueryHandler(world.resource_sell_cb, pattern=r"^shelter:sell$"))

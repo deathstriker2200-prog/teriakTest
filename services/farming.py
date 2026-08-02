@@ -124,8 +124,9 @@ def harvest_cooldown_left(user: User) -> int:
 async def harvest_all(session: AsyncSession, user: User) -> tuple[bool, str, str | None, tuple]:
     """
     برداشت همه زمین‌های آماده
+    محصول پول نمیشه و میره تو انبار محصول، نقد کردن با محموله یا کاروان قاچاقه (services/smuggle)
     خروجی: (موفق, پیام کوتاه برای alert, متن اضافه برای نمایش توی مزرعه,
-            جفت (کوئست‌های روزانه تکمیل‌شده, تعداد مونده))
+            جفت (کوئست‌های روزانه تکمیل‌شده, تعداد مونده), یادداشت‌های لول‌آپ)
     """
     left = harvest_cooldown_left(user)
     if left:
@@ -146,6 +147,7 @@ async def harvest_all(session: AsyncSession, user: User) -> tuple[bool, str, str
     total_gain = 0
     total_xp = 0
     item_lines: list[str] = []
+    from services import smuggle as smg
     for p in ready:
         if p.crop not in config.SEEDS:
             # بذر قدیمی (از کاتالوگ حذف شده)، زمین خالی میشه بدون درآمد
@@ -159,17 +161,18 @@ async def harvest_all(session: AsyncSession, user: User) -> tuple[bool, str, str
         mkt = world_svc.market_mult(mults, p.crop)
         gain = apply_legendary_cap(p.crop, int(base * tier["mult"] * sell_mult * mkt))
         total_gain += gain
-        total_xp += config.SEEDS[p.crop]["xp"]
+        total_xp += economy.crop_xp(p.crop, tier["stars"])
+        # محصول بعد برداشت نقد نمیشه، با همون ارزش قفل‌شده میره تو انبار
+        # فروش (محموله یا کاروان قاچاق) بعداً انجام میشه و عرضه بازار موقع فروش ثبت میشه
+        await smg.add_product(session, user.id, p.crop, 1, gain)
         item_lines.append(
             f"▫️ {config.SEEDS[p.crop]['name']} {world_svc.quality_stars(tier)}، {money_tp(gain)}"
         )
-        await world_svc.record_sale(session, p.crop)  # عرضه واقعی بازار پویا
         p.status = "empty"
         p.crop = None
         p.planted_at = None
         p.ready_at = None
 
-    user.cash += total_gain
     user.last_harvest_at = now_utc()
     notes = users.add_xp(user, total_xp)
 
@@ -183,7 +186,9 @@ async def harvest_all(session: AsyncSession, user: User) -> tuple[bool, str, str
     dq = await dq_svc.track(session, user, "harvest", len(item_lines))
 
     extra = "\n".join(item_lines)
-    extra += f"\n\n💰 مجموع {money(total_gain)} خالص گیرت اومد"
+    extra += "\n\n📦 محصول رفت تو انبار (🎒 انبار ← 🌾 محصولات)"
+    extra += f"\n💰 ارزش برداشت ~{money(total_gain)}، هنوز نقد نشده"
+    extra += "\n🚚 برای نقد کردن: 📦 ارسال محموله یا فروش به کاروان قاچاق"
     if total_xp:
         extra += f"\n✨ {fa_num(total_xp)} تجربه"
     if wkey != "normal" and sell_mult != 1.0:
@@ -192,7 +197,7 @@ async def harvest_all(session: AsyncSession, user: User) -> tuple[bool, str, str
     if quest_msg:
         extra += "\n\n" + quest_msg
     # یادداشت‌های لول‌آپ جدا برمی‌گردن تا هندلر به‌صورت پیام مجزا بفرسته
-    return True, f"💰 {money(total_gain)}", extra, dq, notes
+    return True, f"🌾 {fa_num(len(item_lines))} تا برداشت کردی، رفت تو انبارت", extra, dq, notes
 
 
 # ───────── آپگرید ─────────

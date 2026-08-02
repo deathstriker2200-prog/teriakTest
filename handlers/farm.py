@@ -48,6 +48,11 @@ async def render_farm(update: Update, extra: str | None = None, alert: str | Non
         elif ready_count:
             text += f"\n📦 {fa_num(ready_count)} تا آماده برداشته"
 
+        from services import smuggle as smg
+        p_n = await smg.products_count(s, user.id)
+        if p_n:
+            text += f"\n🎒 {fa_num(p_n)} محصول تو انبارته، از 🎒 انبار بخش 🌾 محصولات بفروششون"
+
         next_price = economy.plot_price(len(plots))
         markup = kb.farm_kb(user, plots, next_price, ready_count)
         await s.commit()

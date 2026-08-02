@@ -1,0 +1,212 @@
+"""
+ارسال محموله 📦 و کاروان قاچاق 🚚
+
+جریان محموله: 🌾 محصولات ← انتخاب محصول ← مقدار (10/25/50/همه) ← کارت تایید ← ارسال
+کاروان قاچاق: هر چند ساعت خودکار میاد + اسپان دستی ادمین با «اسپان کاروان قاچاق» و «اسپان کاروان [محصول]» (با پسوند اختیاری «شانسی»)
+"""
+
+import asyncio
+import random
+
+from telegram import Update
+from telegram.ext import ContextTypes
+
+import config
+from database import session_scope
+from handlers.common import parts, respond, strip_bot_cmd
+from keyboards import keyboards as kb
+from services import smuggle as smg, users
+from utils import fa_dur, fa_num, money, normalize_fa
+
+
+# ═════════ ارسال محموله 📦 ═════════
+
+async def ship_qty_page(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """انتخاب مقدار ارسال برای یه محصول (sm:pick:<crop>)"""
+    crop = parts(update)[2]
+    sd = config.SEEDS.get(crop)
+    if not sd:
+        return await respond(update, "❌ همچین محصولی نیس")
+    async with session_scope() as s:
+        user, _ = await users.get_or_create(s, update.effective_user)
+        row = (await smg.get_products(s, user.id)).get(crop)
+        have = row.qty if row else 0
+        unit = int(row.value / row.qty) if row else 0
+        markup = kb.ship_qty_kb(crop, have)
+        await s.commit()
+    if have <= 0:
+        return await respond(update, f"📦 {sd['name']} تو انبارت نداری", markup)
+    text = (
+        f"<b>📦 ارسال محموله | {sd.get('emoji', '🌱')} {sd['name']}</b>\n\n"
+        f"📦 {fa_num(have)} تا تو انبارت داری\n"
+        f"💰 ارزش هر دونه ~{money(unit)}\n\n"
+        "چقدر بفرستیم؟"
+    )
+    await respond(update, text, markup)
+
+
+async def ship_confirm_page(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """کارت تایید ارسال محموله (sm:qty:<crop>:<n|all>)"""
+    _, _, crop, n = parts(update)
+    sd = config.SEEDS.get(crop)
+    if not sd:
+        return await respond(update, "❌ همچین محصولی نیس")
+    async with session_scope() as s:
+        user, _ = await users.get_or_create(s, update.effective_user)
+        row = (await smg.get_products(s, user.id)).get(crop)
+        have = row.qty if row else 0
+        qty = have if n == "all" else int(n)
+        ok = row is not None and 0 < qty <= have
+        value = int(row.value * qty / row.qty) if ok else 0
+        await s.commit()
+    if not ok:
+        return await respond(update, f"📦 {fa_num(qty)} تا {sd['name']} تو انبارت نداری")
+    await respond(update, smg.shipment_confirm_text(crop, qty, value), kb.ship_confirm_kb(crop, qty))
+
+
+async def ship_execute(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """ثبت ارسال محموله (sm:go:<crop>:<n>)، محصول از انبار کم میشه و محموله میفته تو راه"""
+    _, _, crop, n = parts(update)
+    qty = int(n)
+    async with session_scope() as s:
+        user, _ = await users.get_or_create(s, update.effective_user)
+        ok, alert, sh = await smg.send_shipment(s, user, crop, qty)
+        if ok:
+            from handlers import world as world_h
+            alert += f" | ⏱ {fa_dur(smg.shipment_seconds(qty))} دیگه میرسه"
+            text = await world_h._shelter_cat_text(s, user, "prod")
+            markup = kb.products_kb(await smg.get_products(s, user.id))
+        else:
+            text, markup = None, None
+        await s.commit()
+    if not ok:
+        return await respond(update, alert)
+    await respond(update, text, markup, alert=alert)
+
+
+# ═════════ کاروان قاچاق 🚚 ═════════
+
+async def caravan_page(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """صفحه کاروان قاچاق (smc:page)، فعال باشه فروش فوری داره"""
+    async with session_scope() as s:
+        user, _ = await users.get_or_create(s, update.effective_user)
+        cv = await smg.get_caravan(s)
+        have = 0
+        unit = 0
+        if cv:
+            row = (await smg.get_products(s, user.id)).get(cv["crop"])
+            have = row.qty if row else 0
+            unit = await smg.caravan_unit_value(s, user.id, cv["crop"])
+        text = smg.caravan_page_text(cv, have, unit, user.cash)
+        markup = kb.smcaravan_kb(have if cv else 0)
+        await s.commit()
+    await respond(update, text, markup)
+
+
+async def caravan_confirm_page(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """کارت تایید فروش به کاروان (smc:qty:<n|all>)"""
+    n = parts(update)[2]
+    async with session_scope() as s:
+        user, _ = await users.get_or_create(s, update.effective_user)
+        cv = await smg.get_caravan(s)
+        row = (await smg.get_products(s, user.id)).get(cv["crop"]) if cv else None
+        have = row.qty if row else 0
+        qty = have if n == "all" else int(n)
+        ok = cv is not None and row is not None and 0 < qty <= have
+        gain = round(int(row.value * qty / row.qty) * (1 + cv["bonus"] / 100)) if ok else 0
+        await s.commit()
+    if not cv:
+        return await respond(update, "🚚 کاروان جمع کرد و رفت")
+    if not ok:
+        sd = config.SEEDS[cv["crop"]]
+        return await respond(update, f"📦 {fa_num(qty)} تا {sd['name']} تو انبارت نداری")
+    await respond(update, smg.caravan_confirm_text(cv, qty, gain), kb.smcaravan_confirm_kb(qty))
+
+
+async def caravan_execute(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """فروش فوری به کاروان قاچاق (smc:go:<n>)، پول همون لحظه میره رو حساب"""
+    qty = int(parts(update)[2])
+    async with session_scope() as s:
+        user, _ = await users.get_or_create(s, update.effective_user)
+        ok, alert, gain = await smg.sell_to_caravan(s, user, qty)
+        cv = await smg.get_caravan(s)
+        have = 0
+        unit = 0
+        if cv:
+            row = (await smg.get_products(s, user.id)).get(cv["crop"])
+            have = row.qty if row else 0
+            unit = await smg.caravan_unit_value(s, user.id, cv["crop"])
+        text = smg.caravan_page_text(cv, have, unit, user.cash)
+        markup = kb.smcaravan_kb(have if cv else 0)
+        await s.commit()
+    await respond(update, text, markup, alert=f"💰 {money(gain)} گرفتی" if ok else alert)
+
+
+# ═════════ اسپان دستی کاروان قاچاق (ادمین) ═════════
+
+# اسم محصول به کلید، با و بدون فاصله نوشته میشن (normalize کار رو ساده کرده)
+_ADMIN_CROP_KEYS = {
+    "کوکائین": "cocaine", "کوکایین": "cocaine",
+    "تریاک": "teriak",
+    "ماری جوانا": "marijuana", "ماریجوانا": "marijuana",
+    "قارچ": "gharch",
+    "پیوت": "peyote",
+}
+
+
+async def admin_spawn_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    «اسپان کاروان قاچاق» کاروان تصادفی | «اسپان کاروان کوکائین» کاروان اون محصول
+    پسوند «شانسی» بونس رو تصادفی می‌کنه، بدونش بونس پیش‌فرض 45%ـه (فقط ادمین، به غریبه بی‌صدا)
+    """
+    if not update.effective_user or update.effective_user.id not in config.ADMIN_IDS:
+        return
+
+    body = normalize_fa(strip_bot_cmd(update.message.text or ""))
+    rest = body.replace("اسپان کاروان", "", 1).strip()
+    lucky = "شانسی" in rest.split()
+    crop_name = " ".join(w for w in rest.split() if w != "شانسی").strip()
+
+    if crop_name in ("", "قاچاق"):
+        crop = random.choice(config.SMUGGLER_CROPS)  # «اسپان کاروان قاچاق» همیشه کاروان تصادفی میاره
+    else:
+        crop = _ADMIN_CROP_KEYS.get(crop_name)
+        if crop is None:
+            names = " | ".join(config.SEEDS[k]["name"] for k in config.SMUGGLER_ADMIN_CROPS)
+            return await update.message.reply_html(
+                f"🤷 این محصول رو نمی‌شناسم\n\nاسپان دستی اینا قبوله:\n{names}"
+            )
+
+    bonus = random.randint(config.SMUGGLER_BONUS_MIN, config.SMUGGLER_BONUS_MAX) if lucky else config.SMUGGLER_BONUS_DEFAULT
+    async with session_scope() as s:
+        cv = await smg.spawn_caravan(s, crop=crop, bonus=bonus)
+        await s.commit()
+    if not cv:
+        return await update.message.reply_html("🚚 الان یه کاروان قاچاق فعاله، اول بذار جمع کنه بره")
+
+    await update.message.reply_html(smg.caravan_announce_text(cv))
+    await announce_caravan(context, cv)
+
+
+async def announce_caravan(context: ContextTypes.DEFAULT_TYPE, cv: dict) -> None:
+    """اعلان رسیدن کاروان به گروه‌های فعال (گروه خاموش نه)، پیام‌ها برای ادیت انقضا لیست میشن"""
+    from services import power as power_svc
+    from services import world as world_svc
+    text = smg.caravan_announce_text(cv)
+    sent: list[tuple[int, int]] = []
+    async with session_scope() as s:
+        offs = await power_svc.off_group_ids(s)
+        groups = [g for g in await world_svc.active_group_ids(s, config.SMUGGLER_GROUP_ACTIVE_HOURS) if g not in offs]
+    for gid in groups:
+        try:
+            msg = await context.bot.send_message(gid, text, parse_mode="HTML")
+            if msg:
+                sent.append((gid, msg.message_id))
+        except Exception:
+            pass
+        await asyncio.sleep(config.WEATHER_GROUP_SEND_DELAY)  # پخش یواش، تلگرام محدود نکنه
+    if sent:
+        async with session_scope() as s:
+            for gid, mid in sent:
+                await smg.note_caravan_message(s, gid, mid)
+            await s.commit()
