@@ -15,6 +15,7 @@ from keyboards import keyboards as kb
 from services import bank as bank_svc
 from services import dogs as dog_svc
 from services import resources as res_svc
+from services import smuggle as smg
 from services import teams, users
 from utils import esc, fa_num, money, money_tp, normalize_fa, parse_amount
 
@@ -183,6 +184,75 @@ async def capture(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 f"💰 جمع فاکتور: {money(total)}\n\n"
                 "معامله‌ست؟",
                 reply_markup=kb.buyres_confirm_kb(res_key, qty),
+            )
+            raise ApplicationHandlerStop()
+
+        # ── تعداد دلخواه ارسال محموله (بعد از دکمه ✏️ تعداد دلخواه تو صفحه ارسال) ──
+        if action == "smqty":
+            crop = user.pending_value or ""
+            if crop not in config.SEEDS:
+                users.set_pending(user, None)
+                await s.commit()
+                await update.message.reply_html("❌ مشکلی پیش اومد، دوباره از محصولات شروع کن")
+                raise ApplicationHandlerStop()
+            qty = parse_amount(text)
+            if qty is None or qty < 1:
+                await s.commit()
+                await update.message.reply_html(
+                    "❌ فقط یه عدد صحیح بفرست، مثلا: 12\n\n❌ اگر هم پشیمون شدی بنویس «لغو»"
+                )
+                raise ApplicationHandlerStop()
+            row = (await smg.get_products(s, user.id)).get(crop)
+            have = row.qty if row else 0
+            sd = config.SEEDS[crop]
+            if qty > have:
+                await s.commit()
+                await update.message.reply_html(
+                    f"📦 {fa_num(qty)} تا {sd['name']} تو انبارت نداری، فقط {fa_num(have)} تا داری\n\n"
+                    "❌ اگر هم پشیمون شدی بنویس «لغو»"
+                )
+                raise ApplicationHandlerStop()
+            users.set_pending(user, None)
+            value = int(row.value * qty / row.qty)
+            await s.commit()
+            await update.message.reply_html(
+                smg.shipment_confirm_text(crop, qty, value),
+                reply_markup=kb.ship_confirm_kb(crop, qty),
+            )
+            raise ApplicationHandlerStop()
+
+        # ── تعداد دلخواه فروش به کاروان قاچاق (بعد از دکمه ✏️ تعداد دلخواه) ──
+        if action == "smcqty":
+            cv = await smg.get_caravan(s)
+            if not cv:
+                users.set_pending(user, None)
+                await s.commit()
+                await update.message.reply_html("🚚 کاروان جمع کرد و رفت")
+                raise ApplicationHandlerStop()
+            qty = parse_amount(text)
+            if qty is None or qty < 1:
+                await s.commit()
+                await update.message.reply_html(
+                    "❌ فقط یه عدد صحیح بفرست، مثلا: 12\n\n❌ اگر هم پشیمون شدی بنویس «لغو»"
+                )
+                raise ApplicationHandlerStop()
+            crop = cv["crop"]
+            row = (await smg.get_products(s, user.id)).get(crop)
+            have = row.qty if row else 0
+            sd = config.SEEDS[crop]
+            if qty > have:
+                await s.commit()
+                await update.message.reply_html(
+                    f"📦 {fa_num(qty)} تا {sd['name']} تو انبارت نداری، فقط {fa_num(have)} تا داری\n\n"
+                    "❌ اگر هم پشیمون شدی بنویس «لغو»"
+                )
+                raise ApplicationHandlerStop()
+            users.set_pending(user, None)
+            gain = round(int(row.value * qty / row.qty) * (1 + cv["bonus"] / 100))
+            await s.commit()
+            await update.message.reply_html(
+                smg.caravan_confirm_text(cv, qty, gain),
+                reply_markup=kb.smcaravan_confirm_kb(qty),
             )
             raise ApplicationHandlerStop()
 

@@ -20,15 +20,31 @@ from utils import fa_dur, fa_num, money, now_utc
 
 # ═════════ انبار محصول 🌾 ═════════
 
-async def add_product(session: AsyncSession, user_id: int, crop: str, qty: int, value: int) -> None:
-    """اضافه کردن محصول به انبار، ارزش موقع برداشت روی هم جمع میشه (کامیت با صدا‌کننده‌ست)"""
+def products_cap(shelter_level: int) -> int:
+    """ظرفیت انبار برای هر محصول (مثل ظرفیت بذر و منابع)، با لول انبار بیشتر میشه"""
+    return config.PRODUCT_CAP_BASE + config.PRODUCT_CAP_PER_LEVEL * max(0, shelter_level or 0)
+
+
+async def add_product(session: AsyncSession, user_id: int, crop: str, qty: int, value: int,
+                      shelter_level: int = 0) -> tuple[int, int]:
+    """
+    اضافه کردن محصول به انبار با گیت ظرفیت هر محصول
+    ارزش موقع برداشت روی هم جمع میشه و با تعدادش تناسب داره (کامیت با صدا‌کننده‌ست)
+    خروجی: (تعداد اضافه‌شده, ارزش اضافه‌شده)، سرریز ظرفیت از بین میره و برنمی‌گرده
+    """
     q = select(ProductStock).where(ProductStock.user_id == user_id, ProductStock.crop == crop)
     row = (await session.execute(q)).scalar_one_or_none()
-    if row:
-        row.qty += qty
-        row.value += value
-    else:
-        session.add(ProductStock(user_id=user_id, crop=crop, qty=qty, value=value))
+    have = row.qty if row else 0
+    room = max(0, products_cap(shelter_level) - have)
+    added = min(qty, room)
+    added_val = int(value * added / qty) if qty and added else 0
+    if added:
+        if row:
+            row.qty += added
+            row.value += added_val
+        else:
+            session.add(ProductStock(user_id=user_id, crop=crop, qty=added, value=added_val))
+    return added, added_val
 
 
 async def get_products(session: AsyncSession, user_id: int) -> dict[str, ProductStock]:
@@ -109,8 +125,7 @@ def shipment_confirm_text(crop: str, qty: int, value: int) -> str:
         "⏱ زمان ارسال",
         fa_dur(shipment_seconds(qty)),
         "",
-        "🚔 احتمال توقیف",
-        f"{fa_num(int(config.SHIPMENT_POLICE_CHANCE * 100))}%",
+        f"🚔 احتمال توقیف توسط پلیس: {fa_num(int(config.SHIPMENT_POLICE_CHANCE * 100))}%",
         "",
         "بعد رسیدن محموله پولش رو می‌گیری",
         "یه احتمال کم هم هست راننده مسیر رو عوض کنه و محموله با تأخیر برسه",
@@ -123,7 +138,10 @@ async def send_shipment(session: AsyncSession, user: User, crop: str, qty: int) 
         return False, "❌ همچین محصولی نیس", None
     ongoing = await active_shipments(session, user.id)
     if len(ongoing) >= config.SHIPMENT_MAX_ACTIVE:
-        return False, f"🚚 حداکثر {fa_num(config.SHIPMENT_MAX_ACTIVE)} محموله هم‌زمان می‌تونی تو راه داشته باشی", None
+        return False, (
+            "🚛 فعلا کامیون آماده برای ارسال محموله نداری\n"
+            f"هر {fa_num(config.SHIPMENT_MAX_ACTIVE)} تاشون تو مسیرن، رفتن جنس تحویل بدن"
+        ), None
     value = await take_product(session, user.id, crop, qty)
     if value is None:
         sd = config.SEEDS[crop]
@@ -193,13 +211,14 @@ async def process_due_shipments(session: AsyncSession) -> list[dict]:
         elif sh.outcome == "delayed":
             text = (
                 "<b>✅ محموله با تأخیر رسید</b>\n\n"
-                f"🚛 راننده مسیر رو عوض کرده بود ولی {emoji} {name} ×{fa_num(sh.qty)} سالم رسید\n\n"
+                f"🚛 راننده مسیر رو عوض کرده بود ولی تحویل داده شد\n"
+                f"{emoji} {name} ×{fa_num(sh.qty)} تحویل داده شد\n\n"
                 f"💵 {money(sh.pay)} گرفتی"
             )
         else:
             text = (
                 "<b>✅ محموله سالم رسید</b>\n\n"
-                f"{emoji} {name} ×{fa_num(sh.qty)} تحویل شد\n\n"
+                f"{emoji} {name} ×{fa_num(sh.qty)} تحویل داده شد\n\n"
                 f"💵 {money(sh.pay)} گرفتی"
             )
         out.append({"tg": user.telegram_id, "text": text})

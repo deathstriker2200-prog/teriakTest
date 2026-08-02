@@ -108,6 +108,7 @@ class User(Base):
     first_mine_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     first_plant_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     first_harvest_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    first_shipment_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     first_plot_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     onb_done_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 

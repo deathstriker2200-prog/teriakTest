@@ -119,22 +119,33 @@ async def market_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 # ═════════ انبار 🎒 ═════════
 
 async def _shelter_text(session, user) -> str:
-    """صفحه اصلی انبار، خلاصه هر چهار دسته + وضعیت کاروان قاچاق + ارتقا"""
+    """صفحه اصلی انبار، خلاصه هر سه دسته + وضعیت کاروان قاچاق + ارتقا"""
     products = await smg.get_products(session, user.id)
-    p_qty = sum(r.qty for r in products.values())
+    p_kinds = sum(1 for r in products.values() if r.qty > 0)
     p_val = sum(r.value for r in products.values())
     stock = await farming.get_stock(session, user.id)
     seeds_n = sum(stock.values())
     cv = await smg.get_caravan(session)
+    if user.shelter_level:
+        lvl_line = f"⭐ لول انبار {fa_num(user.shelter_level)} از {fa_num(config.SHELTER_MAX_LEVEL)}"
+    else:
+        lvl_line = "⭐ انبار هنوز نداری"
+    if p_kinds:
+        prod_lines = [f"🌾 محصولات: {fa_num(p_kinds)} قلم", f"ارزش کل ~{money(p_val)}"]
+    else:
+        prod_lines = ["🌾 محصولات: خالی، اول از مزرعه برداشت کن"]
     lines = [
         "<b>🎒 انبار</b>",
         "",
-        f"⭐ لول انبار {fa_num(user.shelter_level)}" + (f" از {fa_num(config.SHELTER_MAX_LEVEL)}" if user.shelter_level else "، هنوز نداری"),
+        lvl_line,
         "",
-        f"🌾 محصولات | {fa_num(p_qty)} قلم" + (f" | ارزش ~{money(p_val)}" if p_qty else " | خالی، اول از مزرعه برداشت کن"),
-        f"🧱 منابع | 🪵 چوب {fa_num(user.wood)} | ⛏️ آهن {fa_num(user.iron)}",
-        f"📦 آیتم‌ها | 🌱 {fa_num(seeds_n)} بذر",
-        "📜 فرمول‌ها | فعلاً خالی",
+        *prod_lines,
+        "",
+        "🧱 منابع:",
+        f"🪵 چوب: {fa_num(user.wood)}",
+        f"⛏️ آهن: {fa_num(user.iron)}",
+        "",
+        f"📦 آیتم‌ها 🌱 {fa_num(seeds_n)} بذر",
         "",
     ]
     if cv:
@@ -151,14 +162,17 @@ async def _shelter_text(session, user) -> str:
 
 
 async def _shelter_cat_text(session, user, cat: str) -> str:
-    """متن صفحه دسته‌بندی انبار: prod محصولات | res منابع | item آیتم‌ها | form فرمول‌ها"""
+    """متن صفحه دسته‌بندی انبار: prod محصولات با نوار ظرفیت | res منابع | item آیتم‌ها"""
     if cat == "prod":
         products = await smg.get_products(session, user.id)
+        cap = smg.products_cap(user.shelter_level or 0)
         lines = [
             "<b>🌾 محصولات</b>",
             "",
             "محصولای برداشت‌شده‌ات اینجان، هنوز نقد نشدن",
             "با 📦 ارسال محموله یا فروش به 🚚 کاروان قاچاق نقدشون کن",
+            "",
+            f"📦 ظرفیت انبار هر محصول {fa_num(cap)} تا (با ارتقای انبار بیشتر میشه)",
             "",
         ]
         if not products:
@@ -167,7 +181,7 @@ async def _shelter_cat_text(session, user, cat: str) -> str:
             row = products.get(key)
             if not row or row.qty <= 0:
                 continue
-            lines.append(f"{sd.get('emoji', '🌱')} {sd['name']} ×{fa_num(row.qty)} | ارزش ~{money(row.value)}")
+            lines.append(f"{sd.get('emoji', '🌱')} {sd['name']} {bar(row.qty, cap)} {fa_num(row.qty)}/{fa_num(cap)} | ارزش ~{money(row.value)}")
         ongoing = await smg.active_shipments(session, user.id)
         if ongoing:
             lines += ["", "🚚 محموله‌های در راه:"]
@@ -210,17 +224,12 @@ async def _shelter_cat_text(session, user, cat: str) -> str:
         lines += ["", "جعبه‌ها و کلیدها و بلیت‌ها هم همینجا میان"]
         return "\n".join(lines)
 
-    return "\n".join([
-        "<b>📜 فرمول‌ها</b>",
-        "",
-        "فرمول‌های معجونی که آزاد کردی اینجا میان",
-        "فعلاً فرمولی نداری، با جلو رفتن تو بازی این بخش پر میشه",
-    ])
+    return await _shelter_cat_text(session, user, "prod")  # دسته‌بندی فرمول‌ها حذف شده (درخواست کارفرما)
 
 
 async def shelter_cat_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     cat = parts(update)[2]
-    if cat not in ("prod", "res", "item", "form"):
+    if cat not in ("prod", "res", "item"):
         return await shelter_cmd(update, context)
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)

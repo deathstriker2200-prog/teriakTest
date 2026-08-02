@@ -62,6 +62,21 @@ async def first_harvest(session: AsyncSession, user: User) -> str | None:
         "<b>💰 تبریک، الان وارد اقتصاد بازی شدی</b>\n\n"
         f"💵 +{money(config.FIRST_HARVEST_BONUS)} جایزه اولین برداشت\n"
         f"🪵 +{fa_num(config.FIRST_HARVEST_WOOD)} چوب و ⛏️ +{fa_num(config.FIRST_HARVEST_IRON)} آهن برای شروع\n\n"
+        "🎯 قدم بعد: محصولت رو با محموله نقد کن\n"
+        "تو 🎒 انبار بخش 🌾 محصولات روی محصول بزن و تعدادش رو انتخاب کن و بفرستش"
+    )
+
+
+async def first_shipment(session: AsyncSession, user: User) -> str | None:
+    """اولین ارسال محموله موفق (قدم جدید زنجیره، درخواست کارفرما) | جایزه + راهنمای قدم بعدی (کامیت با صدا‌کننده‌ست)"""
+    if user.first_shipment_at is not None:
+        return None
+    from utils import money
+    user.first_shipment_at = now_utc()
+    user.cash += config.FIRST_SHIPMENT_BONUS
+    return (
+        "<b>🚚 تبریک، اولین محموله‌ات راه افتاد</b>\n\n"
+        f"💰 +{money(config.FIRST_SHIPMENT_BONUS)} جایزه اولین محموله\n\n"
         "🎯 قدم بعد: اولین سلاحت رو بخر\n"
         "از فروشگاه یه چاقو بگیر تا برای نبرد آماده بشی"
     )
@@ -135,6 +150,7 @@ MISSION_DEFS: tuple[tuple[str, str], ...] = (
     ("plot", "اولین خرید زمین"),
     ("plant", "اولین کاشت"),
     ("harvest", "اولین برداشت"),
+    ("shipment", "اولین ارسال محموله"),
     ("weapon", "خرید اولین سلاح"),
     ("attack", "اولین حمله"),
 )
@@ -157,6 +173,7 @@ async def mission_rows(session: AsyncSession, user: User) -> list[tuple[str, str
         "plot": plots_n >= 1,
         "plant": user.first_plant_at is not None,
         "harvest": user.first_harvest_at is not None,
+        "shipment": user.first_shipment_at is not None,
         "weapon": n_weapons >= 1,
         "attack": user.last_attack_at is not None or user.pv_attack_at is not None,
     }

@@ -70,6 +70,7 @@ _NEW_COLUMNS = {
         ("first_mine_at", "DATETIME"),
         ("first_plant_at", "DATETIME"),
         ("first_harvest_at", "DATETIME"),
+        ("first_shipment_at", "DATETIME"),
         ("first_plot_at", "DATETIME"),
         ("onb_done_at", "DATETIME"),
         ("lb_hidden", "INTEGER NOT NULL DEFAULT 0"),

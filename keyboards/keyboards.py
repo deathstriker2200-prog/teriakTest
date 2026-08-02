@@ -920,13 +920,12 @@ def company_confirm_kb(action: str, key: str) -> InlineKeyboardMarkup:
 
 
 def shelter_kb(user: User, caravan_on: bool = False) -> InlineKeyboardMarkup:
-    """کیبورد انبار با دسته‌بندی‌ها: محصولات | منابع | آیتم‌ها | فرمول‌ها + کاروان قاچاق"""
+    """کیبورد انبار با دسته‌بندی‌ها: محصولات | منابع | آیتم‌ها + کاروان قاچاق"""
     from services.world import shelter_price, shelter_upgrade_min_level
     rows: list[list[InlineKeyboardButton]] = [
         [_btn("🌾 محصولات", "shelter:cat:prod", PRIMARY),
          _btn("🧱 منابع", "shelter:cat:res", PRIMARY)],
-        [_btn("📦 آیتم‌ها", "shelter:cat:item", PRIMARY),
-         _btn("📜 فرمول‌ها", "shelter:cat:form", PRIMARY)],
+        [_btn("📦 آیتم‌ها", "shelter:cat:item", PRIMARY)],
         [_btn("📦 ارسال محموله", "shelter:cat:prod", PRIMARY)],
         [_btn("🚚 کاروان قاچاق" + (" 🟢 اینجاست" if caravan_on else ""), "smc:page", PRIMARY)],
     ]
@@ -992,6 +991,7 @@ def ship_qty_kb(crop: str, have: int) -> InlineKeyboardMarkup:
             row.append(_btn(fa_num(n), f"sm:qty:{crop}:{n}", PRIMARY))
     row.append(_btn("همه", f"sm:qty:{crop}:all", PRIMARY))
     rows.append(row)
+    rows.append([_btn("✏️ تعداد دلخواه", f"sm:ask:{crop}", PRIMARY)])
     rows.append([_btn("🔙 محصولات", "shelter:cat:prod", PRIMARY)])
     return InlineKeyboardMarkup(rows)
 
@@ -1015,6 +1015,8 @@ def smcaravan_kb(have: int) -> InlineKeyboardMarkup:
         row.append(_btn("همه", "smc:qty:all", PRIMARY))
     if row:
         rows.append(row)
+    if have > 0:
+        rows.append([_btn("✏️ تعداد دلخواه", "smc:ask", PRIMARY)])
     rows.append([_btn("🎒 انبار", "menu:shelter", PRIMARY)])
     rows.append([_btn("🏠 منوی اصلی", "menu:home", PRIMARY)])
     return InlineKeyboardMarkup(rows)

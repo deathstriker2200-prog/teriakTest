@@ -2,13 +2,11 @@
 نبرد HP گروهی ⚔️ + بخش درمان ❤️
 
 دستورهای حمله (با و بدون پیشوند، فقط تو گروه): حمله | شلیک | بنگ | بنگ بنگ | پیو پیو | پیو
-گیت فاز تست (BATTLE_OWNER_ONLY_TEST): فقط مالک گروه (creator) و ادمین ربات، بقیه کاملاً بی‌صدا
 هدف: ریپلای روی پیام طرف یا نوشتن @یوزرنیم / آیدی عددی جلوی دستور
 درمان: /heal یا «تی درمان»، آیتم مثل غذای سگ همون لحظه استفاده میشه
 """
 
 import math
-from time import monotonic
 
 from telegram import Update
 from telegram.constants import ChatType
@@ -35,44 +33,6 @@ NOT_FOUND_TEXT = (
     "🤷 اینو پیدا نکردم\n"
     "روی پیامش ریپلای کن یا آیدی عددی‌ش رو بفرست"
 )
-
-
-# ───────── گیت فاز تست وار گروهی 🧪 ─────────
-
-_OWNER_CACHE: dict[tuple[int, int], float] = {}
-
-
-async def war_gate_ok(update: Update, context) -> bool:
-    """
-    فاز تست وار گروهی (درخواست کارفرما): فقط مالک گروه (creator) یا ادمین ربات اجازه حمله گروهی داره
-    بقیه کاملاً بی‌صدا می‌مونن، حتی بدون پیام «اجازه نداری»
-    مالکیت با get_chat_member چک میشه و نتیجه چند دقیقه تو حافظه کش میشه که API خالی صدا نخوره
-    خاموش کردن BATTLE_OWNER_ONLY_TEST وار گروهی رو برای عموم برمی‌گردونه
-    """
-    if not config.BATTLE_OWNER_ONLY_TEST:
-        return True
-    chat = update.effective_chat
-    if chat is None or chat.type == ChatType.PRIVATE:
-        return True  # گیت روی نبرد گروهیه، حمله پی‌وی کلاسیک جدای خودشو داره
-    user = update.effective_user
-    if user is None:
-        return False
-    if user.id in config.ADMIN_IDS:
-        return True  # ادمین ربات برای تست، بدون هزینه API
-    bot = getattr(context, "bot", None) if context is not None else None
-    if bot is None or not callable(getattr(bot, "get_chat_member", None)):
-        return True  # بات بدون API واقعی (تست‌ها)، رفتار قبلی حفظ میشه
-    key = (chat.id, user.id)
-    if _OWNER_CACHE.get(key, 0.0) > monotonic():
-        return True
-    try:
-        member = await bot.get_chat_member(chat.id, user.id)
-    except Exception:
-        return False  # خطای واقعی تلگرام تو فاز تست یعنی سکوت
-    if getattr(member, "status", None) != "creator":
-        return False
-    _OWNER_CACHE[key] = monotonic() + config.BATTLE_OWNER_CACHE_SECONDS
-    return True
 
 
 def hit_text(result: dict, target_name: str) -> str:
@@ -204,9 +164,6 @@ async def attack_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         # تو پی‌وی سیستم حمله کلاسیک جداست، لیست هدف رو نشون بده
         from handlers import attack as pv_attack_h
         return await pv_attack_h.pv_panel(update)
-
-    if not await war_gate_ok(update, context):
-        return  # وار گروهی فعلاً فاز تسته، فقط مالک گروه و ادمین ربات | بقیه کاملاً بی‌صدا
 
     tg_attacker = update.effective_user
     dq_done, dq_left, uname = [], 0, ""

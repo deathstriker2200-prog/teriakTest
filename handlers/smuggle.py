@@ -13,8 +13,9 @@ from telegram.ext import ContextTypes
 
 import config
 from database import session_scope
-from handlers.common import parts, respond, strip_bot_cmd
+from handlers.common import chat_id_of, parts, respond, strip_bot_cmd
 from keyboards import keyboards as kb
+from services import onboarding as onb
 from services import smuggle as smg, users
 from utils import fa_dur, fa_num, money, normalize_fa
 
@@ -36,11 +37,13 @@ async def ship_qty_page(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         await s.commit()
     if have <= 0:
         return await respond(update, f"📦 {sd['name']} تو انبارت نداری", markup)
+    cap = smg.products_cap(user.shelter_level or 0)
     text = (
         f"<b>📦 ارسال محموله | {sd.get('emoji', '🌱')} {sd['name']}</b>\n\n"
-        f"📦 {fa_num(have)} تا تو انبارت داری\n"
+        f"📦 {fa_num(have)} تا تو انبارت داری (ظرفیت {fa_num(cap)})\n"
         f"💰 ارزش هر دونه ~{money(unit)}\n\n"
-        "چقدر بفرستیم؟"
+        "چقدر بفرستیم؟\n"
+        "یا «✏️ تعداد دلخواه» رو بزن و عددشو بنویس"
     )
     await respond(update, text, markup)
 
@@ -64,6 +67,32 @@ async def ship_confirm_page(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     await respond(update, smg.shipment_confirm_text(crop, qty, value), kb.ship_confirm_kb(crop, qty))
 
 
+async def ship_ask_qty_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """«✏️ تعداد دلخواه» تو صفحه ارسال محموله (sm:ask:<crop>)، تعداد رو با پیام می‌گیریم"""
+    crop = parts(update)[2]
+    sd = config.SEEDS.get(crop)
+    if not sd:
+        return await respond(update, "❌ همچین محصولی نیس")
+    async with session_scope() as s:
+        user, _ = await users.get_or_create(s, update.effective_user)
+        row = (await smg.get_products(s, user.id)).get(crop)
+        have = row.qty if row else 0
+        if have > 0:
+            users.set_pending(user, "smqty", crop, chat_id_of(update))
+        markup = kb.ship_qty_kb(crop, have)
+        await s.commit()
+    if have <= 0:
+        return await respond(update, f"📦 {sd['name']} تو انبارت نداری", markup)
+    await respond(
+        update,
+        "<b>✏️ تعداد دلخواه ارسال</b>\n\n"
+        f"🔢 چندتا {sd['name']} می‌فرستی؟ عددشو بنویس\n"
+        f"ولی نه بیشتر از {fa_num(have)} تا\n\n"
+        "❌ پشیمون شدی بنویس «لغو»",
+        markup,
+    )
+
+
 async def ship_execute(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """ثبت ارسال محموله (sm:go:<crop>:<n>)، محصول از انبار کم میشه و محموله میفته تو راه"""
     _, _, crop, n = parts(update)
@@ -71,17 +100,21 @@ async def ship_execute(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
         ok, alert, sh = await smg.send_shipment(s, user, crop, qty)
+        ship_note = None
         if ok:
             from handlers import world as world_h
             alert += f" | ⏱ {fa_dur(smg.shipment_seconds(qty))} دیگه میرسه"
             text = await world_h._shelter_cat_text(s, user, "prod")
             markup = kb.products_kb(await smg.get_products(s, user.id))
+            ship_note = await onb.first_shipment(s, user)
         else:
             text, markup = None, None
         await s.commit()
     if not ok:
         return await respond(update, alert)
     await respond(update, text, markup, alert=alert)
+    if ship_note:
+        await update.effective_message.reply_html(ship_note)
 
 
 # ═════════ کاروان قاچاق 🚚 ═════════
@@ -121,6 +154,32 @@ async def caravan_confirm_page(update: Update, context: ContextTypes.DEFAULT_TYP
         sd = config.SEEDS[cv["crop"]]
         return await respond(update, f"📦 {fa_num(qty)} تا {sd['name']} تو انبارت نداری")
     await respond(update, smg.caravan_confirm_text(cv, qty, gain), kb.smcaravan_confirm_kb(qty))
+
+
+async def caravan_ask_qty_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """«✏️ تعداد دلخواه» تو کاروان قاچاق (smc:ask)، تعداد رو با پیام می‌گیریم"""
+    async with session_scope() as s:
+        user, _ = await users.get_or_create(s, update.effective_user)
+        cv = await smg.get_caravan(s)
+        have = 0
+        sd = config.SEEDS[cv["crop"]] if cv else None
+        if cv:
+            row = (await smg.get_products(s, user.id)).get(cv["crop"])
+            have = row.qty if row else 0
+            if have > 0:
+                users.set_pending(user, "smcqty", cv["crop"], chat_id_of(update))
+        await s.commit()
+    if not cv:
+        return await respond(update, "🚚 کاروان جمع کرد و رفت")
+    if have <= 0:
+        return await respond(update, f"📦 {sd['name']} تو انبارت نداری، اول از مزرعه برداشت کن")
+    await respond(
+        update,
+        "<b>✏️ تعداد دلخواه فروش</b>\n\n"
+        f"🔢 چندتا {sd['name']} به کاروان می‌فروشی؟ عددشو بنویس\n"
+        f"ولی نه بیشتر از {fa_num(have)} تا\n\n"
+        "❌ پشیمون شدی بنویس «لغو»",
+    )
 
 
 async def caravan_execute(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

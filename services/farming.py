@@ -107,7 +107,7 @@ async def plant(session: AsyncSession, user: User, plot: Plot, seed_key: str) ->
 # ───────── برداشت (همه آماده‌ها، هر ۲ دقیقه یه بار) ─────────
 
 def apply_legendary_cap(seed_key: str, gain: int) -> int:
-    """سقف فروش بذرهای افسانه‌ای بعد از همه ضریب‌ها، درخواست کارفرما: عادی‌ها بالای ۶۰,۰۰۰ نرن، جهش‌یافته سقف خودشو داره"""
+    """سقف فروش بذرهای افسانه‌ای بعد از همه ضریب‌ها روی کل سود هر برداشت، درخواست کارفرما: عادی‌ها بالای ۶۰,۰۰۰ نرن، جهش‌یافته سقف خودشو داره"""
     if not config.SEEDS[seed_key].get("legendary"):
         return gain
     cap = config.SEEDS[seed_key].get("cap", config.LEGENDARY_SELL_CAP)
@@ -137,7 +137,7 @@ async def harvest_all(session: AsyncSession, user: User) -> tuple[bool, str, str
     if not ready:
         return False, "▫️ چیزی آماده برداشت نیس", None, ([], 0), []
 
-    # افکت‌های جهان: کیفیت برداشت ⭐ + آب و هوا 🌦 + بازار سیاه 📈، شدت هوا همین رول
+    # افکت‌های جهان: رول تعداد برداشت + آب و هوا 🌦 + بازار سیاه 📈، شدت هوا همین رول
     from services import world as world_svc
     wkey, wpct, _ = await world_svc.weather_state(session)
     sell_mult = world_svc.weather_sell_mult(wkey, wpct)
@@ -146,7 +146,10 @@ async def harvest_all(session: AsyncSession, user: User) -> tuple[bool, str, str
 
     total_gain = 0
     total_xp = 0
+    total_units = 0
+    n_harvests = 0
     item_lines: list[str] = []
+    lost_lines: list[str] = []
     from services import smuggle as smg
     for p in ready:
         if p.crop not in config.SEEDS:
@@ -157,17 +160,25 @@ async def harvest_all(session: AsyncSession, user: User) -> tuple[bool, str, str
             p.ready_at = None
             continue
         tier = world_svc.roll_quality(q5_bonus + economy.plot_quality_bonus(p.level))
+        # درخواست کارفرما: تعداد ثابت هر محصول از جدول، بدون رنج | رول داخلی فقط تجربه رو تعیین می‌کنه
+        qty = config.HARVEST_QTY.get(p.crop, 1)
         base = economy.crop_yield(p.crop, p.level, user.level)
         mkt = world_svc.market_mult(mults, p.crop)
-        gain = apply_legendary_cap(p.crop, int(base * tier["mult"] * sell_mult * mkt))
-        total_gain += gain
+        gain = apply_legendary_cap(p.crop, int(base * sell_mult * mkt) * qty)
         total_xp += economy.crop_xp(p.crop, tier["stars"])
-        # محصول بعد برداشت نقد نمیشه، با همون ارزش قفل‌شده میره تو انبار
+        n_harvests += 1
+        # محصول بعد برداشت نقد نمیشه، تعدادی و با ارزش قفل‌شده همون لحظه میره تو انبار
         # فروش (محموله یا کاروان قاچاق) بعداً انجام میشه و عرضه بازار موقع فروش ثبت میشه
-        await smg.add_product(session, user.id, p.crop, 1, gain)
-        item_lines.append(
-            f"▫️ {config.SEEDS[p.crop]['name']} {world_svc.quality_stars(tier)}، {money_tp(gain)}"
-        )
+        # هر محصول ظرفیت انبار خودشو داره، سرریز از بین میره و به کاربر گزارش میشه
+        added, added_val = await smg.add_product(session, user.id, p.crop, qty, gain, user.shelter_level)
+        sd = config.SEEDS[p.crop]
+        emoji = sd.get("emoji", "🌱")
+        total_gain += added_val
+        total_units += added
+        if added:
+            item_lines.append(f"▫️ {emoji} {sd['name']} ×{fa_num(added)}، {money_tp(added_val)}")
+        if added < qty:
+            lost_lines.append(f"⚠️ انبار {sd['name']} پر بود، {fa_num(qty - added)} تا از بین رفت")
         p.status = "empty"
         p.crop = None
         p.planted_at = None
@@ -181,11 +192,11 @@ async def harvest_all(session: AsyncSession, user: User) -> tuple[bool, str, str
     notes += await team_svc.add_team_xp(session, user, total_xp)
     quest_msg = await team_svc.record_harvest(session, user, len(ready))
 
-    # قلاب کوئست روزانه، به تعداد محصول برداشت‌شده
+    # قلاب کوئست روزانه، به تعداد زمین برداشت‌شده
     from services import quests as dq_svc
-    dq = await dq_svc.track(session, user, "harvest", len(item_lines))
+    dq = await dq_svc.track(session, user, "harvest", n_harvests)
 
-    extra = "\n".join(item_lines)
+    extra = "\n".join(item_lines + lost_lines)
     extra += "\n\n📦 محصول رفت تو انبار (🎒 انبار ← 🌾 محصولات)"
     extra += f"\n💰 ارزش برداشت ~{money(total_gain)}، هنوز نقد نشده"
     extra += "\n🚚 برای نقد کردن: 📦 ارسال محموله یا فروش به کاروان قاچاق"
@@ -197,7 +208,7 @@ async def harvest_all(session: AsyncSession, user: User) -> tuple[bool, str, str
     if quest_msg:
         extra += "\n\n" + quest_msg
     # یادداشت‌های لول‌آپ جدا برمی‌گردن تا هندلر به‌صورت پیام مجزا بفرسته
-    return True, f"🌾 {fa_num(len(item_lines))} تا برداشت کردی، رفت تو انبارت", extra, dq, notes
+    return True, f"🌾 {fa_num(total_units)} تا محصول برداشت کردی، رفت تو انبارت", extra, dq, notes
 
 
 # ───────── آپگرید ─────────
