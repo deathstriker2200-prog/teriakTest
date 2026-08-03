@@ -164,7 +164,6 @@ async def harvest_all(session: AsyncSession, user: User) -> tuple[bool, str, str
     from services import world as world_svc
     wkey, wpct, _ = await world_svc.weather_state(session)
     sell_mult = world_svc.weather_sell_mult(wkey, wpct)
-    q5_bonus = world_svc.weather_q5_bonus(wkey, wpct)
     mults, _ = await world_svc.market_mults(session)
 
     total_gain = 0
@@ -182,7 +181,7 @@ async def harvest_all(session: AsyncSession, user: User) -> tuple[bool, str, str
             p.planted_at = None
             p.ready_at = None
             continue
-        tier = world_svc.roll_quality(q5_bonus + economy.plot_quality_bonus(p.level))
+        tier = world_svc.roll_quality(economy.plot_quality_bonus(p.level))
         # درخواست کارفرما: تعداد شانسی از جدول لول زمین، افسانه‌ای‌ها همیشه 1 تا | رول داخلی فقط تجربه رو تعیین می‌کنه
         qty = harvest_qty_roll(p.level, p.crop)
         base = economy.crop_yield(p.crop, p.level, user.level)

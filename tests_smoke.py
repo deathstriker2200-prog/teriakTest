@@ -2096,7 +2096,7 @@ async def main() -> None:
     check("توزیع کیفیت نزدیک ۴۵% و ۱%ه", 0.41 < s1 < 0.49 and 0.004 < s5 < 0.02,
           f"1⭐:{s1:.1%} 5⭐:{s5:.2%}")
     stars_b = [world_svc.roll_quality(0.5)["stars"] for _ in range(3000)]
-    check("بونس شب مهتابی ⭐۵ رو خیلی بالا می‌بره", stars_b.count(5) / len(stars_b) > 0.4)
+    check("بونس q5 ⭐۵ رو خیلی بالا می‌بره (رول داخلی فقط تجربه)", stars_b.count(5) / len(stars_b) > 0.4)
     check("ضریب قیمت کیفیت صعودیه", [t["mult"] for t in config.QUALITY_TIERS] == sorted(t["mult"] for t in config.QUALITY_TIERS))
     check("کیفیت بالاتر قیمت رو می‌بره بالا", config.QUALITY_TIERS[-1]["mult"] == 3.0)
 
@@ -2115,7 +2115,7 @@ async def main() -> None:
         check("طوفان حمله 10%−", world_svc.weather_combat_mods("storm") == (-0.10, 0.0))
         check("مه دفاع 20%+", world_svc.weather_combat_mods("fog") == (0.0, 0.20))
         check("جشن برداشت فروش 35%+ (پایه کمتر شده که سقف ۵۰ درصدی به‌ندرت دیده بشه)", world_svc.weather_sell_mult("fest") == 1.35)
-        check("شب مهتابی ⭐۵ +10%", world_svc.weather_q5_bonus("moon") == 0.10)
+        check("شب مهتابی دیگه نیس (حذف به درخواست کارفرما)", "moon" not in config.WEATHERS)
         txtw = world_svc.weather_announce_text("rain")
         check("متن اعلان آب و هوا قالب داره",
               "🌦 وضعیت آب و هوای جدید" in txtw and "باران" in txtw and "آغاز شد" in txtw and "30%" in txtw,
@@ -3662,28 +3662,35 @@ async def main() -> None:
           all(x in HS["bank"] for x in ["🏦 بانک", "«تریاکی بانک»", "ظرفیت", "حداقل لول کاراکتر"]))
     check("هلپ ماموریت روزانه (بخش جدید)",
           all(x in HS["quests"] for x in ["📋 ماموریت روزانه", "نیمه‌شب", "2 تا 3", "جایزه"]))
-    check("هلپ متفرقه (بخش جدید)",
+    check("هلپ متفرقه (چیدمان جدید کارفرما، بدون شب مهتابی)",
           all(x in HS["misc"] for x in ["🧭 متفرقه", "🔍 جستجو", "«تریاکی جستجو»", "📈 بازار سیاه",
-                                        "🌦 آب‌وهوا", "⚡️ انرژی", "🌧 باران", "🌕 شب مهتابی"])
-          and "پلیس" not in HS["misc"])
+                                        "🌦 آب‌وهوا", "⚡ انرژی", "🌧 باران، سرعت رشد",
+                                        "🌈 جشن برداشت", "🌫 مه غلیظ", "100 واحده", "هر 5 دقیقه"])
+          and "مهتاب" not in HS["misc"] and "🌕" not in HS["misc"] and "پلیس" not in HS["misc"])
     check("هلپ شروع بازی",
           all(x in HS["start"] for x in ["«تریاکی پروفایل»", "کنده کاری", "«تریاکی شاپ»", "لول‌آپ"]))
     check("هلپ نبرد",
           all(x in HS["battle"] for x in ["ریپلای", "«حمله»", "«تریاکی درمان»", "لول 5", "سگ"]))
-    check("هلپ مزرعه (تعداد شانسی برداشت با جدول لول زمین)",
-          all(x in HS["farm"] for x in ["«تریاکی کاشت [نام بذر]»", "«تریاکی برداشت»", "تعداد شانسی",
-                                        "افسانه‌ای‌ها همیشه 1 تا", "بین 1 تا 6 تا", "چوب",
-                                        "شانس دریافت تعداد بیشتری بذر رو از محصولات داری"])
-          and "کیفیت" not in HS["farm"] and "تعداد ثابت" not in HS["farm"])
+    check("هلپ مزرعه (چیدمان جدید کارفرما)",
+          all(x in HS["farm"] for x in ["<b>🌱 مزرعه</b>", "«تریاکی کاشت [نام بذر]»", "«تریاکی برداشت»",
+                                        "هر برداشت تعداد مشخصی محصول می‌ده", "افسانه‌ای همیشه 1 محصول",
+                                        "بین 1 تا 6 محصول", "⬆️ ارتقای زمین:", "چوب هم نیاز داره",
+                                        "ارسال محموله", "کاروان قاچاق"])
+          and "کیفیت" not in HS["farm"] and "تعداد ثابت" not in HS["farm"] and "%" not in HS["farm"])
     check("هلپ شرکت (بدون عدد دقیق ضریب)",
           all(x in HS["company"] for x in ["🏭 شرکت", "🪵 چوب‌بری", "کارخانه آهن", "چوب هم می‌خواد"])
           and "%" not in HS["company"])
-    check("هلپ انبار (بدون پلیس، سه دسته و بدون فرمول‌ها)",
-          all(x in HS["shelter"] for x in ["ظرفیت بذر", "چوب", "آهن", "سه دسته"])
+    check("هلپ انبار (چیدمان جدید کارفرما، سه بخش + نمونه دستور فروش)",
+          all(x in HS["shelter"] for x in ["<b>🎒 انبار</b>", "انبار از 3 بخش تشکیل شده", "🌾 محصولات",
+                                           "🧱 منابع", "📦 آیتم‌ها", "تمام بذرهات داخل این بخش",
+                                           "💰 فروش منابع", "«آهن 300»", "«چوب 200»"])
           and "پلیس" not in HS["shelter"] and "فرمول" not in HS["shelter"])
-    check("هلپ تیم",
-          all(x in HS["team"] for x in ["ساخت تیم", "جوین تیم [نام تیم]", "تیم من",
-                                        "تیم درخواست @یوزر قبول", "تیم کیک @یوزر", "تیم ادمین @یوزر"]))
+    check("هلپ تیم (چیدمان جدید کارفرما با هزینه ساخت و دستورهای مدیریت)",
+          all(x in HS["team"] for x in ["ساخت تیم از لول 5", "50,000 تی‌پوینت", "«جوین تیم [نام تیم]»",
+                                        "از لول 3", "⭐ لول تیم", "👑 مدیریت تیم",
+                                        "«تیم درخواست @یوزر قبول/رد»", "«تیم کیک @یوزر»",
+                                        "«تیم اد ادمین @یوزر»", "«تیم حذف ادمین @یوزر»",
+                                        "🏆 فعالیت‌های تیمی", "کنده‌کاری تیمی", "آخر هر هفته"]))
     check("هلپ منابع (سه راه + ارجاع به بخش کنده‌کاری)",
           all(x in HS["resources"] for x in ["چوب و آهن", "کنده‌کاری", "فروشگاه", "چوب‌بری", "⛏ کنده‌کاری"]))
     check("هلپ فروشگاه",
@@ -3850,7 +3857,7 @@ async def main() -> None:
     # ── کوتیشن‌های هلپ: یا پیشوند تریاکی دارن یا دستور بدون‌پیشوند مجازن (تیمی/حمله/کنده کاری) ──
     BARE_OK = ("کنده کاری", "مزرعه من", "حمله", "کنده\u200cکاری تیمی", "شلیک", "اسم سگ [اسم فعلی] [اسم جدید]",
                "شکار کمیاب", "بانک", "بانک واریز 1200", "بانک برداشت 1200", "انتقال 4000 E86YF2", "مهارت",
-               "زمین", "مزرعه", "شرکت", "کارخانه", "✏️ تعداد دلخواه")
+               "زمین", "مزرعه", "شرکت", "کارخانه", "✏️ تعداد دلخواه", "آهن 300", "چوب 200")
     for key, body in start_h2.HELP_SECTIONS.items():
         for snip in re.findall("«(.+?)»", body):
             check(f"«{snip[:22]}» توی هلپ {key} پیشوند داره یا بدون‌پیشوند مجازه",
@@ -5447,7 +5454,7 @@ async def main() -> None:
     await world_h2.shelter_cat_cb(upd_h2, None)
     hitxt = [c[1] for c in upd_h2.callback_query.calls if c[0] == "edit"][-1]
     check("صفحه آیتم‌ها ظرفیت بذر و نوارشو داره",
-          all(x in hitxt for x in ["ظرفیت انبار هر بذر", "▰" if False else "▱"]), hitxt[:160])
+          all(x in hitxt for x in ["📦 ظرفیت انبار هر نوع بذر: 15", "🌱 بذرها", "▱"]), hitxt[:160])
     upd_h3 = _fake_update("shelter:cat:res", uid=9609)
     await world_h2.shelter_cat_cb(upd_h3, None)
     hrtxt = [c[1] for c in upd_h3.callback_query.calls if c[0] == "edit"][-1]
@@ -6384,8 +6391,7 @@ async def main() -> None:
           world_svc.weather_grow_speed("rain", 45) == 1.45
           and abs(world_svc.weather_grow_speed("frost", 20) - 1 / 1.2) < 1e-9
           and world_svc.weather_sell_mult("fest", 50) == 1.50
-          and world_svc.weather_combat_mods("fog", 15) == (0.0, 0.15)
-          and world_svc.weather_q5_bonus("moon", 12) == 0.12)
+          and world_svc.weather_combat_mods("fog", 15) == (0.0, 0.15))
     check("بدون درصد رول، پایه کانفیگ میاد (سازگاری با هوای قدیمی)",
           world_svc.weather_grow_speed("rain") == 1.30
           and world_svc.weather_combat_mods("storm") == (-0.10, 0.0))
@@ -10395,8 +10401,8 @@ async def main() -> None:
     check("صفحه ارسال محموله: تعداد کامیون آزاد + هر محصول با تعداد و قیمت هر دونه + دکمه ارسالش",
           "<b>📦 ارسال محموله</b>" in sp_txt and "🚚 کامیون‌های در دسترس: 5" in sp_txt
           and "کدوم محصول رو می‌فرستی؟ روی محصولش بزن" in sp_txt
-          and "▫️ 🌵 پیوت ×8 | هر دونه ~300 تی‌پوینت" in sp_txt
-          and "▫️ ☕ تریاک ×3 | هر دونه ~9,000 تی‌پوینت" in sp_txt
+          and "▫️ 🌵 پیوت ×8\n🪙 هر دونه تقریبی 300 تی‌پوینت" in sp_txt
+          and "▫️ ☕ تریاک ×3\n🪙 هر دونه تقریبی 9,000 تی‌پوینت" in sp_txt
           and "sm:pick:peyote" in sp_datas and "sm:pick:teriak" in sp_datas
           and "menu:shelter" in sp_datas and "menu:home" in sp_datas,
           sp_txt.replace("\n", " | ")[:220])
@@ -10808,6 +10814,87 @@ async def main() -> None:
           and "شانس محصول افسانه‌ای" not in up5_txt and "⭐ شانس" not in up5_txt
           and "انجامش بدیم؟" in up5_txt,
           up5_txt.replace("\n", " | ")[:180])
+
+    # ═══ این دور: نوار کامل بذرهای انبار | محموله دولاین | حذف شب مهتابی | هلپ‌های جدید کارفرما (مزرعه/لقب/متفرقه/انبار/تیم) ═══
+
+    # ── حذف کامل 🌕 شب مهتابی (کیفیت دیگه نمایش داده نمیشه) ──
+    import inspect as _inspect
+    check("شب مهتابی از کانفیگ هوا پاک شده و ۷ هوا مونده", "moon" not in config.WEATHERS and len(config.WEATHERS) == 7)
+    check("هیچ هوایی افکت q5 نداره", all(w.get("kind") != "q5" for w in config.WEATHERS.values()))
+    check("اکسسور weather_q5_bonus از سرویس دنیا پاک شده", not hasattr(world_svc, "weather_q5_bonus"))
+    check("برداشت دیگه بونس q5 هوا رو نمی‌خونه", "weather_q5_bonus" not in _inspect.getsource(farming.harvest_all))
+    check("کلید moon قدیمی ذخیره‌شده تو دیتابیس بی‌اثره (فالبک به هوای عادی)",
+          world_svc.weather_grow_speed("moon") == 1.0 and world_svc.weather_sell_mult("moon") == 1.0
+          and world_svc.weather_combat_mods("moon") == (0.0, 0.0))
+    check("رول داخلی کیفیت (فقط تجربه) هنوز سالمه", world_svc.roll_quality(0.0)["stars"] in (1, 2, 3, 4, 5))
+
+    # ── صفحه 📦 آیتم‌ها: همه بذرهای پایه با نوار حتی صفر، به ترتیب کاتالوگ، افسانه‌ای‌ها تهش ──
+    async with session_scope() as s:
+        it6, _ = await users.get_or_create(s, tg(6661, "seedpage", "بذرباز"))
+        it6.shelter_level = 10
+        await farming.add_seed_stock(s, it6.id, "marijuana", 4)
+        await farming.add_seed_stock(s, it6.id, "jahannam", 1)
+        await s.commit()
+    upd_it6 = _fake_update("shelter:cat:item", uid=6661)
+    await world_h2.shelter_cat_cb(upd_it6, None)
+    it6_txt = [c[1] for c in upd_it6.callback_query.calls if c[0] == "edit"][-1]
+    check("هدربخش آیتم‌ها: «ظرفیت انبار هر نوع بذر: N» + تیتر «🌱 بذرها»",
+          "📦 ظرفیت انبار هر نوع بذر: 55" in it6_txt and "🌱 بذرها\n" in it6_txt, it6_txt[:150])
+    check("هر ۷ بذر پایه با نوارن و ترتیب کاتالوگه (حتی با تعداد صفر)",
+          it6_txt.index("🌿 ماری‌جوانا") < it6_txt.index("🍄 قارچ") < it6_txt.index("🌵 پیوت")
+          < it6_txt.index("🍃 کراتوم") < it6_txt.index("🌺 خشخاش سیاه") < it6_txt.index("☕ تریاک")
+          < it6_txt.index("⚪ کوکائین"))
+    check("بذر صفرتاش خط «0/55» با نوار کاملاً خالی داره",
+          "🍄 قارچ ▱▱▱▱▱▱▱▱▱▱ 0/55" in it6_txt, it6_txt[:250])
+    check("بذر ۴تاش روی لول ۱۰ «4/55» ـه",
+          "🌿 ماری‌جوانا ▰▱▱▱▱▱▱▱▱▱ 4/55" in it6_txt)
+    check("بذر افسانه‌ای ته لیست با × تعداد میاد بعد از همه پایه‌ها",
+          "✨ بذرهای افسانه‌ای:" in it6_txt and "✨ بذر جهنم 🔥 ×1" in it6_txt
+          and it6_txt.index("⚪ کوکائین") < it6_txt.index("✨ بذرهای افسانه‌ای:"))
+
+    # ── صفحه 📦 ارسال محموله: هر محصول دو خط (تعداد + قیمت تقریبی هر دونه) ──
+    async with session_scope() as s:
+        sp6, _ = await users.get_or_create(s, tg(6662, "shptwo", "محموله‌چی"))
+        await smg_svc.add_product(s, sp6.id, "gharch", 6, 4_800, shelter_level=1)
+        await s.commit()
+    upd_sp6 = _fake_update("sm:page", uid=6662)
+    await smuggle_h4.ship_page(upd_sp6, None)
+    sp6_txt = next((c[1] for c in upd_sp6.callback_query.calls if c[0] == "edit"), "")
+    check("هر محصول تو صفحه محموله دوخطه: «×N» و خط بعد «🪙 هر دونه تقریبی»",
+          "▫️ 🍄 قارچ ×6\n🪙 هر دونه تقریبی 800 تی‌پوینت" in sp6_txt, sp6_txt[:200])
+
+    # ── هلپ‌های جدید کارفرما ──
+    HS6 = start_h2.HELP_SECTIONS
+    check("هلپ لقب‌ها هر ۱۱ لقب کانفیگ رو خط‌به‌خط با «، لول N» داره",
+          all(f"{e} {n}، لول {lv}" in HS6["titles"] for lv, e, n in config.TITLES))
+    check("هلپ لقب‌ها محل نمایش و فوتر تشویقی رو داره",
+          all(x in HS6["titles"] for x in ["پروفایل، لیدربرد و لیست اعضای تیم نمایش داده می‌شه",
+                                           "💪 هرچه لولت بالاتر بره"]))
+    check("هلپ تیم با کانفیگ سازگاره (هزینه ساخت + لول جوین)",
+          f"هزینه ساخت تیم {fa_num(config.TEAM_CREATE_COST)} تی‌پوینت" in HS6["team"]
+          and f"از لول {fa_num(config.TEAM_JOIN_MIN_LEVEL)}" in HS6["team"]
+          and f"از لول {fa_num(config.TEAM_CREATE_MIN_LEVEL)}" in HS6["team"])
+    check("هلپ متفرقه با کانفیگ انرژی سازگاره و مهتابی نداره",
+          f"حداکثر انرژی {fa_num(config.MAX_ENERGY)} واحده" in HS6["misc"]
+          and "مهتاب" not in HS6["misc"])
+    check("پنج هلپ بازنویسی‌شده نه دشِ فاصله‌دار دارن نه درصد عربی نه نقطه",
+          all(" — " not in HS6[k] and "٪" not in HS6[k] and "." not in HS6[k]
+              for k in ("farm", "titles", "misc", "shelter", "team")))
+
+    # ═══ این دور: حذف اشاره به جعبه/کلید/بلیت (همچین فیچری نداریم) ═══
+    async with session_scope() as s:
+        it7, _ = await users.get_or_create(s, tg(6663, "itemy", "آیتمی"))
+        await s.commit()
+    upd_it7 = _fake_update("shelter:cat:item", uid=6663)
+    await world_h2.shelter_cat_cb(upd_it7, None)
+    it7_txt = [c[1] for c in upd_it7.callback_query.calls if c[0] == "edit"][-1]
+    check("صفحه آیتم‌ها دیگه جعبه/کلید/بلیت نمی‌گه",
+          "جعبه" not in it7_txt and "کلید" not in it7_txt and "بلیت" not in it7_txt, it7_txt[-120:])
+    check("هلپ انبار هم پاک شد و فقط بذرهات رو می‌گه",
+          "جعبه" not in HS6["shelter"] and "کلید" not in HS6["shelter"] and "بلیت" not in HS6["shelter"]
+          and "تمام بذرهات داخل این بخش قرار می‌گیرن" in HS6["shelter"])
+    check("هیچ بخش هلپی اشاره‌ای به جعبه/کلید/بلیت نداره (قابلیت حساب نیس)",
+          all(w not in v.replace("قابلیت", "") for v in HS6.values() for w in ("جعبه", "کلید", "بلیت")))
 
     # ── تمیزکاری ته تست‌ها ──
     fj_svc._MEMBER_CACHE.clear()

@@ -43,7 +43,8 @@ async def _ship_render(s, user) -> tuple[str, InlineKeyboardMarkup]:
             if not row or row.qty <= 0:
                 continue
             unit = int(row.value / row.qty)
-            lines.append(f"▫️ {sd.get('emoji', '🌱')} {sd['name']} ×{fa_num(row.qty)} | هر دونه ~{money(unit)}")
+            lines.append(f"▫️ {sd.get('emoji', '🌱')} {sd['name']} ×{fa_num(row.qty)}")
+            lines.append(f"🪙 هر دونه تقریبی {money(unit)}")
     if free <= 0:
         lines += [
             "",

@@ -285,14 +285,6 @@ def weather_combat_mods(key: str, pct: int | None = None) -> tuple[float, float]
     return 0.0, 0.0
 
 
-def weather_q5_bonus(key: str, pct: int | None = None) -> float:
-    """شانس اضافه محصول ۵ ستاره (شب مهتابی +p%)"""
-    w = weather_of(key)
-    if w.get("kind") == "q5":
-        return _weather_pct(key, pct) / 100.0
-    return 0.0
-
-
 async def weather_view(session: AsyncSession) -> dict:
     """دیتای بخش «وضعیت آب و هوا» با درصدهای رندرشده همین رول"""
     key, pct, left = await weather_state(session)
@@ -467,7 +459,7 @@ def market_view_text(mults: dict[str, float], left: int) -> str:
 # ═════════ کیفیت محصول ⭐ ═════════
 
 def roll_quality(q5_bonus: float = 0.0) -> dict:
-    """قرعه کیفیت برداشت، شب مهتابی شانس ⭐⭐⭐⭐⭐ رو بالا می‌بره (بقیه به‌تناسب کوچیک میشن)"""
+    """قرعه کیفیت برداشت (فقط برای تجربه)، بونس q5 از لول زمین میاد و شانس ⭐⭐⭐⭐⭐ رو بالا می‌بره (بقیه به‌تناسب کوچیک میشن)"""
     p5 = min(1.0, config.QUALITY_TIERS[-1]["chance"] + q5_bonus)
     scale = (1.0 - p5) / (1.0 - config.QUALITY_TIERS[-1]["chance"])
     r = random.random()

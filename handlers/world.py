@@ -212,11 +212,12 @@ async def _shelter_cat_text(session, user, cat: str) -> str:
         lines = [
             "<b>📦 آیتم‌ها</b>",
             "",
-            f"📦 ظرفیت انبار هر بذر {fa_num(cap)} تا",
+            f"📦 ظرفیت انبار هر نوع بذر: {fa_num(cap)}",
             "",
-            "🌱 بذرهات:",
+            "🌱 بذرها",
+            "",
         ]
-        # بذرها مثل قبل با نوار پرشوندگی (۵ بذر پایه، افسانه‌ای‌ها نه)
+        # همه بذرهای پایه با نوار، حتی صفر (چیدمان درخواستی کارفرما)، افسانه‌ای‌ها جدا تهش
         for key, sd in config.SEEDS.items():
             if sd.get("legendary"):
                 continue
@@ -226,7 +227,6 @@ async def _shelter_cat_text(session, user, cat: str) -> str:
                   for key, sd in config.SEEDS.items() if sd.get("legendary") and stock.get(key, 0) > 0]
         if legend:
             lines += ["", "✨ بذرهای افسانه‌ای:"] + legend
-        lines += ["", "جعبه‌ها و کلیدها و بلیت‌ها هم همینجا میان"]
         return "\n".join(lines)
 
     return await _shelter_cat_text(session, user, "prod")  # دسته‌بندی فرمول‌ها حذف شده (درخواست کارفرما)
