@@ -20,7 +20,7 @@ from handlers import profile as profile_h
 from handlers import shop as shop_h
 from keyboards import keyboards as kb
 from services import dogs as dog_svc, farming, shop_svc, users
-from utils import esc, fa_dur, fa_num, find_by_name, money, normalize_fa
+from utils import esc, fa_dur, fa_num, find_by_name, money, normalize_fa, parse_amount
 
 
 # ───────── ابزار ─────────
@@ -89,6 +89,25 @@ async def buy_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     # سگ فقط با فرمت «خرید سگ ...»
     if normalize_fa(query).startswith("سگ"):
         return await buy_dog_text(update, context)
+
+    # «خرید ماری جوانا 4»، عدد آخرش تعداد بذره (درخواست کارفرما، فقط بذر تعدادی خریده میشه)
+    qty = 1
+    m_qty = re.search(r"\s+([\d۰-۹]+)$", query.strip())
+    if m_qty:
+        _q = parse_amount(m_qty.group(1))
+        if _q is not None and _q >= 1:
+            probe = shop_svc.find_shop_item(query.strip()[:m_qty.start()].strip())
+            if probe[1] and probe[0] == "seed":
+                kind, key, item = probe
+                qty = _q
+                async with session_scope() as s:
+                    user, _ = await users.get_or_create(s, update.effective_user)
+                    ok, alert = await shop_svc.purchase_seed(s, user, key, qty)
+                    cash = user.cash
+                    await s.commit()
+                if ok:
+                    return await respond(update, f"<b>{esc(alert)}</b>\n\n💵 نقدینگی: {money(cash)}", kb.home_kb())
+                return await respond(update, f"<b>{esc(alert)}</b>", kb.home_kb())
 
     kind, key, item = shop_svc.find_shop_item(query)
     if not key:

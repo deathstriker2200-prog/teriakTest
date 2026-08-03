@@ -150,7 +150,9 @@ async def _shelter_text(session, user) -> str:
     ]
     if cv:
         sd = config.SEEDS[cv["crop"]]
-        lines.append(f"🚚 کاروان قاچاق اینجاست 🟢 خریدار {sd['emoji']} {sd['name']} با بونس {fa_num(cv['bonus'])}% | {fa_dur(smg.cv_left(cv))} مونده")
+        lines.append(f"🚚 کاروان قاچاق رسیده و تا {fa_dur(smg.cv_left(cv))} دیگه جمع می‌کنه میره")
+        lines.append(f"{sd.get('emoji', '🌱')} محصول موردنیاز: {sd['name']}")
+        lines.append(f"📈 قیمت خرید {fa_num(cv['bonus'])}% بیشتر")
     else:
         lines.append(f"🚚 کاروان قاچاق هر {fa_num(config.SMUGGLER_INTERVAL_HOURS)} ساعت یه بار سر می‌زنه و یه محصول رو گرون‌تر می‌خره")
     if user.shelter_level < config.SHELTER_MAX_LEVEL:
@@ -158,6 +160,10 @@ async def _shelter_text(session, user) -> str:
         req = world_svc.shelter_upgrade_min_level(user.shelter_level + 1)
         lock = f" (سطح {fa_num(req)} می‌خواد)" if user.level < req else ""
         lines.append(f"\n⬆️ ارتقای بعدی: لول {fa_num(user.shelter_level + 1)} | {money(price)}{lock}")
+    else:
+        lines.append(f"\n🏚 انبارت رفت رو لول {fa_num(config.SHELTER_MAX_LEVEL)}")
+        lines.append(f"📦 ظرفیت انبار هر بذر {fa_num(world_svc.seed_storage_cap(user))} تا شد")
+        lines.append(f"💵 نقدینگی: {money(user.cash)}")
     return "\n".join(lines)
 
 
@@ -166,27 +172,25 @@ async def _shelter_cat_text(session, user, cat: str) -> str:
     if cat == "prod":
         products = await smg.get_products(session, user.id)
         cap = smg.products_cap(user.shelter_level or 0)
+        total_val = sum(r.value for r in products.values() if r.qty > 0)
         lines = [
             "<b>🌾 محصولات</b>",
             "",
             "محصولای برداشت‌شده‌ات اینجان، هنوز نقد نشدن",
-            "با 📦 ارسال محموله یا فروش به 🚚 کاروان قاچاق نقدشون کن",
+            "از بخش 📦 ارسال محموله یا 🚚 کاروان قاچاق بفروش و نقدشون کن",
             "",
             f"📦 ظرفیت انبار هر محصول {fa_num(cap)} تا (با ارتقای انبار بیشتر میشه)",
             "",
         ]
         if not products:
             lines.append("▫️ هنوز محصولی نداری، از مزرعه برداشت کن")
+        else:
+            lines.append(f"ارزش کل محصولات موجود ~{money(total_val)}")
         for key, sd in config.SEEDS.items():
             row = products.get(key)
             if not row or row.qty <= 0:
                 continue
             lines.append(f"{sd.get('emoji', '🌱')} {sd['name']} {bar(row.qty, cap)} {fa_num(row.qty)}/{fa_num(cap)} | ارزش ~{money(row.value)}")
-        ongoing = await smg.active_shipments(session, user.id)
-        if ongoing:
-            lines += ["", "🚚 محموله‌های در راه:"]
-            for sh in ongoing:
-                lines.append(smg.shipment_line(sh))
         return "\n".join(lines)
 
     if cat == "res":
@@ -235,7 +239,7 @@ async def shelter_cat_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         user, _ = await users.get_or_create(s, update.effective_user)
         text = await _shelter_cat_text(s, user, cat)
         if cat == "prod":
-            markup = kb.products_kb(await smg.get_products(s, user.id))
+            markup = kb.shelter_back_kb()
         elif cat == "res":
             markup = kb.shelter_res_kb()
         else:

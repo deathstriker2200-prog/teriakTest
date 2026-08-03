@@ -322,8 +322,6 @@ def shop_sections_kb() -> InlineKeyboardMarkup:
         [_btn("🌱 بذرها", "shop:sec:seed", PRIMARY),
          _btn("🐕 سگ‌ها", "shop:sec:dog", PRIMARY)],
         [_btn("🍖 غذای سگ", "shop:sec:food", PRIMARY)],
-        [_btn("📦 ارسال محموله", "shelter:cat:prod", PRIMARY),
-         _btn("🚚 کاروان قاچاق", "smc:page", PRIMARY)],
         [_btn("🏠 منوی اصلی", "menu:home", PRIMARY)],
     ])
 
@@ -926,7 +924,7 @@ def shelter_kb(user: User, caravan_on: bool = False) -> InlineKeyboardMarkup:
         [_btn("🌾 محصولات", "shelter:cat:prod", PRIMARY),
          _btn("🧱 منابع", "shelter:cat:res", PRIMARY)],
         [_btn("📦 آیتم‌ها", "shelter:cat:item", PRIMARY)],
-        [_btn("📦 ارسال محموله", "shelter:cat:prod", PRIMARY)],
+        [_btn("📦 ارسال محموله", "sm:page", PRIMARY)],
         [_btn("🚚 کاروان قاچاق" + (" 🟢 اینجاست" if caravan_on else ""), "smc:page", PRIMARY)],
     ]
     if user.shelter_level < config.SHELTER_MAX_LEVEL:
@@ -967,7 +965,7 @@ def shelter_res_kb() -> InlineKeyboardMarkup:
 
 
 def products_kb(products: dict) -> InlineKeyboardMarkup:
-    """صفحه 🌾 محصولات: برای هر محصول یه دکمه ارسال محموله"""
+    """صفحه 📦 ارسال محموله: برای هر محصول موجود یه دکمه ارسال"""
     rows: list[list[InlineKeyboardButton]] = []
     for key, sd in config.SEEDS.items():
         row = products.get(key)
@@ -992,7 +990,7 @@ def ship_qty_kb(crop: str, have: int) -> InlineKeyboardMarkup:
     row.append(_btn("همه", f"sm:qty:{crop}:all", PRIMARY))
     rows.append(row)
     rows.append([_btn("✏️ تعداد دلخواه", f"sm:ask:{crop}", PRIMARY)])
-    rows.append([_btn("🔙 محصولات", "shelter:cat:prod", PRIMARY)])
+    rows.append([_btn("🔙 ارسال محموله", "sm:page", PRIMARY)])
     return InlineKeyboardMarkup(rows)
 
 
@@ -1000,7 +998,7 @@ def ship_confirm_kb(crop: str, qty: int) -> InlineKeyboardMarkup:
     """تایید نهایی ارسال محموله"""
     return InlineKeyboardMarkup([
         [_btn("✅ ارسال محموله", f"sm:go:{crop}:{qty}", SUCCESS)],
-        [_btn("❌ لغو", "shelter:cat:prod", DANGER)],
+        [_btn("❌ لغو", "sm:page", DANGER)],
     ])
 
 

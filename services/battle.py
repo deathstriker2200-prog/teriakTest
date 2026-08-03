@@ -168,6 +168,14 @@ def roll_damage(atk: int, dfn: int, victim_max_hp: int) -> tuple[int, bool]:
 
 # ───────── غارت و تجربه همون لحظه 💰 ─────────
 
+def steal_pct_for(cash: int) -> float:
+    """درصد سقف غارت بر اساس جیب قربانی (پلکانی، درخواست کارفرما: پولدارا فشار نمی‌خورن)"""
+    for limit, pct in config.BATTLE_STEAL_TIERS:
+        if limit is None or cash < limit:
+            return pct
+    return config.BATTLE_STEAL_TIERS[-1][1]
+
+
 def steal_for_hit(
     dmg: int, victim_max_hp: int, victim_cash: int,
     attacker_dogs: list, victim_items: list[str], victim_dogs: list,
@@ -175,14 +183,15 @@ def steal_for_hit(
 ) -> tuple[int, dict]:
     """
     مبلغ غارت یه ضربه بر اساس دمیج نسبت به HP کامل حریف
-    دمیج بیشتر، غارت بیشتر | مادیفایر سگ‌ها و زره افسانه‌ای اعمال میشه | سقف سخت ۲%
+    دمیج بیشتر، غارت بیشتر | مادیفایر سگ‌ها و زره افسانه‌ای اعمال میشه | سقف سخت پله موجودی
     خروجی: (مبلغ, اطلاعات مادیفایرها)
     """
     meta = {"bonus": 0.0, "cut": 0.0, "halved": False}
     if victim_cash <= 0 or dmg <= 0:
         return 0, meta
 
-    pct = config.BATTLE_STEAL_MAX_PCT * min(1.0, dmg / max(1, victim_max_hp))
+    cap_pct = steal_pct_for(victim_cash)
+    pct = cap_pct * min(1.0, dmg / max(1, victim_max_hp))
     amount = float(victim_cash) * pct
 
     bonus = dog_svc.rare_steal_bonus(attacker_dogs)
@@ -195,7 +204,7 @@ def steal_for_hit(
         amount *= 0.5
         meta["halved"] = True
 
-    amount = min(amount, victim_cash * config.BATTLE_STEAL_MAX_PCT)
+    amount = min(amount, victim_cash * cap_pct)
     return max(0, int(amount)), meta
 
 

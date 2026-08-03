@@ -63,7 +63,7 @@ async def first_harvest(session: AsyncSession, user: User) -> str | None:
         f"💵 +{money(config.FIRST_HARVEST_BONUS)} جایزه اولین برداشت\n"
         f"🪵 +{fa_num(config.FIRST_HARVEST_WOOD)} چوب و ⛏️ +{fa_num(config.FIRST_HARVEST_IRON)} آهن برای شروع\n\n"
         "🎯 قدم بعد: محصولت رو با محموله نقد کن\n"
-        "تو 🎒 انبار بخش 🌾 محصولات روی محصول بزن و تعدادش رو انتخاب کن و بفرستش"
+        "تو 🎒 انبار روی 📦 ارسال محموله بزن، محصول و تعدادش رو انتخاب کن و بفرستش"
     )
 
 

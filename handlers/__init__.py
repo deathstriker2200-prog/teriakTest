@@ -133,6 +133,7 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CommandHandler("addxpgroup", admin.addxpgroup_cmd))
     app.add_handler(CommandHandler("addtp", admin.addtp_cmd))
     app.add_handler(CommandHandler("addxp", admin.addxp_cmd))
+    app.add_handler(CommandHandler("addseed", admin.addseed_cmd))
     app.add_handler(CommandHandler("detp", admin.detp_cmd))
     app.add_handler(CommandHandler("dexp", admin.dexp_cmd))
     app.add_handler(CommandHandler("clearacc", admin.clearacc_cmd))
@@ -256,6 +257,7 @@ def register_handlers(app: Application) -> None:
 
     # ── سیستم‌های جهان (دکمه‌ها) ──
     app.add_handler(CallbackQueryHandler(world.shelter_cat_cb, pattern=r"^shelter:cat:\w+$"))
+    app.add_handler(CallbackQueryHandler(smuggle.ship_page, pattern=r"^sm:page$"))
     app.add_handler(CallbackQueryHandler(smuggle.ship_qty_page, pattern=r"^sm:pick:\w+$"))
     app.add_handler(CallbackQueryHandler(smuggle.ship_confirm_page, pattern=r"^sm:qty:\w+:(?:\d+|all)$"))
     app.add_handler(CallbackQueryHandler(smuggle.ship_execute, pattern=r"^sm:go:\w+:\d+$"))

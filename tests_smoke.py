@@ -495,22 +495,30 @@ async def main() -> None:
               str(rl6))
         wolf.level = 2
 
-        # ── غارت هر ضربه: درصد بر اساس دمیج نسبت به HP کامل حریف ──
+        # ── غارت هر ضربه: درصد بر اساس دمیج نسبت به HP کامل حریف + پله موجودی قربانی ──
         st, _ = battle_svc.steal_for_hit(40, 200, 10000, [], [], [])
-        check("غارت = سقف × دمیج نسبت به HP",
-              st == int(10000 * config.BATTLE_STEAL_MAX_PCT * 40 / 200), str(st))
+        check("غارت = سقف پله × دمیج نسبت به HP (جیب 10هزار → 4%)",
+              st == int(10000 * 0.04 * 40 / 200), str(st))
         check("دمیج کمتر غارت کمتر", battle_svc.steal_for_hit(10, 200, 10000, [], [], [])[0] < st)
         st_full, _ = battle_svc.steal_for_hit(200, 200, 10000, [], [], [])
-        check("غارت با دمیج کامل به سقف 5% میرسه",
-              st_full == int(10000 * config.BATTLE_STEAL_MAX_PCT), str(st_full))
+        check("غارت با دمیج کامل به سقف پله میرسه (10هزار → 400)",
+              st_full == int(10000 * 0.04), str(st_full))
+        check("پله‌ها دقیقاً حرف کارفرما: زیر10هزار 5٪ | تا50هزار 4٪ | تا100هزار 2.5٪ | تا500هزار 1.5٪ | بالاتر 1٪",
+              battle_svc.steal_pct_for(5_000) == 0.05 and battle_svc.steal_pct_for(10_000 - 1) == 0.05
+              and battle_svc.steal_pct_for(20_000) == 0.04 and battle_svc.steal_pct_for(50_000 - 1) == 0.04
+              and battle_svc.steal_pct_for(50_000) == 0.025 and battle_svc.steal_pct_for(99_999) == 0.025
+              and battle_svc.steal_pct_for(100_000) == 0.015 and battle_svc.steal_pct_for(499_999) == 0.015
+              and battle_svc.steal_pct_for(500_000) == 0.01 and battle_svc.steal_pct_for(100_000_000) == 0.01)
+        check("جیب 100میلیونی ضربه تمام‌قد فقط 1٪ میده نه 17میل (شکایت کارفرما)",
+              battle_svc.steal_for_hit(200, 200, 100_000_000, [], [], [])[0] == 1_000_000,
+              str(battle_svc.steal_for_hit(200, 200, 100_000_000, [], [], [])[0]))
         st_leg, meta_leg = battle_svc.steal_for_hit(200, 200, 10000, [], ["legend"], [])
         check("زره افسانه‌ای غارت رو نصف می‌کنه",
               meta_leg["halved"] and abs(st_leg * 2 - st_full) <= 1, f"{st_leg} vs {st_full}")
         check("جیب خالی غارتی نداره", battle_svc.steal_for_hit(50, 200, 0, [], [], [])[0] == 0)
         st_cap, meta_cap = battle_svc.steal_for_hit(200, 200, 10000, [wolf], [], [])
-        check("بونس گرگ اعمال میشه ولی سقف 2% حفظه",
-              meta_cap["bonus"] > 0 and st_cap <= int(10000 * config.BATTLE_STEAL_MAX_PCT), str(st_cap))
-        check("کانفیگ سقف غارت ضربه 2%", config.BATTLE_STEAL_MAX_PCT == 0.02)
+        check("بونس گرگ اعمال میشه ولی سقف پله حفظه",
+              meta_cap["bonus"] > 0 and st_cap <= int(10000 * 0.04), str(st_cap))
 
         # ── HP: شروع ۲۰۰، هر لول +۲۰، لول‌های ۱۰ و ۲۰ مایلستون +۳۰، لول ۲۰ → ۶۰۰ ──
         check("لول 1 با 200 HP شروع می‌کنه", battle_svc.max_hp(1) == 200)
@@ -1744,7 +1752,7 @@ async def main() -> None:
     # ═══ کانفیگ نبرد HP جدید و کوئست‌های روزانه ═══
     check("کانفیگ نبرد HP",
           config.BATTLE_COOLDOWN_SECONDS == 30 and config.BATTLE_DMG_VARIANCE == 0.30
-          and config.BATTLE_STEAL_MAX_PCT == 0.02 and config.BATTLE_DEAD_SECONDS == 600
+          and len(config.BATTLE_STEAL_TIERS) == 5 and config.BATTLE_DEAD_SECONDS == 600
           and config.MAX_LEVEL == 20 and config.HP_TABLE[0] == 200 and config.HP_TABLE[-1] == 600)
     check("۶ کوئست روزانه با عنوان و عدد هدف",
           set(config.DAILY_QUESTS) == {"attack", "harvest", "mine", "plant", "search", "feed"}
@@ -3570,8 +3578,8 @@ async def main() -> None:
             dash_spots.append(f)
     check("ویرگول جای دش توی همه متن‌های بات", not dash_spots, str(dash_spots))
 
-    # ── غارت هر ضربه تا ۲٪ بر اساس دمیج ──
-    check("سقف غارت هر ضربه ۲٪", config.BATTLE_STEAL_MAX_PCT == 0.02)
+    # ── غارت هر ضربه پله‌ای بر اساس جیب قربانی (درخواست کارفرما) ──
+    check("غارت هر ضربه پله‌ایه: 5 پله و پله آخر 1٪", len(config.BATTLE_STEAL_TIERS) == 5 and config.BATTLE_STEAL_TIERS[-1] == (None, 0.01))
 
     # ── زمین: مکس لول ۶، آپگریدهای گرون‌تر با گیت لول ──
     check("مکس لول زمین ۶ه", config.PLOT_MAX_LEVEL == 6)
@@ -4355,8 +4363,9 @@ async def main() -> None:
           and config.PV_BASE_CHANCE == 0.50)
     check("مصونیت پی‌وی دقیقا 6 ساعته", config.PV_ATTACK_SHIELD_SECONDS == 6 * 3600,
           str(config.PV_ATTACK_SHIELD_SECONDS))
-    check("غارت و جریمه پی‌وی تو کانفیگن",
-          config.PV_ATTACK_STEAL_MIN_PCT == 0.08 and config.PV_ATTACK_STEAL_MAX_PCT == 0.20
+    check("غارت پله‌ای و جریمه پی‌وی تو کانفیگن",
+          len(config.PV_ATTACK_STEAL_TIERS) == 7 and config.PV_ATTACK_STEAL_TIERS[0] == (10_000, 0.12, 0.18)
+          and config.PV_ATTACK_STEAL_TIERS[-1] == (None, 0.01, 0.02)
           and config.PV_ATTACK_LOSE_PENALTY_PCT == 0.05)
     check("کولدان حمله پی‌وی دقیقا 5 دقیقه‌ست", config.PV_ATTACK_COOLDOWN_SECONDS == 300)
     check("تجربه قربانی و هزینه شکستن سپر تو کانفیگن",
@@ -4429,8 +4438,8 @@ async def main() -> None:
             res = await pv_svc.execute(s, atk_u, vic)
         finally:
             pv_svc.win_chance = _old_wc
-        lo = int(10000 * config.PV_ATTACK_STEAL_MIN_PCT)
-        hi = int(10000 * config.PV_ATTACK_STEAL_MAX_PCT)
+        lo = int(10000 * 0.10)  # جیب 10هزاری → پله دوم (0.10 تا 0.15)
+        hi = int(10000 * 0.15)
         check("حمله پی‌وی با شانس کامل برده", res["ok"] and res["won"], str(res))
         check("انرژی حمله پی‌وی کم میشه", atk_u.energy == e_before - config.PV_ATTACK_ENERGY_COST)
         check("غارت پی‌وی تو بازه درصدی و دقیق جابه‌جا میشه",
@@ -7106,7 +7115,7 @@ async def main() -> None:
           all(x in sht_item for x in ["🌿 ماری‌جوانا ▱", "🍄 قارچ ▱", "🌵 پیوت ▱", "🍃 کراتوم ▱", "🌺 خشخاش سیاه ▱", "☕ تریاک ▱", "⚪ کوکائین ▱"])
           and sht_item.count("▰") + sht_item.count("▱") >= 70
           and "🪵 چوب ▱" in sht_res and "⛏️ آهن ▱" in sht_res
-          and "ظرفیت انبار هر محصول 300 تا" in sht_prod and "معجون" not in sht_prod,
+          and "ظرفیت انبار هر محصول 10 تا" in sht_prod and "معجون" not in sht_prod,
           sht_item.replace("\n", " | ")[:140])
     check("بذر افسانه‌ای توی لیست انبار نمیاد",
           "جهنم" not in sht and "ابلیس" not in sht and "جهش‌یافته" not in sht)
@@ -8785,7 +8794,7 @@ async def main() -> None:
         pre_cash = lo1.cash
         res_lt = await battle_svc.execute_hit(s, aw1, lo1)
         battle_svc.random = _orig_rand
-        exp_steal = int(int(pre_cash * config.BATTLE_STEAL_MAX_PCT
+        exp_steal = int(int(pre_cash * battle_svc.steal_pct_for(pre_cash)
                             * min(1.0, 50 / battle_svc.max_hp(lo1.level))) * (1 + 0.03 * 8))
         check("مهارت غارت مبلغ دزدی هر ضربه رو بیشتر می‌کنه",
               res_lt["ok"] and res_lt["steal"] == exp_steal and res_lt["steal"] > 0,
@@ -9754,8 +9763,8 @@ async def main() -> None:
         shu, _ = await users.get_or_create(s, tg(9950, "ship", "فرستنده"))
         shu.cash = 1000
         shu.first_harvest_at = now_utc()  # جایزه آنبوردینگ اولین برداشت تداخل نده
-        await smg_svc.add_product(s, shu.id, "teriak", 25, 225_000)
-        await smg_svc.add_product(s, shu.id, "teriak", 5, 45_000)
+        await smg_svc.add_product(s, shu.id, "teriak", 25, 225_000, shelter_level=10)
+        await smg_svc.add_product(s, shu.id, "teriak", 5, 45_000, shelter_level=10)
         prods = await smg_svc.get_products(s, shu.id)
         check("انبار محصول تعداد و ارزش رو روی هم جمع می‌کنه",
               prods["teriak"].qty == 30 and prods["teriak"].value == 270_000, str(prods["teriak"]))
@@ -9810,7 +9819,7 @@ async def main() -> None:
                   f"{sh2.pay} | {shu.cash - cash_b2}")
 
             # راننده مسیر رو عوض می‌کنه: اول پیام تأخیر، بعد رسیدن کامل
-            await smg_svc.add_product(s, shu.id, "marijuana", 10, 3_000)
+            await smg_svc.add_product(s, shu.id, "marijuana", 10, 3_000, shelter_level=10)
             smg_svc.roll_outcome = lambda: "delayed"
             ok_d, _, sh3 = await smg_svc.send_shipment(s, shu, "marijuana", 10)
             cash_b3 = shu.cash
@@ -9828,7 +9837,7 @@ async def main() -> None:
                   f"{ev4[0]['text'][:40] if ev4 else None}")
 
             # سقف محموله‌های هم‌زمان
-            await smg_svc.add_product(s, shu.id, "marijuana", 100, 30_000)
+            await smg_svc.add_product(s, shu.id, "marijuana", 100, 30_000, shelter_level=10)
             smg_svc.roll_outcome = lambda: "clean"
             for _i in range(config.SHIPMENT_MAX_ACTIVE):
                 ok_i, _m, _s = await smg_svc.send_shipment(s, shu, "marijuana", 1)
@@ -9845,7 +9854,7 @@ async def main() -> None:
     async with session_scope() as s:
         cvu, _ = await users.get_or_create(s, tg(9951, "cvr", "قاچاقچی"))
         cvu.cash = 500
-        await smg_svc.add_product(s, cvu.id, "cocaine", 20, 180_000)
+        await smg_svc.add_product(s, cvu.id, "cocaine", 20, 180_000, shelter_level=10)
         ok_no, msg_no, _ = await smg_svc.sell_to_caravan(s, cvu, 5)
         check("فروش به کاروان وقتی کاروانی نیس رد میشه", not ok_no and "رفت" in msg_no, msg_no)
 
@@ -9970,18 +9979,21 @@ async def main() -> None:
     async with session_scope() as s:
         flu, _ = await users.get_or_create(s, tg(9952, "flow", "جریانی"))
         flu.cash = 800
+        flu.shelter_level = 10
         flu.first_harvest_at = now_utc()
-        await smg_svc.add_product(s, flu.id, "teriak", 30, 270_000)
+        await smg_svc.add_product(s, flu.id, "teriak", 30, 270_000, shelter_level=10)
         await s.commit()
     upd_f1 = _fake_update("shelter:cat:prod", uid=9952)
     await world_h2.shelter_cat_cb(upd_f1, None)
     f_txt1 = next((c[1] for c in upd_f1.callback_query.calls if c[0] == "edit"), "")
     f_kb1 = next((c[2].get("reply_markup") for c in reversed(upd_f1.callback_query.calls) if c[0] == "edit"), None)
     f_datas1 = [b.callback_data for row in f_kb1.inline_keyboard for b in row] if f_kb1 else []
-    check("صفحه محصولات قلم انبار با نوار ظرفیت 300 رو داره و دکمه ارسالشو",
-          "☕ تریاک" in f_txt1 and "30/300" in f_txt1 and "ارزش ~270,000" in f_txt1
-          and "ظرفیت انبار هر محصول 300 تا" in f_txt1 and "sm:pick:teriak" in f_datas1,
-          f_txt1.replace("\n", " | ")[:180])
+    check("صفحه محصولات فقط نمایشیه: قلم انبار با نوار ظرفیت 100 و بدون دکمه ارسال",
+          "☕ تریاک" in f_txt1 and "30/100" in f_txt1 and "ارزش ~270,000" in f_txt1
+          and "ظرفیت انبار هر محصول 100 تا" in f_txt1 and "ارزش کل محصولات موجود ~270,000 تی‌پوینت" in f_txt1
+          and "از بخش 📦 ارسال محموله یا 🚚 کاروان قاچاق بفروش و نقدشون کن" in f_txt1
+          and "sm:pick:teriak" not in f_datas1 and "menu:shelter" in f_datas1 and "menu:home" in f_datas1,
+          f_txt1.replace("\n", " | ")[:200])
     upd_f2 = _fake_update("sm:pick:teriak", uid=9952)
     await smuggle_h4.ship_qty_page(upd_f2, None)
     f_kb2 = next((c[2].get("reply_markup") for c in reversed(upd_f2.callback_query.calls) if c[0] == "edit"), None)
@@ -10062,14 +10074,14 @@ async def main() -> None:
           and "✏️ تعداد دلخواه" in q_t5 and "sm:ask:teriak" in q_d5, str(q_t5))
     shopk = kb3.shop_sections_kb()
     shop_d = [b.callback_data for row in shopk.inline_keyboard for b in row]
-    check("شاپ دکمه ارسال محموله و کاروان قاچاق داره",
-          "shelter:cat:prod" in shop_d and "smc:page" in shop_d, str(shop_d[-3:]))
+    check("شاپ دیگه دکمه ارسال محموله و کاروان قاچاق نداره (درخواست کارفرما)",
+          "shelter:cat:prod" not in shop_d and "smc:page" not in shop_d and "sm:page" not in shop_d, str(shop_d))
 
-    # ═══ این دور: تقویت دمیج نبرد (مکس‌دوئل 30 تا 40 درخواست کارفرما) + غارت ضربه از ۵٪ به ۲٪ ═══
+    # ═══ این دور: تقویت دمیج نبرد (مکس‌دوئل 30 تا 40 درخواست کارفرما) + غارت ضربه پله‌ای ═══
     check("کف و سقف دمیج تقویت شد: ۱٫۲٪ تا ۹٪ مکس HP",
           config.BATTLE_DMG_PCT_MIN == 0.012 and config.BATTLE_DMG_PCT_MAX == 0.09)
-    check("سقف غارت هر ضربه از ۵٪ به ۲٪ رسید",
-          config.BATTLE_STEAL_MAX_PCT == 0.02)
+    check("سقف غارت هر ضربه پله‌ای شد (زیر 10هزار 5٪، بالای 500هزار 1٪)",
+          config.BATTLE_STEAL_TIERS[0] == (10_000, 0.05) and config.BATTLE_STEAL_TIERS[-1] == (None, 0.01))
     random.seed(42)
     _oc3 = config.BATTLE_CRIT_CHANCE
     config.BATTLE_CRIT_CHANCE = 0.0
@@ -10091,11 +10103,11 @@ async def main() -> None:
           mean_m < mean_t < mean_n and mean_n >= 40,
           f"{mean_m:.1f} < {mean_t:.1f} < {mean_n:.1f}")
     st_max, _ = battle_svc.steal_for_hit(600, 600, 100000, [], [], [])
-    check("ضربه تمام‌قد روی جیب 100هزارتا فقط ۲٪ (2000) غارت می‌کنه",
-          st_max == 2000, str(st_max))
+    check("ضربه تمام‌قد روی جیب 100هزارتا فقط ۱٫۵٪ (1500) غارت می‌کنه (پله جدید)",
+          st_max == 1500, str(st_max))
 
     # ═══ این دور: بسته درخواست‌های نهایی کارفرما ═══
-    # حذف کامل گیت وار گروهی (اشتباه تایپی بود) | تعداد ثابت برداشت | ظرفیت 300 هر محصول
+    # حذف کامل گیت وار گروهی (اشتباه تایپی بود) | تعداد ثابت برداشت | ظرفیت پله‌ای هر محصول
     # صفحه انبار چیدمان جدید بدون فرمول‌ها | ✏️ تعداد دلخواه برای محموله و کاروان | زمین و شرکت بدون پیشوند
     # قیمت خرید زمین پله‌ای خیلی بیشتر + آپگرید یکم ارزون‌تر | مرحله مأموریت «اولین ارسال محموله» (جایزه 600)
 
@@ -10113,21 +10125,22 @@ async def main() -> None:
     check("کوکائین و سه بذر افسانه‌ای بیرون جدولن و پیش‌فرض 1 تا می‌گیرن",
           all(config.HARVEST_QTY.get(k, 1) == 1 for k in ("cocaine", "jahannam", "eblis", "mutant")))
 
-    # ── ظرفیت انبار هر محصول: 300 تا + 10 به‌ازای هر لول انبار ──
-    check("ظرفیت انبار هر محصول 300 تاست و هر لول انبار 10 تا بیشترش می‌کنه",
-          config.PRODUCT_CAP_BASE == 300 and config.PRODUCT_CAP_PER_LEVEL == 10
-          and smg_svc.products_cap(0) == 300 and smg_svc.products_cap(6) == 360)
+    # ── ظرفیت انبار هر محصول: لول انبار × 10، از 10 شروع میشه (درخواست کارفرما) ──
+    check("ظرفیت انبار هر محصول از 10 شروع میشه و با هر لول انبار 10 تا بیشتر میشه",
+          config.PRODUCT_CAP_PER_LEVEL == 10
+          and smg_svc.products_cap(0) == 10 and smg_svc.products_cap(1) == 10
+          and smg_svc.products_cap(6) == 60 and smg_svc.products_cap(10) == 100)
 
     # ── add_product با گیت ظرفیت: تا سقف پر می‌کنه و مازاد رو برمی‌گردونه ──
     async with session_scope() as s:
         capu, _ = await users.get_or_create(s, tg(999100, "capman", "ظرفیتی"))
-        a1, v1 = await smg_svc.add_product(s, capu.id, "peyote", 200, 20_000, shelter_level=0)
-        a2, v2 = await smg_svc.add_product(s, capu.id, "peyote", 250, 25_000, shelter_level=0)
-        a3, v3 = await smg_svc.add_product(s, capu.id, "peyote", 40, 4_000, shelter_level=0)
+        a1, v1 = await smg_svc.add_product(s, capu.id, "peyote", 15, 1_500, shelter_level=2)
+        a2, v2 = await smg_svc.add_product(s, capu.id, "peyote", 12, 1_200, shelter_level=2)
+        a3, v3 = await smg_svc.add_product(s, capu.id, "peyote", 4, 400, shelter_level=2)
         cap_row = (await smg_svc.get_products(s, capu.id))["peyote"]
-        check("add_product تا سقف 300 پر می‌کنه و مازاد رو با ارزش تناسبی برمی‌گردونه، انبار دست‌نخورده می‌مونه",
-              a1 == 200 and v1 == 20_000 and a2 == 100 and v2 == 10_000 and (a3, v3) == (0, 0)
-              and cap_row.qty == 300 and cap_row.value == 30_000,
+        check("add_product تا سقف 20 (لول انبار 2) پر می‌کنه و مازاد رو با ارزش تناسبی از بین می‌بره",
+              a1 == 15 and v1 == 1_500 and a2 == 5 and v2 == 500 and (a3, v3) == (0, 0)
+              and cap_row.qty == 20 and cap_row.value == 2_000,
               f"{a1}/{v1} | {a2}/{v2} | {a3}/{v3} | {cap_row.qty}/{cap_row.value}")
         await s.commit()
 
@@ -10142,21 +10155,21 @@ async def main() -> None:
         ofp = Plot(user_id=ofu.id, status="growing", crop="marijuana",
                    planted_at=now_utc() - timedelta(hours=2), ready_at=now_utc() - timedelta(seconds=1))
         s.add(ofp)
-        await smg_svc.add_product(s, ofu.id, "marijuana", 300, 90_000, shelter_level=0)
+        await smg_svc.add_product(s, ofu.id, "marijuana", 10, 3_000, shelter_level=0)
         ok_of, _a_of, ex_of, _dq_of, _nn_of = await farming.harvest_all(s, ofu)
         of_row = (await smg_svc.get_products(s, ofu.id))["marijuana"]
-        check("برداشت روی انبار کاملاً پر: انبار روی 300 می‌مونه و پیام «از بین رفت» دقیق میاد",
-              ok_of and of_row.qty == 300 and of_row.value == 90_000
+        check("برداشت روی انبار کاملاً پر: انبار روی 10 می‌مونه و پیام «از بین رفت» دقیق میاد",
+              ok_of and of_row.qty == 10 and of_row.value == 3_000
               and bool(ex_of) and "انبار ماری‌جوانا پر بود، 2 تا از بین رفت" in ex_of,
               (ex_of or "").replace("\n", " | ")[:160])
-        of_row.qty = 299  # فقط یه دونه جا مونده
+        of_row.qty = 9  # فقط یه دونه جا مونده
         ofp.status, ofp.crop = "growing", "marijuana"
         ofp.ready_at = now_utc() - timedelta(seconds=1)
         ofu.last_harvest_at = None
         ok_of2, _a2_of, ex2_of, _dq2_of, _nn2_of = await farming.harvest_all(s, ofu)
         of_row2 = (await smg_svc.get_products(s, ofu.id))["marijuana"]
         check("با یه دونه جای خالی فقط 1 تا وارد انبار میشه و بقیه برداشت از بین میره",
-              ok_of2 and of_row2.qty == 300 and bool(ex2_of)
+              ok_of2 and of_row2.qty == 10 and bool(ex2_of)
               and "×1" in ex2_of and "1 تا از بین رفت" in ex2_of,
               (ex2_of or "").replace("\n", " | ")[:160])
         await s.commit()
@@ -10179,13 +10192,14 @@ async def main() -> None:
     async with session_scope() as s:
         tqu, _ = await users.get_or_create(s, tg(999102, "typeq", "تایپی"))
         tqu.cash = 100
-        await smg_svc.add_product(s, tqu.id, "khashkhash", 40, 12_000)
+        tqu.shelter_level = 10
+        await smg_svc.add_product(s, tqu.id, "khashkhash", 40, 12_000, shelter_level=10)
         await s.commit()
     upd_tq0 = _fake_update("sm:pick:khashkhash", uid=999102)
     await smuggle_h4.ship_qty_page(upd_tq0, None)
     tq0_txt = next((c[1] for c in upd_tq0.callback_query.calls if c[0] == "edit"), "")
     check("صفحه ارسال محموله ظرفیت انبار و راهنمای تایپ کردن تعداد رو نشون میده",
-          "(ظرفیت 300)" in tq0_txt and "«✏️ تعداد دلخواه» رو بزن و عددشو بنویس" in tq0_txt,
+          "(ظرفیت 100)" in tq0_txt and "«✏️ تعداد دلخواه» رو بزن و عددشو بنویس" in tq0_txt,
           tq0_txt.replace("\n", " | ")[:140])
     upd_tq = _fake_update("sm:ask:khashkhash", uid=999102)
     await smuggle_h4.ship_ask_qty_cb(upd_tq, None)
@@ -10311,7 +10325,7 @@ async def main() -> None:
     async with session_scope() as s:
         fsu2, _ = await users.get_or_create(s, tg(999105, "fship2", "فرستنده دوم"))
         cash_fs20 = fsu2.cash
-        await smg_svc.add_product(s, fsu2.id, "peyote", 15, 15_000)
+        await smg_svc.add_product(s, fsu2.id, "peyote", 15, 15_000, shelter_level=10)
         await s.commit()
     upd_fs = _fake_update("sm:go:peyote:5", uid=999105)
     await smuggle_h4.ship_execute(upd_fs, None)
@@ -10329,7 +10343,7 @@ async def main() -> None:
     # ── متن‌های رسیدن محموله: قالب خلاصه درخواستی کارفرما ──
     async with session_scope() as s:
         arr_u, _ = await users.get_or_create(s, tg(999106, "arrive", "رسیدنی"))
-        await smg_svc.add_product(s, arr_u.id, "marijuana", 5, 1_590)
+        await smg_svc.add_product(s, arr_u.id, "marijuana", 5, 1_590, shelter_level=10)
         _orig_ro3 = smg_svc.roll_outcome
         smg_svc.roll_outcome = lambda: "clean"
         ok_ar, _, sh_ar = await smg_svc.send_shipment(s, arr_u, "marijuana", 1)
@@ -10343,6 +10357,257 @@ async def main() -> None:
               and ev_ar[0]["text"].rstrip().endswith("تی‌پوینت گرفتی"),
               ev_ar[0]["text"].replace("\n", " | ") if ev_ar else "-")
         await s.commit()
+
+    # ═══ این دور: صفحه 📦 ارسال محموله جدا | بلاک مکس انبار | کاروان سه‌خطی تو انبار | تایم کاشت یکدست | /addseed | خرید با تعداد ═══
+
+    # ── صفحه 📦 ارسال محموله: تعداد کامیون آزاد + لیست محصول با قیمت هر دونه ──
+    async with session_scope() as s:
+        spu, _ = await users.get_or_create(s, tg(999110, "shpage", "کامیوندار"))
+        spu.cash = 5000
+        await smg_svc.add_product(s, spu.id, "peyote", 8, 2_400, shelter_level=1)
+        await smg_svc.add_product(s, spu.id, "teriak", 3, 27_000, shelter_level=1)
+        await s.commit()
+    upd_sp = _fake_update("sm:page", uid=999110)
+    await smuggle_h4.ship_page(upd_sp, None)
+    sp_txt = next((c[1] for c in upd_sp.callback_query.calls if c[0] == "edit"), "")
+    sp_kbm = next((c[2].get("reply_markup") for c in reversed(upd_sp.callback_query.calls) if c[0] == "edit"), None)
+    sp_datas = [b.callback_data for row in sp_kbm.inline_keyboard for b in row] if sp_kbm else []
+    check("صفحه ارسال محموله: تعداد کامیون آزاد + هر محصول با تعداد و قیمت هر دونه + دکمه ارسالش",
+          "<b>📦 ارسال محموله</b>" in sp_txt and "🚚 کامیون‌های در دسترس: 5" in sp_txt
+          and "کدوم محصول رو می‌فرستی؟ روی محصولش بزن" in sp_txt
+          and "▫️ 🌵 پیوت ×8 | هر دونه ~300 تی‌پوینت" in sp_txt
+          and "▫️ ☕ تریاک ×3 | هر دونه ~9,000 تی‌پوینت" in sp_txt
+          and "sm:pick:peyote" in sp_datas and "sm:pick:teriak" in sp_datas
+          and "menu:shelter" in sp_datas and "menu:home" in sp_datas,
+          sp_txt.replace("\n", " | ")[:220])
+
+    # انبار خالی تو صفحه ارسال محموله
+    async with session_scope() as s:
+        epu, _ = await users.get_or_create(s, tg(999111, "emptysh", "خالی‌انبار"))
+        await s.commit()
+    upd_sp2 = _fake_update("sm:page", uid=999111)
+    await smuggle_h4.ship_page(upd_sp2, None)
+    sp_txt2 = next((c[1] for c in upd_sp2.callback_query.calls if c[0] == "edit"), "")
+    check("صفحه ارسال محموله با انبار خالی: راهنمای برداشت میاد و خط «کدوم محصول» نیس",
+          "🚚 کامیون‌های در دسترس: 5" in sp_txt2
+          and "انبارت خالیه، اول از مزرعه برداشت کن" in sp_txt2
+          and "کدوم محصول" not in sp_txt2, sp_txt2.replace("\n", " | ")[:160])
+
+    # کامیون شلوغ: 5 محموله فعال
+    async with session_scope() as s:
+        bpu = await users.get_by_tg(s, 999111)
+        await smg_svc.add_product(s, bpu.id, "marijuana", 5, 1_500, shelter_level=1)
+        for _i in range(config.SHIPMENT_MAX_ACTIVE):
+            ok_i, _m_i, _sh_i = await smg_svc.send_shipment(s, bpu, "marijuana", 1)
+            assert ok_i
+        await s.commit()
+    upd_sp3 = _fake_update("sm:page", uid=999111)
+    await smuggle_h4.ship_page(upd_sp3, None)
+    sp_txt3 = next((c[1] for c in upd_sp3.callback_query.calls if c[0] == "edit"), "")
+    check("صفحه ارسال محموله با 5 محموله فعال: کامیون صفر + خط شلوغی کامیون‌ها + لیست در راه‌ها",
+          "🚚 کامیون‌های در دسترس: 0" in sp_txt3
+          and "🚛 فعلا کامیون آماده برای ارسال محموله نداری" in sp_txt3
+          and "هر 5 تاشون تو مسیرن، رفتن جنس تحویل بدن" in sp_txt3
+          and "🚛 محموله‌های در راه:" in sp_txt3 and sp_txt3.count("▫️") == 5,
+          sp_txt3.replace("\n", " | ")[:240])
+
+    # ── خلاصه انبار: کاروان فعال سه‌خطی درخواستی + بلاک مکس‌لول ──
+    async with session_scope() as s:
+        await smg_svc._meta_set(s, "smuggler", "")
+        await smg_svc.spawn_caravan(s, crop="cocaine", bonus=60)
+        sov, _ = await users.get_or_create(s, tg(999112, "shmax", "مکس‌انبار"))
+        sov.shelter_level = 10
+        sov.cash = 97_940_163
+        sht_cv = await world_h2._shelter_text(s, sov)
+        seed_cap_x = world_svc.seed_storage_cap(sov)
+        await s.commit()
+    check("خلاصه انبار با کاروان فعال: سه خط دقیق درخواستی کارفرما",
+          "🚚 کاروان قاچاق رسیده و تا " in sht_cv and " دیگه جمع می‌کنه میره" in sht_cv
+          and "⚪ محصول موردنیاز: کوکائین" in sht_cv and "📈 قیمت خرید 60% بیشتر" in sht_cv
+          and "سر می‌زنه" not in sht_cv,
+          sht_cv.replace("\n", " | ")[-280:])
+    check("بلاک مکس‌لول انبار دقیقاً قالب درخواستی کارفرماست (به‌جای خط ارتقا)",
+          "🏚 انبارت رفت رو لول 10" in sht_cv
+          and f"📦 ظرفیت انبار هر بذر {fa_num(seed_cap_x)} تا شد" in sht_cv and seed_cap_x == 55
+          and "💵 نقدینگی: 97,940,163 تی‌پوینت" in sht_cv and "⬆️ ارتقای بعدی" not in sht_cv,
+          sht_cv.replace("\n", " | ")[-240:])
+    check("کیبورد انبار تو لول مکس دیگه دکمه ارتقا نداره",
+          not any("ارتقا" in b.text
+                  for row in kb3.shelter_kb(SimpleNamespace(shelter_level=10, level=20, id=1)).inline_keyboard
+                  for b in row))
+    async with session_scope() as s:
+        await smg_svc._meta_set(s, "smuggler", "")
+        await s.commit()
+
+    # ── تایم کاشت یکدست: صفحه تایید دقیقاً همون عددیه که اجرا ست می‌کنه (باگ اختلاف تایم) ──
+    async with session_scope() as s:
+        gru, _ = await users.get_or_create(s, tg(999113, "grower", "کاشتچی"))
+        gru.level = 10
+        gru.skill_speed = 0
+        await world_svc._meta_set(s, "weather_key", "rain")
+        await world_svc._meta_set(s, "weather_pct", "30")
+        await world_svc._meta_set(s, "weather_until", (now_utc() + timedelta(seconds=7200)).isoformat())
+        gpl = Plot(user_id=gru.id, status="empty", level=1)
+        s.add(gpl)
+        await s.flush()
+        gpl_id = gpl.id
+        await farming.add_seed_stock(s, gru.id, "marijuana", 5)
+        grow0 = await farming.grow_seconds(s, gru, gpl, "marijuana")
+        await s.commit()
+    raw_g = economy.crop_grow_seconds("marijuana", 1)
+    check("grow_seconds با باران پایه 30٪ دقیقاً فرمول سرعته",
+          grow0 == max(30, int(raw_g / 1.30)), f"{grow0} vs raw {raw_g}")
+    upd_gc = _fake_update(f"farm:plant:{gpl_id}:marijuana", uid=999113)
+    await farm_h2.plant_confirm(upd_gc, None)
+    gc_txt = next((c[1] for c in upd_gc.callback_query.calls if c[0] == "edit"), "")
+    check("صفحه تایید کاشت دقیقاً همون تایمی رو می‌گه که grow_seconds حساب می‌کنه",
+          f"⏱ {fa_dur(grow0)} دیگه آمادست" in gc_txt, gc_txt.replace("\n", " | ")[:140])
+    async with session_scope() as s:
+        gru2 = await users.get_by_tg(s, 999113)
+        gpl2 = await farming.get_plot(s, gru2.id, gpl_id)
+        ok_gp, _ = await farming.plant(s, gru2, gpl2, "marijuana")
+        actual_g = (gpl2.ready_at - gpl2.planted_at).total_seconds()
+        check("کاشت واقعی دقیقاً همون تایم صفحه تایید رو ست می‌کنه (باگ اختلاف تایم کاشت رفع شد)",
+              ok_gp and abs(actual_g - grow0) <= 1, f"واقعی {actual_g} vs نمایش {grow0}")
+        gru2.skill_speed = 8
+        grow8 = await farming.grow_seconds(s, gru2, gpl2, "marijuana")
+        check("با مهارت سرعت 8 (16٪) روی باران 30٪ ترکیب ضرب اعمال میشه",
+              grow8 == max(30, int(raw_g / (1.30 * 1.16))), f"{grow8} vs {int(raw_g / (1.30 * 1.16))}")
+        await s.commit()
+    async with session_scope() as s:  # هوا رو برگردون به عادی
+        await world_svc._meta_set(s, "weather_key", "normal")
+        await world_svc._meta_set(s, "weather_pct", "0")
+        await world_svc._meta_set(s, "weather_until", (now_utc() + timedelta(seconds=7200)).isoformat())
+        await s.commit()
+
+    # ── دستور ادمین /addseed: دادن محصول به بازیکن با اسم فارسی و تعداد ──
+    async with session_scope() as s:
+        adu, _ = await users.get_or_create(s, tg(999114, "gifted", "هدیه‌گیر"))
+        adu.cash = 777
+        adu.shelter_level = 0
+        unit_mj = economy.crop_yield("marijuana", 1, adu.level)
+        await s.commit()
+    upd_ad1 = _text_update("/addseed 999114 ماری جوانا 3", uid=1001, uname="admin", fname="ادمین")
+    await admin_h.addseed_cmd(upd_ad1, SimpleNamespace(args=["999114", "ماری", "جوانا", "3"]))
+    r_ad1 = upd_ad1.message.calls[-1][1] if upd_ad1.message.calls else ""
+    async with session_scope() as s:
+        adu2 = await users.get_by_tg(s, 999114)
+        row_ad = (await smg_svc.get_products(s, adu2.id))["marijuana"]
+        check("/addseed ماری جوانا (دو کلمه‌ای) 3 تا با ارزش پایه لول طرف به انبارش میره",
+              row_ad.qty == 3 and row_ad.value == unit_mj * 3
+              and "3 تا ماری‌جوانا" in r_ad1 and "ارزش هر دونه" in r_ad1
+              and "ظرفیت انبارش برای هر محصول 10 تاست" in r_ad1,
+              f"{row_ad.qty}/{row_ad.value} vs {unit_mj * 3} | {r_ad1[:90]}")
+        await s.commit()
+    upd_ad2 = _text_update("/addseed 999114 کوکایین 2", uid=1001, uname="admin", fname="ادمین")
+    await admin_h.addseed_cmd(upd_ad2, SimpleNamespace(args=["999114", "کوکایین", "2"]))
+    async with session_scope() as s:
+        adu3 = await users.get_by_tg(s, 999114)
+        pr_ad2 = await smg_svc.get_products(s, adu3.id)
+        check("/addseed با alias غلط‌املا (کوکایین) هم کار می‌کنه",
+              pr_ad2.get("cocaine") is not None and pr_ad2["cocaine"].qty == 2, str(pr_ad2.get("cocaine")))
+        await s.commit()
+    upd_ad3 = _text_update("/addseed 999114 ماری جوانا 9", uid=1001, uname="admin", fname="ادمین")
+    await admin_h.addseed_cmd(upd_ad3, SimpleNamespace(args=["999114", "ماری", "جوانا", "9"]))
+    r_ad3 = upd_ad3.message.calls[-1][1] if upd_ad3.message.calls else ""
+    async with session_scope() as s:
+        adu4 = await users.get_by_tg(s, 999114)
+        row_ad3 = (await smg_svc.get_products(s, adu4.id))["marijuana"]
+        check("/addseed روی انبار پر: تا سقف 10 پر می‌کنه و نابودشدگان رو گزارش میده",
+              row_ad3.qty == 10 and "7 تا ماری‌جوانا" in r_ad3
+              and "⚠️ انبارش پر بود، 2 تا جا نداشت و نابود شد" in r_ad3,
+              f"qty {row_ad3.qty} | {r_ad3[-110:]}")
+        await s.commit()
+    upd_ad4 = _text_update("/addseed 999114 تریاک 5", uid=9922, uname="notadm", fname="غریبه")
+    await admin_h.addseed_cmd(upd_ad4, SimpleNamespace(args=["999114", "تریاک", "5"]))
+    async with session_scope() as s:
+        adu5 = await users.get_by_tg(s, 999114)
+        pr_ad4 = await smg_svc.get_products(s, adu5.id)
+        check("/addseed برای غیرادمین کاملاً بی‌صداس و انبار دست‌نخورده‌ست",
+              not upd_ad4.message.calls and "teriak" not in pr_ad4, str(upd_ad4.message.calls[:1]))
+        await s.commit()
+    upd_ad5 = _text_update("/addseed 999114 بنگ 2", uid=1001, uname="admin", fname="ادمین")
+    await admin_h.addseed_cmd(upd_ad5, SimpleNamespace(args=["999114", "بنگ", "2"]))
+    r_ad5 = upd_ad5.message.calls[-1][1] if upd_ad5.message.calls else ""
+    upd_ad6 = _text_update("/addseed 999114 ماری", uid=1001, uname="admin", fname="ادمین")
+    await admin_h.addseed_cmd(upd_ad6, SimpleNamespace(args=["999114", "ماری"]))
+    r_ad6 = upd_ad6.message.calls[-1][1] if upd_ad6.message.calls else ""
+    upd_ad7 = _text_update("/addseed 888777666 تریاک 2", uid=1001, uname="admin", fname="ادمین")
+    await admin_h.addseed_cmd(upd_ad7, SimpleNamespace(args=["888777666", "تریاک", "2"]))
+    r_ad7 = upd_ad7.message.calls[-1][1] if upd_ad7.message.calls else ""
+    check("/addseed محصول ناشناخته لیست میده، فرم ناقص راهنما میده و طرفِ ناشناخته خطا میگیره",
+          "این محصول رو نمی‌شناسم" in r_ad5 and "فرم درست" in r_ad6
+          and "کاربری با این آیدی تو بازی نیس" in r_ad7,
+          f"{r_ad5[:40]} | {r_ad6[:40]} | {r_ad7[:40]}")
+
+    # ── «خرید ماری جوانا 4»: خرید تعدادی مستقیم از روی متن ──
+    async with session_scope() as s:
+        b4u, _ = await users.get_or_create(s, tg(999115, "buy4", "چارتایی"))
+        b4u.cash = 1000
+        b4u.level = 5
+        await s.commit()
+    upd_b4 = _text_update("خرید ماری جوانا 4", uid=999115, uname="buy4", fname="چارتایی")
+    await textcmd_h2.buy_text(upd_b4, None)
+    r_b4 = upd_b4.message.calls[-1][1] if upd_b4.message.calls else ""
+    async with session_scope() as s:
+        b4u2 = await users.get_by_tg(s, 999115)
+        st_b4 = await farming.get_stock(s, b4u2.id)
+        check("«خرید ماری جوانا 4» فوری 4 بذر می‌خره: 480 کم شد و پیام نقدینگی اومد",
+              st_b4.get("marijuana") == 4 and b4u2.cash == 520
+              and "4 بذر ماری‌جوانا خریدی" in r_b4 and "جمع 480 تی‌پوینت" in r_b4
+              and "💵 نقدینگی: 520 تی‌پوینت" in r_b4,
+              f"{st_b4} | {b4u2.cash} | {r_b4[:120]}")
+        await s.commit()
+    upd_b5 = _text_update("خرید ماری جوانا 4", uid=999115, uname="buy4", fname="چارتایی")
+    await textcmd_h2.buy_text(upd_b5, None)
+    r_b5 = upd_b5.message.calls[-1][1] if upd_b5.message.calls else ""
+    async with session_scope() as s:
+        b4u3 = await users.get_by_tg(s, 999115)
+        st_b5 = await farming.get_stock(s, b4u3.id)
+        check("خرید تعدادی بیشتر از جای انبار بذر رد میشه و پول دست‌نخورده می‌مونه",
+              "انبار بذرت جا نداره" in r_b5 and "فقط 1 تا دیگه جا داری" in r_b5
+              and "💵 نقدینگی:" not in r_b5 and st_b5.get("marijuana") == 4 and b4u3.cash == 520,
+              f"{r_b5[:90]} | {b4u3.cash}")
+        await s.commit()
+    upd_b6 = _text_update("خرید پیوت 5", uid=999115, uname="buy4", fname="چارتایی")
+    await textcmd_h2.buy_text(upd_b6, None)
+    r_b6 = upd_b6.message.calls[-1][1] if upd_b6.message.calls else ""
+    async with session_scope() as s:
+        b4u4 = await users.get_by_tg(s, 999115)
+        st_b6 = await farming.get_stock(s, b4u4.id)
+        check("خرید تعدادی با پول ناکافی رد میشه (5 تا پیوت 4,250 میشه، 520 داره)",
+              "کافی نیس" in r_b6 and not st_b6.get("peyote") and b4u4.cash == 520,
+              f"{r_b6[:80]} | {b4u4.cash}")
+        await s.commit()
+
+    # ── بازه غارت پی‌وی پله‌ای: هر جیب دقیقاً تو بازه خودش ──
+    _pv_cases = [(5_000, 0.12, 0.18), (10_000, 0.10, 0.15), (49_999, 0.10, 0.15), (50_000, 0.08, 0.12),
+                 (99_999, 0.08, 0.12), (100_000, 0.05, 0.10), (1_000_000, 0.03, 0.06),
+                 (10_000_000, 0.02, 0.04), (50_000_000, 0.01, 0.02), (900_000_000, 0.01, 0.02)]
+    _pv_bad = []
+    for _c, _lo_p, _hi_p in _pv_cases:
+        for _ in range(150):
+            _r = pv_svc.pv_steal_range(_c)
+            if not (_lo_p - 1e-9 <= _r <= _hi_p + 1e-9):
+                _pv_bad.append((_c, round(_r, 4)))
+                break
+    check("غارت پی‌وی برای هر پله جیب دقیقاً تو بازه خودش رندوم میشه (پولدارا فشار نمی‌خورن)",
+          not _pv_bad, str(_pv_bad[:3]))
+    check("جیب 100میلیونی پی‌وی حداکثر ۲٪ غارت می‌ده نه 17میل (شکایت کارفرما)",
+          all(pv_svc.pv_steal_range(100_000_000) <= 0.02 + 1e-9 for _ in range(100)))
+
+    # ── هینت مزرعه و هلپ‌ها به 📦 ارسال محموله اشاره می‌کنن (نه بخش محصولات قدیمی) ──
+    upd_fh = _text_update("تریاکی مزرعه", uid=999110, uname="shpage", fname="کامیوندار")
+    await farm_h2.render_farm(upd_fh)
+    fh_txt = upd_fh.message.calls[-1][1]
+    check("هینت محصول تو صفحه مزرعه به بخش 📦 ارسال محموله اشاره می‌کنه",
+          "محصول تو انبارته" in fh_txt and "📦 ارسال محموله بفرستشون" in fh_txt
+          and "بخش 🌾 محصولات" not in fh_txt, fh_txt.replace("\n", " | ")[-180:])
+    check("هلپ قاچاق و مزرعه: ارسال محموله از بخش خودش معرفی شده و ظرفیت 300 قدیمی نیس",
+          "📦 ارسال محموله رو باز می‌کنی" in start_h2.HELP_SECTIONS["smuggle"]
+          and "از 10 تا شروع میشه" in start_h2.HELP_SECTIONS["smuggle"]
+          and "300" not in start_h2.HELP_SECTIONS["smuggle"]
+          and "📦 ارسال محموله" in start_h2.HELP_SECTIONS["farm"])
 
     # ── تمیزکاری ته تست‌ها ──
     fj_svc._MEMBER_CACHE.clear()

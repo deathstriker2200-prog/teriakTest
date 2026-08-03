@@ -72,6 +72,19 @@ async def buy_plot(session: AsyncSession, user: User) -> tuple[bool, str]:
 
 # ───────── کاشت (مصرف بذر) ─────────
 
+async def grow_seconds(session: AsyncSession, user: User, plot: Plot, seed_key: str) -> int:
+    """
+    زمان واقعی کاشت با همه ضریب‌ها (آب‌وهوا + مهارت سرعت)، دقیقاً همونی که plant ست می‌کنه
+    صفحه تایید کاشت و خود اجرا از همین استفاده می‌کنن که زمان نمایش‌داده‌شده همیشه درست باشه
+    """
+    from services import world as world_svc
+    from services import combat as combat_svc
+    wkey, wpct, _ = await world_svc.weather_state(session)
+    speed = world_svc.weather_grow_speed(wkey, wpct)
+    speed *= 1 + combat_svc.skill_pct(user, "speed")  # مهارت ⚡ سرعت: هر لول ۲% کاشت تندتر
+    return max(30, int(economy.crop_grow_seconds(seed_key, plot.level) / speed))
+
+
 async def plant(session: AsyncSession, user: User, plot: Plot, seed_key: str) -> tuple[bool, str]:
     seed = config.SEEDS.get(seed_key)
     if not seed:
@@ -90,13 +103,7 @@ async def plant(session: AsyncSession, user: User, plot: Plot, seed_key: str) ->
 
     await add_seed_stock(session, user.id, seed_key, -1)
 
-    # آب و هوا روی سرعت رشد اثر می‌ذاره (باران سریع‌تر | گرما/سرما کندتر)، شدت همین رول
-    from services import world as world_svc
-    from services import combat as combat_svc
-    wkey, wpct, _ = await world_svc.weather_state(session)
-    speed = world_svc.weather_grow_speed(wkey, wpct)
-    speed *= 1 + combat_svc.skill_pct(user, "speed")  # مهارت ⚡ سرعت: هر لول ۲% کاشت تندتر
-    seconds = max(30, int(economy.crop_grow_seconds(seed_key, plot.level) / speed))
+    seconds = await grow_seconds(session, user, plot, seed_key)
     plot.status = "growing"
     plot.crop = seed_key
     plot.planted_at = now_utc()
@@ -197,7 +204,7 @@ async def harvest_all(session: AsyncSession, user: User) -> tuple[bool, str, str
     dq = await dq_svc.track(session, user, "harvest", n_harvests)
 
     extra = "\n".join(item_lines + lost_lines)
-    extra += "\n\n📦 محصول رفت تو انبار (🎒 انبار ← 🌾 محصولات)"
+    extra += "\n\n📦 محصول رفت تو انبار (🎒 انبار ← 📦 ارسال محموله)"
     extra += f"\n💰 ارزش برداشت ~{money(total_gain)}، هنوز نقد نشده"
     extra += "\n🚚 برای نقد کردن: 📦 ارسال محموله یا فروش به کاروان قاچاق"
     if total_xp:

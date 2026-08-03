@@ -21,8 +21,8 @@ from utils import fa_dur, fa_num, money, now_utc
 # ═════════ انبار محصول 🌾 ═════════
 
 def products_cap(shelter_level: int) -> int:
-    """ظرفیت انبار برای هر محصول (مثل ظرفیت بذر و منابع)، با لول انبار بیشتر میشه"""
-    return config.PRODUCT_CAP_BASE + config.PRODUCT_CAP_PER_LEVEL * max(0, shelter_level or 0)
+    """ظرفیت انبار برای هر محصول (مثل ظرفیت بذر و منابع): لول 1 از 10 تا شروع میشه و با هر لول بیشتر میشه"""
+    return config.PRODUCT_CAP_PER_LEVEL * max(1, shelter_level or 0)
 
 
 async def add_product(session: AsyncSession, user_id: int, crop: str, qty: int, value: int,

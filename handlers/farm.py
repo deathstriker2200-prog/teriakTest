@@ -51,7 +51,7 @@ async def render_farm(update: Update, extra: str | None = None, alert: str | Non
         from services import smuggle as smg
         p_n = await smg.products_count(s, user.id)
         if p_n:
-            text += f"\n🎒 {fa_num(p_n)} محصول تو انبارته، از 🎒 انبار بخش 🌾 محصولات بفروششون"
+            text += f"\n🎒 {fa_num(p_n)} محصول تو انبارته، از 🎒 انبار بخش 📦 ارسال محموله بفرستشون"
 
         next_price = economy.plot_price(len(plots))
         markup = kb.farm_kb(user, plots, next_price, ready_count)
@@ -157,7 +157,7 @@ async def plant_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         stock = await farming.get_stock(s, user.id)
         have = stock.get(seed_key, 0)
         yield_ = economy.crop_yield(seed_key, plot.level, user.level)
-        grow = economy.crop_grow_seconds(seed_key, plot.level)
+        grow = await farming.grow_seconds(s, user, plot, seed_key)  # زمان واقعی با آب‌وهوا و مهارت، مثل اجرا
         text = (
             f"<b>🌱 کاشت {esc(seed['name'])}</b>\n\n"
             f"🌾 {fa_num(have)} بذر داری و یدونه مصرف میشه\n"

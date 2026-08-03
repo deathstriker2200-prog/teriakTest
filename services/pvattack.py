@@ -74,6 +74,15 @@ async def powers(session: AsyncSession, user: User) -> tuple[int, int]:
     return combat.combat_stats(user, items, dogs)
 
 
+def pv_steal_range(cash: int) -> float:
+    """رندوم داخل بازه غارت بر اساس جیب قربانی (پلکانی، درخواست کارفرما)"""
+    for limit, lo, hi in config.PV_ATTACK_STEAL_TIERS:
+        if limit is None or cash < limit:
+            return random.uniform(lo, hi)
+    lo, hi = config.PV_ATTACK_STEAL_TIERS[-1][1:]
+    return random.uniform(lo, hi)
+
+
 def win_chance(a_atk: int, t_dfn: int) -> float:
     """شانس برد مهاجم، پایه ۵۰ درصد و هر واحد اختلاف قدرت جابه‌جاش می‌کنه (با کف و سقف)"""
     raw = config.PV_BASE_CHANCE + (a_atk - t_dfn) * config.PV_ATTACK_CHANCE_SCALE
@@ -153,7 +162,7 @@ async def execute(session: AsyncSession, attacker: User, victim: User) -> dict:
     if won:
         attacker.wins += 1
         victim.losses += 1
-        pct = random.uniform(config.PV_ATTACK_STEAL_MIN_PCT, config.PV_ATTACK_STEAL_MAX_PCT)
+        pct = pv_steal_range(victim.cash)
         pct *= 1 + user_svc.artifact_steal_bonus(artis)
         steal = max(0, int(victim.cash * pct))
         if steal:

@@ -1,14 +1,14 @@
 """
 ارسال محموله 📦 و کاروان قاچاق 🚚
 
-جریان محموله: 🌾 محصولات ← انتخاب محصول ← مقدار (10/25/50/همه) ← کارت تایید ← ارسال
+جریان محموله: 📦 ارسال محموله ← انتخاب محصول ← مقدار (10/25/50/همه یا تایپی) ← کارت تایید ← ارسال
 کاروان قاچاق: هر چند ساعت خودکار میاد + اسپان دستی ادمین با «اسپان کاروان قاچاق» و «اسپان کاروان [محصول]» (با پسوند اختیاری «شانسی»)
 """
 
 import asyncio
 import random
 
-from telegram import Update
+from telegram import InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
 import config
@@ -21,6 +21,50 @@ from utils import fa_dur, fa_num, money, normalize_fa
 
 
 # ═════════ ارسال محموله 📦 ═════════
+
+async def _ship_render(s, user) -> tuple[str, InlineKeyboardMarkup]:
+    """متن و کیبورد صفحه ارسال محموله: کامیون‌های آزاد + محصول‌های قابل ارسال + محموله‌های در راه"""
+    products = await smg.get_products(s, user.id)
+    ongoing = await smg.active_shipments(s, user.id)
+    free = max(0, config.SHIPMENT_MAX_ACTIVE - len(ongoing))
+    lines = [
+        "<b>📦 ارسال محموله</b>",
+        "",
+        f"🚚 کامیون‌های در دسترس: {fa_num(free)}",
+        "",
+    ]
+    have_any = any(r.qty > 0 for r in products.values())
+    if not have_any:
+        lines.append("انبارت خالیه، اول از مزرعه برداشت کن")
+    else:
+        lines.append("کدوم محصول رو می‌فرستی؟ روی محصولش بزن")
+        for key, sd in config.SEEDS.items():
+            row = products.get(key)
+            if not row or row.qty <= 0:
+                continue
+            unit = int(row.value / row.qty)
+            lines.append(f"▫️ {sd.get('emoji', '🌱')} {sd['name']} ×{fa_num(row.qty)} | هر دونه ~{money(unit)}")
+    if free <= 0:
+        lines += [
+            "",
+            "🚛 فعلا کامیون آماده برای ارسال محموله نداری",
+            f"هر {fa_num(config.SHIPMENT_MAX_ACTIVE)} تاشون تو مسیرن، رفتن جنس تحویل بدن",
+        ]
+    if ongoing:
+        lines += ["", "🚛 محموله‌های در راه:"]
+        for sh in ongoing:
+            lines.append(smg.shipment_line(sh))
+    return "\n".join(lines), kb.products_kb(products)
+
+
+async def ship_page(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """صفحه ارسال محموله (sm:page)، دکمه خودش رو ردیف اول انبار داره"""
+    async with session_scope() as s:
+        user, _ = await users.get_or_create(s, update.effective_user)
+        text, markup = await _ship_render(s, user)
+        await s.commit()
+    await respond(update, text, markup)
+
 
 async def ship_qty_page(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """انتخاب مقدار ارسال برای یه محصول (sm:pick:<crop>)"""
@@ -102,10 +146,8 @@ async def ship_execute(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         ok, alert, sh = await smg.send_shipment(s, user, crop, qty)
         ship_note = None
         if ok:
-            from handlers import world as world_h
             alert += f" | ⏱ {fa_dur(smg.shipment_seconds(qty))} دیگه میرسه"
-            text = await world_h._shelter_cat_text(s, user, "prod")
-            markup = kb.products_kb(await smg.get_products(s, user.id))
+            text, markup = await _ship_render(s, user)
             ship_note = await onb.first_shipment(s, user)
         else:
             text, markup = None, None

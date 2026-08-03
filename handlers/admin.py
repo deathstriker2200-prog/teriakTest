@@ -2,6 +2,7 @@
 پنل ادمین، دادن پول و XP به خودت + مدیریت کاربرا
 /user @silktoch یا /user 123456789 یا /user بخشی‌از‌اسم → پیدا کردن و دیدن پروفایل و پول/XP دادن
 /addtp [آیدی عددی] [مبلغ] | /addxp [آیدی عددی] [مقدار] → دادن مستقیم
+/addseed [آیدی عددی] [اسم محصول] [تعداد] → دادن محصول برای تست ارسال محموله
 به غریبه‌ها کاملاً بی‌صداس
 """
 
@@ -38,6 +39,7 @@ def _panel_text(user, extra: str | None = None) -> str:
         "✨ <code>/addxp 123456789 100</code>، دادن مستقیم تجربه\n"
         "🏴 <code>/addxpgroup اسم تیم 500</code>، دادن مستقیم XP به یه تیم (آیدی عددی تیم هم قبوله)\n"
         "💸 <code>/detp 123456789 5000</code> و <code>/dexp 123456789 100</code>، کم کردن مستقیم سکه و تجربه\n"
+        "🌿 <code>/addseed 123456789 ماری جوانا 3</code>، دادن محصول به خودت یا بقیه برای تست محموله (ارزش هر دونه = قیمت پایه فروش)\n"
         "🧨 <code>/clearacc 123456789</code> یا یوزرنیم یا اسم، ریست کامل اکانت به حالت روز اول (با تاییدیه)\n"
         "🔧 /botdown و /botup، خاموش و روشن کلی ربات (مد تعمیر)\n"
         "👻 /hideboard، نامرئی شدن از همه لیدربردها (دوباره بزنی برمی‌گرده)\n"
@@ -443,6 +445,64 @@ async def addxp_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     # پیام تبریک لول‌آپ جدا میاد، قاطی گزارش ادمین نمیشه
     from handlers.common import announce_notes
     await announce_notes(update, notes)
+
+
+# ───────── /addseed، دادن محصول برای تست ارسال محموله ─────────
+
+_ADDSEED_ALIASES = {
+    "ماری جوانا": "marijuana", "ماریجوانا": "marijuana", "ماری‌جوانا": "marijuana",
+    "قارچ": "gharch", "پیوت": "peyote", "کراتوم": "kratom",
+    "خشخاش": "khashkhash", "خشخاش سیاه": "khashkhash",
+    "تریاک": "teriak", "کوکائین": "cocaine", "کوکایین": "cocaine",
+    "جهنم": "jahannam", "بذر جهنم": "jahannam",
+    "ابلیس": "eblis", "بذر ابلیس": "eblis",
+    "جهش یافته": "mutant", "جهش‌یافته": "mutant", "موتانت": "mutant",
+}
+
+
+async def addseed_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """🌿 /addseed [آیدی] [اسم محصول] [تعداد]، فقط ادمین | محصول با قیمت پایه میره انبار طرف"""
+    if not _is_admin(update):
+        return
+    from utils import normalize_fa
+    args = [normalize_fa(a) for a in (context.args or [])]
+    qty = parse_amount(args[-1]) if args else None
+    if len(args) < 3 or not args[0].lstrip("-").isdigit() or qty is None:
+        return await update.message.reply_html(
+            "❌ فرم درست: <code>/addseed 123456789 ماری جوانا 3</code>\n"
+            "آیدی عددی طرف + اسم محصول + تعداد"
+        )
+    crop = _ADDSEED_ALIASES.get(" ".join(args[1:-1]).strip())
+    if crop is None:
+        return await update.message.reply_html(
+            "🤷 این محصول رو نمی‌شناسم\n\n"
+            + " | ".join(sd["name"] for sd in config.SEEDS.values())
+        )
+
+    tg_id = int(args[0])
+    async with session_scope() as s:
+        target = await users.get_by_tg(s, tg_id)
+        if target is None:
+            await s.commit()
+            return await update.message.reply_html("❌ کاربری با این آیدی تو بازی نیس")
+        from services import smuggle as smg_svc
+        sd = config.SEEDS[crop]
+        unit = economy.crop_yield(crop, 1, target.level)
+        added, added_val = await smg_svc.add_product(
+            s, target.id, crop, qty, unit * qty, target.shelter_level
+        )
+        name = esc(users.display_name(target))
+        cap = smg_svc.products_cap(target.shelter_level or 0)
+        await s.commit()
+    lost = qty - added
+    text = (
+        f"<b>{sd.get('emoji', '🌱')} {fa_num(added)} تا {sd['name']} به {name} اضافه شد</b>\n\n"
+        f"💰 ارزش هر دونه ~{money(unit)} | مجموع {money(added_val)}\n"
+        f"📦 ظرفیت انبارش برای هر محصول {fa_num(cap)} تاست"
+    )
+    if lost:
+        text += f"\n⚠️ انبارش پر بود، {fa_num(lost)} تا جا نداشت و نابود شد"
+    await update.message.reply_html(text)
 
 
 # ───────── /detp و /dexp، کم کردن مستقیم ─────────
