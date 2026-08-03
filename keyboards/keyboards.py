@@ -942,7 +942,7 @@ def shelter_kb(user: User, caravan_on: bool = False) -> InlineKeyboardMarkup:
             )])
     else:
         rows.append([_btn("🏚 انبار 👑 لول مکس", "noop:maxshelter")])
-    rows.append([_btn("💰 فروش منابع", "shelter:sell", PRIMARY)])
+    # فروش منابع رفت توی بخش 🧱 منابع (درخواست کارفرما)، صفحه اول خلوت شد
     rows.append([_btn("🏠 منوی اصلی", "menu:home", PRIMARY)])
     return InlineKeyboardMarkup(rows)
 

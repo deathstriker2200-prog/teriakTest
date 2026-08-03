@@ -627,31 +627,37 @@ async def team_mine_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 def _buildings_text(team) -> str:
     tlevel = team.level or 1
 
-    def _line(kind_emoji: str, title: str, level: int, per_level: float) -> list[str]:
+    def _line(kind_emoji: str, title: str, effect_emoji: str, level: int, per_level: float) -> list[str]:
         pct_now = int(per_level * level * 100)
         out = [f"{kind_emoji} <b>{title}</b>، لول {fa_num(level)}"]
-        out.append(f"قدرت فعلی: +{fa_num(pct_now)}% برای همه اعضا")
+        out.append(f"{effect_emoji} قدرت فعلی: +{fa_num(pct_now)}% برای تمام اعضا")
         if level >= config.TEAM_BUILDING_MAX_LEVEL:
             out.append("⭐ مکس لوله")
         elif level + 1 > tlevel:
-            out.append(f"🔒 به لول تیم {fa_num(level + 1)} نیاز داره")
+            out.append(f"🔒 ارتقای بعدی پس از رسیدن تیم به لول {fa_num(level + 1)}")
         else:
             cost = teams.building_cost(level + 1)
             pct_next = int(per_level * (level + 1) * 100)
-            out.append(f"⬆️ لول {fa_num(level + 1)} (+{fa_num(pct_next)}%)، هزینه {money(cost)}")
+            out.append(f"⬆️ ارتقا به لول {fa_num(level + 1)}: +{fa_num(pct_next)}%")
+            out.append(f"💰 هزینه: {money(cost)}")
         return out
 
     lines = [f"<b>🏗 ساختمان‌های تیم «{esc(team.name)}»</b>", ""]
-    lines.append(f"⭐ لول تیم: {fa_num(tlevel)}، لول ساختمان از لول تیم جلوتر نمی‌زنه")
+    lines.append(f"⭐ لول تیم: {fa_num(tlevel)}")
+    lines.append("📌 لول هیچ ساختمانی نمی‌تواند از لول تیم بالاتر برود")
     lines.append("")
-    lines += _line("⚔️", "ساختمان حمله", team.atk_bld or 0, config.TEAM_ATK_BONUS_PER_LEVEL)
+    lines += _line("⚔️", "ساختمان حمله", "💥", team.atk_bld or 0, config.TEAM_ATK_BONUS_PER_LEVEL)
     lines.append("")
-    lines += _line("🛡", "ساختمان دفاع", team.def_bld or 0, config.TEAM_DEF_BONUS_PER_LEVEL)
+    lines += _line("🛡", "ساختمان دفاع", "🛡", team.def_bld or 0, config.TEAM_DEF_BONUS_PER_LEVEL)
     lines.append("")
     lines.append(f"🏦 موجودی بانک تیم: {money(team.bank)}")
     lines.append("")
-    lines.append("👑 ارتقا فقط با رهبره، دستورش: «تیم ارتقا حمله» / «تیم ارتقا دفاع»")
-    lines.append("💰 کمک مالی اعضا: «تیم واریز 1200»")
+    lines.append("👑 فقط رهبر تیم می‌تواند ساختمان‌ها را ارتقا دهد")
+    lines.append("⚔️ «تیم ارتقا حمله»")
+    lines.append("🛡 «تیم ارتقا دفاع»")
+    lines.append("")
+    lines.append("💸 اعضا می‌توانند با دستور زیر به بانک تیم کمک مالی کنند:")
+    lines.append("«تیم واریز 1200»")
     return "\n".join(lines)
 
 

@@ -1,5 +1,6 @@
 """منطق مزرعه: خرید زمین | کاشت با بذر | برداشت با کولدان | آپگرید"""
 
+import random
 from datetime import timedelta
 
 from sqlalchemy import func, select
@@ -128,6 +129,21 @@ def harvest_cooldown_left(user: User) -> int:
     return max(0, int(left))
 
 
+def harvest_qty_roll(plot_level: int, seed_key: str) -> int:
+    """تعداد برداشت شانسی از جدول لول زمین (درخواست کارفرما): افسانه‌ای‌ها همیشه 1 تا، بقیه طبق شانس‌های لول زمین"""
+    sd = config.SEEDS.get(seed_key) or {}
+    if sd.get("legendary"):
+        return 1
+    table = config.HARVEST_QTY_CHANCES[min(max(plot_level, 1), config.PLOT_MAX_LEVEL)]
+    r = random.random() * 100
+    acc = 0.0
+    for qty, pct in table:
+        acc += pct
+        if r < acc:
+            return qty
+    return table[-1][0]
+
+
 async def harvest_all(session: AsyncSession, user: User) -> tuple[bool, str, str | None, tuple]:
     """
     برداشت همه زمین‌های آماده
@@ -167,8 +183,8 @@ async def harvest_all(session: AsyncSession, user: User) -> tuple[bool, str, str
             p.ready_at = None
             continue
         tier = world_svc.roll_quality(q5_bonus + economy.plot_quality_bonus(p.level))
-        # درخواست کارفرما: تعداد ثابت هر محصول از جدول، بدون رنج | رول داخلی فقط تجربه رو تعیین می‌کنه
-        qty = config.HARVEST_QTY.get(p.crop, 1)
+        # درخواست کارفرما: تعداد شانسی از جدول لول زمین، افسانه‌ای‌ها همیشه 1 تا | رول داخلی فقط تجربه رو تعیین می‌کنه
+        qty = harvest_qty_roll(p.level, p.crop)
         base = economy.crop_yield(p.crop, p.level, user.level)
         mkt = world_svc.market_mult(mults, p.crop)
         gain = apply_legendary_cap(p.crop, int(base * sell_mult * mkt) * qty)
@@ -183,7 +199,7 @@ async def harvest_all(session: AsyncSession, user: User) -> tuple[bool, str, str
         total_gain += added_val
         total_units += added
         if added:
-            item_lines.append(f"▫️ {emoji} {sd['name']} ×{fa_num(added)}، {money_tp(added_val)}")
+            item_lines.append(f"▫️ {emoji} {sd['name']} ×{fa_num(added)}")
         if added < qty:
             lost_lines.append(f"⚠️ انبار {sd['name']} پر بود، {fa_num(qty - added)} تا از بین رفت")
         p.status = "empty"
@@ -204,9 +220,9 @@ async def harvest_all(session: AsyncSession, user: User) -> tuple[bool, str, str
     dq = await dq_svc.track(session, user, "harvest", n_harvests)
 
     extra = "\n".join(item_lines + lost_lines)
-    extra += "\n\n📦 محصول رفت تو انبار (🎒 انبار ← 📦 ارسال محموله)"
-    extra += f"\n💰 ارزش برداشت ~{money(total_gain)}، هنوز نقد نشده"
-    extra += "\n🚚 برای نقد کردن: 📦 ارسال محموله یا فروش به کاروان قاچاق"
+    extra += "\n\n📦 محصول رفت تو انبار (🎒 انبار ← 🌾 محصولات)"
+    extra += f"\n💰 ارزش برداشت تقریبا {money(total_gain)}، هنوز نقد نشده"
+    extra += "\n🚚 برای نقد کردن: بخش «انبار» ارسال محموله یا فروش به کاروان قاچاق"
     if total_xp:
         extra += f"\n✨ {fa_num(total_xp)} تجربه"
     if wkey != "normal" and sell_mult != 1.0:

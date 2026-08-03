@@ -131,9 +131,10 @@ async def main() -> None:
         lgp.ready_at = now_utc() - timedelta(seconds=1)
         ok_lg2, _a2, _ex2, _dq2, _nn2 = await farming.harvest_all(s, lgu)
         _prod2 = await _smg.get_products(s, lgu.id)
-        check("کوکائین هم تعداد ثابتش 1 تاست و سقف نمی‌خوره (⭐5 لول 20 = 19,320)",
-              ok_lg2 and _prod2["cocaine"].qty == 1 and _prod2["cocaine"].value == 19320,
-              str(_prod2.get("cocaine")))
+        _q_c = _prod2["cocaine"].qty
+        check("کوکائین هم دیگه شانسیه (زمین لول 1: 1 یا 2 تا) و سقف نمی‌خوره (هر دونه ⭐5 لول 20 = 19,320)",
+              ok_lg2 and _q_c in (1, 2) and _prod2["cocaine"].value == 19320 * _q_c,
+              f"{_q_c} | {_prod2['cocaine'].value}")
         await s.commit()
     world_svc.roll_quality = _orig_quality
 
@@ -235,7 +236,7 @@ async def main() -> None:
     y3 = economy.crop_yield("teriak", 1, 11)
     check("لول زمین روی قیمت محصول اثر مستقیم نداره", y2 == y1, f"{y1}→{y2}")
     check("برداشت با لول کاربر بیشتره (۲% هر لول)", y3 > y1, f"{y1}→{y3}")
-    check("لول زمین شانس محصول افسانه‌ای رو بیشتر می‌کنه",
+    check("لول زمین شانس ⭐5 داخلی (رول تجربه) رو بیشتر می‌کنه",
           economy.plot_quality_bonus(1) == 0
           and abs(economy.plot_quality_bonus(6) - 5 * config.PLOT_Q5_PER_LEVEL) < 1e-9
           and config.PLOT_Q5_PER_LEVEL == 0.03)
@@ -319,13 +320,18 @@ async def main() -> None:
 
         plot.ready_at = now_utc() - timedelta(seconds=1)
         cash_before = u1.cash
-        ok, alert, extra, (dq_d1, dq_l1), _notes = await farming.harvest_all(s, u1)
+        _orig_hqr = farming.harvest_qty_roll
+        farming.harvest_qty_roll = lambda lvl, crop: 2
+        try:
+            ok, alert, extra, (dq_d1, dq_l1), _notes = await farming.harvest_all(s, u1)
+        finally:
+            farming.harvest_qty_roll = _orig_hqr
         gain_min = economy.crop_yield("teriak", 1, u1.level)
         from services import smuggle as _smg2
         _pr = await _smg2.get_products(s, u1.id)
-        check("برداشت موفق: نقد صفر و محصول تو انبار (تریاک تعداد ثابتش 3 تاست)",
-              ok and u1.cash == cash_before and _pr["teriak"].qty == 3
-              and _pr["teriak"].value == gain_min * 3,
+        check("برداشت موفق: نقد صفر و محصول تو انبار (تریاک با رول قطعی 2 تا)",
+              ok and u1.cash == cash_before and _pr["teriak"].qty == 2
+              and _pr["teriak"].value == gain_min * 2,
               f"{u1.cash - cash_before} | qty {_pr.get('teriak') and _pr['teriak'].qty} value {_pr.get('teriak') and _pr['teriak'].value} (پایه {gain_min})")
         check("پیام برداشت تعداد و ارزش داره و می‌گه رفت انبار",
               bool(extra) and "×" in extra and "💰 ارزش برداشت" in extra and "📦" in extra and "⭐" not in extra.split("\n\n📦")[0],
@@ -3664,10 +3670,11 @@ async def main() -> None:
           all(x in HS["start"] for x in ["«تریاکی پروفایل»", "کنده کاری", "«تریاکی شاپ»", "لول‌آپ"]))
     check("هلپ نبرد",
           all(x in HS["battle"] for x in ["ریپلای", "«حمله»", "«تریاکی درمان»", "لول 5", "سگ"]))
-    check("هلپ مزرعه (تعداد ثابت برداشت به‌جای کیفیت)",
-          all(x in HS["farm"] for x in ["«تریاکی کاشت [نام بذر]»", "«تریاکی برداشت»", "تعداد ثابت",
-                                        "تریاک 3 تا", "چوب", "بذرهای افسانه‌ای"])
-          and "کیفیت" not in HS["farm"])
+    check("هلپ مزرعه (تعداد شانسی برداشت با جدول لول زمین)",
+          all(x in HS["farm"] for x in ["«تریاکی کاشت [نام بذر]»", "«تریاکی برداشت»", "تعداد شانسی",
+                                        "افسانه‌ای‌ها همیشه 1 تا", "بین 1 تا 6 تا", "چوب",
+                                        "شانس دریافت تعداد بیشتری بذر رو از محصولات داری"])
+          and "کیفیت" not in HS["farm"] and "تعداد ثابت" not in HS["farm"])
     check("هلپ شرکت (بدون عدد دقیق ضریب)",
           all(x in HS["company"] for x in ["🏭 شرکت", "🪵 چوب‌بری", "کارخانه آهن", "چوب هم می‌خواد"])
           and "%" not in HS["company"])
@@ -5425,15 +5432,16 @@ async def main() -> None:
     await world_h2.shelter_cmd(upd_h, None)
     htxt = upd_h.message.calls[-1][1]
     check("انبار سه دسته و کاروان قاچاق رو نشون میده (چیدمان درخواستی کارفرما، بدون فرمول‌ها)",
-          all(x in htxt for x in ["⭐ لول انبار 2 از 10", "🌾 محصولات: خالی", "🧱 منابع:",
-                                  "🪵 چوب: 250", "⛏️ آهن: 26", "📦 آیتم‌ها 🌱", "بذر", "🚚 کاروان قاچاق"])
+          all(x in htxt for x in ["⭐ لول انبار: 2", "🌾 محصولات: خالی", "🧱 منابع\n",
+                                  "🪵 چوب: 250", "⛏️ آهن: 26", "📦 آیتم‌ها\n", "🌱 بذر:", "🚚 کاروان قاچاق",
+                                  "💵 نقدینگی:"])
           and "فرمول" not in htxt,
           htxt[:200])
     hkb = upd_h.message.calls[-1][2].get("reply_markup")
     hdatas = [b.callback_data for row in hkb.inline_keyboard for b in row]
-    check("دکمه‌های سه دسته و فروش منابع و کاروان تو انبار هست (فرمول‌ها کلاً حذف شده)",
-          all(d in hdatas for d in ("shelter:cat:prod", "shelter:cat:res", "shelter:cat:item", "smc:page", "shelter:sell"))
-          and "shelter:cat:form" not in hdatas,
+    check("دکمه‌های سه دسته و کاروان تو انبارن و فروش منابع از صفحه اول رفته توی بخش منابع",
+          all(d in hdatas for d in ("shelter:cat:prod", "shelter:cat:res", "shelter:cat:item", "smc:page", "sm:page"))
+          and "shelter:sell" not in hdatas and "shelter:cat:form" not in hdatas,
           str(hdatas))
     upd_h2 = _fake_update("shelter:cat:item", uid=9609)
     await world_h2.shelter_cat_cb(upd_h2, None)
@@ -6121,11 +6129,15 @@ async def main() -> None:
         cash_h0 = hu.cash
         await s.commit()
     upd_hv = _text_update("تی برداشت", uid=7325, uname="hav", fname="برداشتگر")
+    _orig_hqr2 = farming.harvest_qty_roll
+    farming.harvest_qty_roll = lambda lvl, crop: 2
     try:
         await textcmd_h3.harvest_text(upd_hv, None)
         crashed_hv = False
     except Exception:
         crashed_hv = True
+    finally:
+        farming.harvest_qty_roll = _orig_hqr2
     htxt = upd_hv.message.calls[-1][1] if upd_hv.message.calls else ""
     check("«تی برداشت» بدون کرش کار می‌کنه",
           not crashed_hv and "<b>📦 برداشت</b>" in [c[1] for c in upd_hv.message.calls][0],
@@ -6134,7 +6146,7 @@ async def main() -> None:
         hu2 = await users.get_by_tg(s, 7325)
         from services import smuggle as _smg3
         _prh = await _smg3.get_products(s, hu2.id)
-        check("بعد «تی برداشت» محصول رفت انبار و نقد نشد (ماری تعداد ثابتش 2 تاست؛ نقد فقط جایزه اولین برداشته)",
+        check("بعد «تی برداشت» محصول رفت انبار و نقد نشد (رول قطعی 2 تا؛ نقد فقط جایزه اولین برداشته)",
               hu2.cash == cash_h0 + config.FIRST_HARVEST_BONUS
               and _prh.get("marijuana") is not None and _prh["marijuana"].qty == 2,
               f"{hu2.cash} vs {cash_h0} | {_prh['marijuana'].qty if _prh.get('marijuana') else None}")
@@ -6323,7 +6335,7 @@ async def main() -> None:
     await world_h.shelter_cmd(upd_sh, None)
     sh_txt = upd_sh.message.calls[-1][1]
     check("تو متن انبار سه دسته تو خط‌های جدا میان که توهم نرن (چیدمان درخواستی کارفرما)",
-          all(f"\n{x}" in sh_txt for x in ("🌾 محصولات:", "🧱 منابع:", "🪵 چوب:", "⛏️ آهن:", "📦 آیتم‌ها 🌱"))
+          all(f"\n{x}" in sh_txt for x in ("🌾 محصولات:", "🧱 منابع\n", "🪵 چوب:", "⛏️ آهن:", "📦 آیتم‌ها\n", "🌱 بذر:", "💵 نقدینگی:"))
           and "فرمول" not in sh_txt,
           sh_txt.replace("\n", " | ")[:200])
 
@@ -7101,7 +7113,7 @@ async def main() -> None:
     world_h2 = None
     from handlers import world as world_h2
     async with session_scope() as s:
-        _sns = SimpleNamespace(shelter_level=0, wood=0, iron=0, level=1, id=999999)
+        _sns = SimpleNamespace(shelter_level=0, wood=0, iron=0, cash=0, level=1, id=999999)
         sht = await world_h2._shelter_text(s, _sns)
         sht_item = await world_h2._shelter_cat_text(s, _sns, "item")
         sht_res = await world_h2._shelter_cat_text(s, _sns, "res")
@@ -9988,9 +10000,9 @@ async def main() -> None:
     f_txt1 = next((c[1] for c in upd_f1.callback_query.calls if c[0] == "edit"), "")
     f_kb1 = next((c[2].get("reply_markup") for c in reversed(upd_f1.callback_query.calls) if c[0] == "edit"), None)
     f_datas1 = [b.callback_data for row in f_kb1.inline_keyboard for b in row] if f_kb1 else []
-    check("صفحه محصولات فقط نمایشیه: قلم انبار با نوار ظرفیت 100 و بدون دکمه ارسال",
-          "☕ تریاک" in f_txt1 and "30/100" in f_txt1 and "ارزش ~270,000" in f_txt1
-          and "ظرفیت انبار هر محصول 100 تا" in f_txt1 and "ارزش کل محصولات موجود ~270,000 تی‌پوینت" in f_txt1
+    check("صفحه محصولات فقط نمایشیه: قلم انبار با نوار ظرفیت 100 و ارزش خط جدا و بدون دکمه ارسال",
+          "☕ تریاک" in f_txt1 and "30/100" in f_txt1 and "🪙 ارزش تقریبی 270,000 تی‌پوینت" in f_txt1
+          and "ظرفیت انبار هر محصول 100 تا" in f_txt1 and "ارزش کل محصولات موجود تقریبا 270,000 تی‌پوینت" in f_txt1
           and "از بخش 📦 ارسال محموله یا 🚚 کاروان قاچاق بفروش و نقدشون کن" in f_txt1
           and "sm:pick:teriak" not in f_datas1 and "menu:shelter" in f_datas1 and "menu:home" in f_datas1,
           f_txt1.replace("\n", " | ")[:200])
@@ -10107,7 +10119,7 @@ async def main() -> None:
           st_max == 1500, str(st_max))
 
     # ═══ این دور: بسته درخواست‌های نهایی کارفرما ═══
-    # حذف کامل گیت وار گروهی (اشتباه تایپی بود) | تعداد ثابت برداشت | ظرفیت پله‌ای هر محصول
+    # حذف کامل گیت وار گروهی (اشتباه تایپی بود) | تعداد شانسی برداشت | ظرفیت پله‌ای هر محصول
     # صفحه انبار چیدمان جدید بدون فرمول‌ها | ✏️ تعداد دلخواه برای محموله و کاروان | زمین و شرکت بدون پیشوند
     # قیمت خرید زمین پله‌ای خیلی بیشتر + آپگرید یکم ارزون‌تر | مرحله مأموریت «اولین ارسال محموله» (جایزه 600)
 
@@ -10117,13 +10129,18 @@ async def main() -> None:
           and not hasattr(battle_h3, "war_gate_ok") and not hasattr(battle_h3, "_OWNER_CACHE")
           and "فاز تست" not in start_h2.HELP_SECTIONS["battle"])
 
-    # ── جدول تعداد ثابت برداشت (کارفرما: تریاک 3 تا، ارزونا تقریباً 2 تا) ──
-    check("جدول تعداد ثابت برداشت: تریاک 3 تا و پنج محصول ارزونی هرکدوم 2 تا",
-          config.HARVEST_QTY == {"marijuana": 2, "gharch": 2, "peyote": 2,
-                                 "kratom": 2, "khashkhash": 3 - 1, "teriak": 3},
-          str(config.HARVEST_QTY))
-    check("کوکائین و سه بذر افسانه‌ای بیرون جدولن و پیش‌فرض 1 تا می‌گیرن",
-          all(config.HARVEST_QTY.get(k, 1) == 1 for k in ("cocaine", "jahannam", "eblis", "mutant")))
+    # ── جدول شانس تعداد برداشت بر اساس لول زمین (کارفرما: همه شانسی جز افسانه‌ای‌ها) ──
+    check("جدول شانس تعداد برداشت: جمع هر ردیف 100ـه و اعداد لول آخر دقیقاً حرف کارفرماست",
+          all(sum(pct for _, pct in t) == 100 for t in config.HARVEST_QTY_CHANCES.values())
+          and config.HARVEST_QTY_CHANCES[1] == ((1, 70), (2, 30))
+          and dict(config.HARVEST_QTY_CHANCES[6]) == {1: 7, 2: 20, 3: 25, 4: 25, 5: 15, 6: 8},
+          str(config.HARVEST_QTY_CHANCES))
+    check("لول 2 سه‌تایی و لول 3 چهار و لول 4 پنج و لول 5 شش‌تایی رو باز می‌کنه و شانس 5 و 6 کم شروع میشه",
+          max(q for q, _ in config.HARVEST_QTY_CHANCES[2]) == 3
+          and max(q for q, _ in config.HARVEST_QTY_CHANCES[3]) == 4
+          and max(q for q, _ in config.HARVEST_QTY_CHANCES[4]) == 5
+          and max(q for q, _ in config.HARVEST_QTY_CHANCES[5]) == 6
+          and dict(config.HARVEST_QTY_CHANCES[4])[5] == 5 and dict(config.HARVEST_QTY_CHANCES[5])[6] == 6)
 
     # ── ظرفیت انبار هر محصول: لول انبار × 10، از 10 شروع میشه (درخواست کارفرما) ──
     check("ظرفیت انبار هر محصول از 10 شروع میشه و با هر لول انبار 10 تا بیشتر میشه",
@@ -10145,6 +10162,8 @@ async def main() -> None:
         await s.commit()
 
     # ── برداشت روی انبار پر: سرریز از بین میره و دقیق گزارش میشه ──
+    _orig_hqr3 = farming.harvest_qty_roll
+    farming.harvest_qty_roll = lambda lvl, crop: 2
     async with session_scope() as s:
         ofu, _ = await users.get_or_create(s, tg(999101, "overfl", "پرانبار"))
         ofu.last_harvest_at = None
@@ -10172,6 +10191,7 @@ async def main() -> None:
               ok_of2 and of_row2.qty == 10 and bool(ex2_of)
               and "×1" in ex2_of and "1 تا از بین رفت" in ex2_of,
               (ex2_of or "").replace("\n", " | ")[:160])
+        farming.harvest_qty_roll = _orig_hqr3
         await s.commit()
 
     # ── کارت تایید محموله: دقیقاً قالب درخواستی کارفرما ──
@@ -10426,10 +10446,10 @@ async def main() -> None:
           and "⚪ محصول موردنیاز: کوکائین" in sht_cv and "📈 قیمت خرید 60% بیشتر" in sht_cv
           and "سر می‌زنه" not in sht_cv,
           sht_cv.replace("\n", " | ")[-280:])
-    check("بلاک مکس‌لول انبار دقیقاً قالب درخواستی کارفرماست (به‌جای خط ارتقا)",
-          "🏚 انبارت رفت رو لول 10" in sht_cv
-          and f"📦 ظرفیت انبار هر بذر {fa_num(seed_cap_x)} تا شد" in sht_cv and seed_cap_x == 55
-          and "💵 نقدینگی: 97,940,163 تی‌پوینت" in sht_cv and "⬆️ ارتقای بعدی" not in sht_cv,
+    check("مکس‌لول انبار دیگه بلاک جدا نداره: فقط ⭐ لول انبار: 10 و نقدینگی همیشه‌گی",
+          "⭐ لول انبار: 10" in sht_cv and "🏚 انبارت رفت رو لول" not in sht_cv
+          and "💵 نقدینگی: 97,940,163 تی‌پوینت" in sht_cv and "⬆️ ارتقای بعدی" not in sht_cv
+          and "📦 ظرفیت انبار هر بذر" not in sht_cv and seed_cap_x == 55,
           sht_cv.replace("\n", " | ")[-240:])
     check("کیبورد انبار تو لول مکس دیگه دکمه ارتقا نداره",
           not any("ارتقا" in b.text
@@ -10608,6 +10628,186 @@ async def main() -> None:
           and "از 10 تا شروع میشه" in start_h2.HELP_SECTIONS["smuggle"]
           and "300" not in start_h2.HELP_SECTIONS["smuggle"]
           and "📦 ارسال محموله" in start_h2.HELP_SECTIONS["farm"])
+
+    # ═══ این دور: فروش منابع رفت توی بخش منابع | برداشت شانسی با جدول لول زمین | متن‌های جدید انبار/محصولات/ساختمان/برداشت | باف درصدی پروفایل ═══
+
+    # ── رول شانسی تعداد برداشت: فقط تعدادای باز اون لول، افسانه‌ای‌ها همیشه 1 تا ──
+    _lvl_counts = {lvl: {} for lvl in range(1, 7)}
+    for _lvl in range(1, 7):
+        for _ in range(2000):
+            _q = farming.harvest_qty_roll(_lvl, "marijuana")
+            _lvl_counts[_lvl][_q] = _lvl_counts[_lvl].get(_q, 0) + 1
+    check("رول تعداد برداشت فقط از تعدادای باز اون لول زمینه",
+          all(set(_lvl_counts[l]) <= {q for q, _ in config.HARVEST_QTY_CHANCES[l]} for l in range(1, 7))
+          and set(_lvl_counts[1]) == {1, 2} and set(_lvl_counts[6]) == {1, 2, 3, 4, 5, 6})
+    check("توزیع لول 1 حدود 70/30 و توزیع لول مکس نزدیک اعداد کارفرماست",
+          0.63 <= _lvl_counts[1][1] / 2000 <= 0.77
+          and 0.04 <= _lvl_counts[6][6] / 2000 <= 0.12
+          and 0.10 <= _lvl_counts[6][5] / 2000 <= 0.21
+          and 0.19 <= _lvl_counts[6][4] / 2000 <= 0.31,
+          str({l: {q: round(c / 2000, 3) for q, c in _lvl_counts[l].items()} for l in (1, 6)}))
+    check("بذرهای افسانه‌ای تو هر لول زمین همیشه دقیقاً 1 تا میدن",
+          all(farming.harvest_qty_roll(lvl, leg) == 1
+              for leg in ("jahannam", "eblis", "mutant") for lvl in (1, 3, 6)))
+
+    # ── متن برداشت: قالب دقیق جدید کارفرما ──
+    async with session_scope() as s:
+        h5u, _ = await users.get_or_create(s, tg(999120, "harv5", "برداشت‌گر"))
+        h5u.last_harvest_at = None
+        await world_svc._meta_set(s, "weather_key", "normal")
+        await world_svc._meta_set(s, "weather_until", (now_utc() + timedelta(seconds=7200)).isoformat())
+        await world_svc._meta_set(s, "market", ",".join(f"{k}:0" for k in config.SEEDS))
+        await world_svc._meta_set(s, "market_until", (now_utc() + timedelta(seconds=14400)).isoformat())
+        h5p = Plot(user_id=h5u.id, status="growing", crop="marijuana", level=1,
+                   planted_at=now_utc() - timedelta(hours=1), ready_at=now_utc() - timedelta(seconds=1))
+        s.add(h5p)
+        await s.commit()
+    _orig_hqr5 = farming.harvest_qty_roll
+    _orig_rq5 = world_svc.roll_quality
+    farming.harvest_qty_roll = lambda lvl, crop: 2
+    world_svc.roll_quality = lambda bonus=0.0: config.QUALITY_TIERS[0]
+    try:
+        async with session_scope() as s:
+            h5u2 = await users.get_by_tg(s, 999120)
+            ok5, _a5, ex5, _dq5, _nn5 = await farming.harvest_all(s, h5u2)
+            row5 = (await smg_svc.get_products(s, h5u2.id))["marijuana"]
+            val5 = row5.value
+            await s.commit()
+    finally:
+        farming.harvest_qty_roll = _orig_hqr5
+        world_svc.roll_quality = _orig_rq5
+    check("متن برداشت قالب جدید کارفرماست: آیتم بدون ارزش، تقریبا، خط نقد کردن و تجربه",
+          ok5 and ex5.startswith("▫️ 🌿 ماری‌جوانا ×2\n\n")
+          and "\n\n📦 محصول رفت تو انبار (🎒 انبار ← 🌾 محصولات)\n" in ex5
+          and f"💰 ارزش برداشت تقریبا {money(val5)}، هنوز نقد نشده" in ex5
+          and "ارزش برداشت ~" not in ex5
+          and "\n🚚 برای نقد کردن: بخش «انبار» ارسال محموله یا فروش به کاروان قاچاق" in ex5
+          and "\n✨ 4 تجربه" in ex5,
+          (ex5 or "").replace("\n", " | ")[:240])
+
+    # ── چیدمان جدید خلاصه انبار (قالب دقیق کارفرما) ──
+    async with session_scope() as s:
+        sov2, _ = await users.get_or_create(s, tg(999121, "shview", "نمایشی"))
+        sov2.shelter_level = 10
+        sov2.cash = 100_257_563
+        sov2.wood = 380
+        sov2.iron = 3_161
+        await smg_svc.add_product(s, sov2.id, "marijuana", 20, 7_690, shelter_level=10)
+        await smg_svc.add_product(s, sov2.id, "peyote", 10, 28_980, shelter_level=10)
+        await farming.add_seed_stock(s, sov2.id, "marijuana", 6)
+        await farming.add_seed_stock(s, sov2.id, "gharch", 5)
+        await farming.add_seed_stock(s, sov2.id, "peyote", 5)
+        await smg_svc._meta_set(s, "smuggler", "")
+        sht2 = await world_h2._shelter_text(s, sov2)
+        await s.commit()
+    check("خلاصه انبار دقیقاً چیدمان جدید کارفرماست",
+          all(x in sht2 for x in [
+              "<b>🎒 انبار</b>", "⭐ لول انبار: 10",
+              "🌾 محصولات: 2 قلم", "💰 ارزش تقریبی: 36,670 تی‌پوینت",
+              "🧱 منابع\n🪵 چوب: 380\n⛏️ آهن: 3,161",
+              "📦 آیتم‌ها\n🌱 بذر: 16",
+              "💵 نقدینگی: 100,257,563 تی‌پوینت",
+              "🚚 کاروان قاچاق هر 4 ساعت یک‌بار به شهر سر می‌زند و یکی از محصولات را با قیمت بالاتر خریداری می‌کند",
+          ]),
+          sht2.replace("\n", " | "))
+    upd_pv = _fake_update("shelter:cat:prod", uid=999121)
+    await world_h2.shelter_cat_cb(upd_pv, None)
+    pv_txt = next((c[1] for c in upd_pv.callback_query.calls if c[0] == "edit"), "")
+    check("صفحه محصولات: هر قلم دو خط (نوار + ارزش تقریبی) و ارزش کل با کلمه تقریبا",
+          "ارزش کل محصولات موجود تقریبا 36,670 تی‌پوینت" in pv_txt
+          and "\n🌿 ماری‌جوانا ▰▰▱▱▱▱▱▱▱▱ 20/100\n🪙 ارزش تقریبی 7,690 تی‌پوینت\n🌵 پیوت ▰▱▱▱▱▱▱▱▱▱ 10/100\n🪙 ارزش تقریبی 28,980 تی‌پوینت" in pv_txt
+          and "ارزش ~" not in pv_txt,
+          pv_txt.replace("\n", " | ")[:260])
+
+    # ── فروش منابع فقط تو بخش 🧱 منابعه ──
+    shk5 = kb3.shelter_kb(SimpleNamespace(shelter_level=0, level=1, id=1))
+    shk5_d = [b.callback_data for row in shk5.inline_keyboard for b in row]
+    srk5 = kb3.shelter_res_kb()
+    srk5_d = [b.callback_data for row in srk5.inline_keyboard for b in row]
+    check("دکمه فروش منابع از کیبورد اصلی انبار برداشته شد و توی صفحه منابع مونده",
+          "shelter:sell" not in shk5_d and "shelter:sell" in srk5_d, f"{shk5_d} | {srk5_d}")
+    upd_sr5 = _fake_update("shelter:cat:res", uid=999121)
+    await world_h2.shelter_cat_cb(upd_sr5, None)
+    sr5_kbm = next((c[2].get("reply_markup") for c in reversed(upd_sr5.callback_query.calls) if c[0] == "edit"), None)
+    sr5_d = [b.callback_data for row in sr5_kbm.inline_keyboard for b in row] if sr5_kbm else []
+    check("صفحه 🧱 منابع انبار دکمه 💰 فروش منابع رو هم داره",
+          "shelter:sell" in sr5_d, str(sr5_d))
+
+    # ── متن جدید صفحه ساختمان‌های تیم (قالب دقیق کارفرما) ──
+    tb5 = SimpleNamespace(name="تیم نمایشی", level=9, atk_bld=9, def_bld=0, bank=7_835_000)
+    btxt5 = team_h._buildings_text(tb5)
+    check("متن ساختمان‌های تیم دقیقاً قالب درخواستی کارفرماست",
+          all(x in btxt5 for x in [
+              "<b>🏗 ساختمان‌های تیم «تیم نمایشی»</b>",
+              "⭐ لول تیم: 9",
+              "📌 لول هیچ ساختمانی نمی‌تواند از لول تیم بالاتر برود",
+              "⚔️ <b>ساختمان حمله</b>، لول 9",
+              "💥 قدرت فعلی: +27% برای تمام اعضا",
+              "🔒 ارتقای بعدی پس از رسیدن تیم به لول 10",
+              "🛡 <b>ساختمان دفاع</b>، لول 0",
+              "🛡 قدرت فعلی: +0% برای تمام اعضا",
+              "⬆️ ارتقا به لول 1: +3%",
+              "💰 هزینه: 25,000 تی‌پوینت",
+              "🏦 موجودی بانک تیم: 7,835,000 تی‌پوینت",
+              "👑 فقط رهبر تیم می‌تواند ساختمان‌ها را ارتقا دهد",
+              "⚔️ «تیم ارتقا حمله»",
+              "🛡 «تیم ارتقا دفاع»",
+              "💸 اعضا می‌توانند با دستور زیر به بانک تیم کمک مالی کنند:",
+              "«تیم واریز 1200»",
+          ]),
+          btxt5)
+    btxt5m = team_h._buildings_text(SimpleNamespace(
+        name="تیم نمایشی", level=20, atk_bld=config.TEAM_BUILDING_MAX_LEVEL, def_bld=5, bank=0))
+    check("ساختمان مکس‌لول خط ⭐ مکس لوله رو داره",
+          "⭐ مکس لوله" in btxt5m, btxt5m[:120])
+
+    # ── باف درصدی کنار حمله و دفاع تو پروفایل ──
+    async with session_scope() as s:
+        pfu, _ = await users.get_or_create(s, tg(999122, "bufman", "بافی"))
+        pfu.level = 10
+        pfu.cash = 50_000
+        pfu.iron = 200
+        await s.commit()
+    async with session_scope() as s:
+        pfu = await users.get_by_tg(s, 999122)
+        cap0 = await profile_h._profile_caption(s, pfu)
+        atk0, dfn0 = combat.combat_stats(pfu, [], [])
+        base_atk0 = config.ATK_BASE + config.ATK_PER_LEVEL * pfu.level
+        base_dfn0 = config.DEF_BASE + config.DEF_PER_LEVEL * pfu.level
+        ok_pb, _m_pb = await shop_svc.purchase(s, pfu, "weap", "pipe")
+        ik1 = await users.get_item_keys(s, pfu.id)
+        atk1, dfn1 = combat.combat_stats(pfu, ik1, [])
+        pct1 = max(0, round(atk1 / (config.ATK_BASE + config.ATK_PER_LEVEL * pfu.level) * 100 - 100))
+        cap1 = await profile_h._profile_caption(s, pfu)
+        await s.commit()
+    import re as _re_buff
+    stats0 = cap0.split("⚔️ آمار")[-1]
+    check("پروفایل بدون آیتم عدد خام حمله و دفاع رو بدون پرانتز باف داره",
+          _re_buff.search(r"💪 حمله: [\d,]+\n", stats0) is not None and "(+" not in stats0
+          and atk0 == base_atk0 and dfn0 == base_dfn0, stats0[:80])
+    check("پروفایل با سلاح درصد باف رو کنار حمله می‌نویسه مثل 458(+38%)",
+          ok_pb and pct1 > 0 and f"💪 حمله: {fa_num(atk1)}(+{fa_num(pct1)}%)" in cap1,
+          f"{cap1.split('⚔️ آمار')[-1][:60]} | {pct1}")
+
+    # ── متن لول‌آپ زمین: جمله شانس تعداد بیشتر به‌جای شانس ⭐ (لول زمین، نه پلیر) ──
+    async with session_scope() as s:
+        up5u, _ = await users.get_or_create(s, tg(999123, "plotup", "آپگردی"))
+        up5u.level = 20
+        up5u.cash = 10_000_000
+        up5u.wood = 5_000
+        up5p = Plot(user_id=up5u.id, status="empty", level=1)
+        s.add(up5p)
+        await s.flush()
+        up5p_id = up5p.id
+        await s.commit()
+    upd_up5 = _fake_update(f"farm:up:{up5p_id}", uid=999123)
+    await farm_h2.upgrade_confirm(upd_up5, None)
+    up5_txt = next((c[1] for c in upd_up5.callback_query.calls if c[0] == "edit"), "")
+    check("متن لول‌آپ زمین فقط جمله شانس تعداد بیشتر رو داره و شانس ⭐ افسانه‌ای حذف شده",
+          "با لول آپ کردن زمین شانس دریافت تعداد بیشتری بذر رو از محصولات داری" in up5_txt
+          and "شانس محصول افسانه‌ای" not in up5_txt and "⭐ شانس" not in up5_txt
+          and "انجامش بدیم؟" in up5_txt,
+          up5_txt.replace("\n", " | ")[:180])
 
     # ── تمیزکاری ته تست‌ها ──
     fj_svc._MEMBER_CACHE.clear()

@@ -275,14 +275,12 @@ async def upgrade_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         wood = economy.upgrade_wood(plot.level)
         old_sp = economy.plot_speed_mult(plot.level)
         new_sp = economy.plot_speed_mult(plot.level + 1)
-        q0 = int((config.QUALITY_TIERS[-1]["chance"] + economy.plot_quality_bonus(plot.level)) * 100)
-        q1 = int((config.QUALITY_TIERS[-1]["chance"] + economy.plot_quality_bonus(plot.level + 1)) * 100)
         text = (
             f"<b>⬆️ لول‌آپ زمین شماره {fa_num(plot_index)}</b>\n\n"
             f"از لول {fa_num(plot.level)} به {fa_num(plot.level + 1)}\n\n"
             f"💸 هزینه: {money(price)} + 🪵 {fa_num(wood)} چوب\n"
             f"⚡ سرعت رشد 40% بیشتر میشه (×{old_sp:.1f} ← ×{new_sp:.1f})\n"
-            f"⭐ شانس محصول افسانه‌ای می‌رسه به {fa_num(q1)} درصد (الان {fa_num(q0)})\n\n"
+            "با لول آپ کردن زمین شانس دریافت تعداد بیشتری بذر رو از محصولات داری\n\n"
             "انجامش بدیم؟"
         )
         markup = kb.confirm_kb(f"cf:farm:up:{plot.id}")
