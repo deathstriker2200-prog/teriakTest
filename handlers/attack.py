@@ -59,7 +59,7 @@ async def _target_view(s, user: User, victim: User) -> tuple[str, object]:
         "🕵 با جاسوسی جیب و قدرت کل طرف لو میره\n"
         "می‌زنیش یا یه هدف دیگه می‌خوای؟"
     )
-    spy_c = 0 if pvattack.spy_is_free(user, victim) else pvattack.spy_cost(user.level)
+    spy_c = pvattack.spy_cost(user.level)
     return text, kb.pv_target_kb(victim.id, pvattack.reroll_cost(user.level), spy_c)
 
 
@@ -118,7 +118,7 @@ async def target_next_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 
 async def target_spy_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """🕵 جاسوسی، با پول جیب و استت‌ها و قدرت کل طرف و نتیجه مقایسه لو میره"""
+    """🕵 جاسوسی، فقط پول و قدرت کل طرف لو میره (راند ۱۵: همیشه پولیه، حکم مقایسه هم حذف شد)"""
     target_id = int(parts(update)[2])
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
@@ -126,36 +126,23 @@ async def target_spy_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         if cur is None:
             await s.commit()
             return await respond(update, NO_TARGET_TEXT, kb.pv_attack_kb())
-        free = pvattack.spy_is_free(user, cur)
         cost = pvattack.spy_cost(user.level)
-        if not free and user.cash < cost:
+        if user.cash < cost:
             text, markup = await _target_view(s, user, cur)
             await s.commit()
             return await respond(update, text, markup, alert="💸 پولت برای جاسوسی کمه")
-        if not free:
-            user.cash -= cost
-        user.last_spy_target_id = cur.id
-        a_tot, t_tot, _info = await pvattack.total_powers(s, user, cur)
-        if pvattack.is_close(a_tot, t_tot):
-            ch = round(pvattack.close_win_chance(a_tot, t_tot) * 100)
-            verdict = f"🎲 قدرت‌هاتون نزدیکه، شانس بردت حدود {fa_num(ch)}%"
-        elif a_tot > t_tot:
-            verdict = "✅ قدرتت بیشتره، حمله بزنی میبری"
-        else:
-            verdict = "❌ قدرتش بیشتره، حمله بزنی میبازی"
+        user.cash -= cost
+        _a, t_tot, _info = await pvattack.total_powers(s, user, cur)
         cash = cur.cash
         name = users.display_name(cur)
         text, markup = await _target_view(s, user, cur)
         await s.commit()
-    # قالب گزارش درخواست کارفرما (راند ۱۳): جیب + قدرت کلی طرف + حکم مقایسه
+    # قالب گزارش درخواست کارفرما (راند ۱۵): فقط دو خط دیتا، هیچ خط دیگه‌ای نمیاد
     alert = (
         f"🕵 گزارش جاسوسی از «{esc(name)}» به شرح زیر است\n\n"
-        f"💰 پول توی جیب: {money(cash)}\n"
-        f"💪 قدرت کلی: {fa_num(t_tot)}\n"
-        f"{verdict}"
+        f"💰 پول: {money(cash)}\n"
+        f"💪 قدرت کلی: {fa_num(t_tot)}"
     )
-    if free:
-        alert += "\n🔁 همون طرفی که جاسوش بودی، این یکی رایگان بود"
     await respond(update, text, markup, alert=alert)
 
 

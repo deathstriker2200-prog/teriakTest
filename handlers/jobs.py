@@ -72,13 +72,16 @@ async def market_job(context: ContextTypes.DEFAULT_TYPE) -> None:
 # ───────── نبض انرژی ⚡ ─────────
 
 def _energy_pulse_stmt():
-    """UPDATE دسته‌جمعی: min(انرژی + نبض, سقف) برای همه کاربرای زیر سقف"""
+    """UPDATE دسته‌جمعی: min(انرژی + نبض, سقف) برای همه کاربرای زیر سقف
+    سقف هر کاربر پویاست (راند ۱۵): MAX_ENERGY + per × لول استقامت، توی SQL خام حساب میشه"""
     from sqlalchemy import case
+    per = int((config.SKILLS.get("stamina") or {}).get("per", 0))
+    cap = config.MAX_ENERGY + per * User.skill_stamina
     return (
         sql_update(User)
-        .where(User.energy < config.MAX_ENERGY)
+        .where(User.energy < cap)
         .values(energy=case(
-            (User.energy + config.ENERGY_PULSE_AMOUNT > config.MAX_ENERGY, config.MAX_ENERGY),
+            (User.energy + config.ENERGY_PULSE_AMOUNT > cap, cap),
             else_=User.energy + config.ENERGY_PULSE_AMOUNT,
         ))
     )

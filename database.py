@@ -47,7 +47,6 @@ _NEW_COLUMNS = {
         ("last_seen_at", "DATETIME"),
         ("shield_until", "DATETIME"),
         ("pv_attack_at", "DATETIME"),
-        ("last_spy_target_id", "INTEGER"),
         ("dq_date", "VARCHAR(10)"),
         ("dq_data", "VARCHAR(1024)"),
         ("hp", "INTEGER"),
@@ -85,6 +84,7 @@ _NEW_COLUMNS = {
         ("equipped_armor", "VARCHAR(32)"),
         ("poison_until", "DATETIME"),
         ("boost_until", "DATETIME"),
+        ("skill_stamina", "INTEGER NOT NULL DEFAULT 0"),
     ],
     "group_activity": [
         ("title", "VARCHAR(128)"),

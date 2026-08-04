@@ -56,11 +56,6 @@ def reroll_cost(level: int) -> int:
     return int(lo + (hi - lo) * (lv - 1) / span)
 
 
-def spy_is_free(user: User, target: User) -> bool:
-    """جاسوسی دوباره همون طرف رایگانه، تا هدف جاسوسیش عوض شه"""
-    return user.last_spy_target_id is not None and user.last_spy_target_id == target.id
-
-
 def spy_cost(level: int) -> int:
     """هزینه دکمه جاسوسی، خطی با لول جست‌وجوگر بین حداقل و حداکثر کانفیگ"""
     lo, hi = config.PV_SPY_MIN_COST, config.PV_SPY_MAX_COST

@@ -17,6 +17,13 @@ from models import User
 from utils import now_utc
 
 
+def max_energy(user: User) -> int:
+    """سقف انرژی کاربر: پایه کانفیگ + 20 به ازای هر لول مهارت استقامت (راند ۱۵، درخواست کارفرما)"""
+    per = int((config.SKILLS.get("stamina") or {}).get("per", 0))
+    lv = min(max(int(getattr(user, "skill_stamina", 0) or 0), 0), config.SKILL_MAX_LEVEL)
+    return config.MAX_ENERGY + per * lv
+
+
 def boost_left(user: User) -> int:
     """ثانیه مونده از بوست حمله انرژی‌زا، صفر یعنی فعال نیس"""
     if not user.boost_until:
@@ -41,17 +48,18 @@ def apply_drink(user: User, key: str) -> tuple[bool, str, dict]:
     item = config.ENERGY_DRINKS.get(key)
     if not item:
         return False, "badkey", {}
-    if item["energy"] is not None and user.energy >= config.MAX_ENERGY:
+    cap = max_energy(user)  # سقف پویا با مهارت استقامت (راند ۱۵)
+    if item["energy"] is not None and user.energy >= cap:
         return False, "full", {}
     if user.cash < item["price"]:
         return False, "poor", {}
 
     user.cash -= item["price"]
     if item["energy"] is None:
-        gain = max(0, config.MAX_ENERGY - user.energy)
-        user.energy = config.MAX_ENERGY
+        gain = max(0, cap - user.energy)
+        user.energy = cap
     else:
-        new_energy = min(config.MAX_ENERGY, user.energy + item["energy"])
+        new_energy = min(cap, user.energy + item["energy"])
         gain = new_energy - user.energy
         user.energy = new_energy
     boosted = False

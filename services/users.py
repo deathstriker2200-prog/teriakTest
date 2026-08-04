@@ -230,9 +230,12 @@ def apply_energy_regen(user: User) -> None:
     """
     ریجن تنبلی حذف شد، فقط سقف انرژی نگه داشته میشه
     شارژ انرژی با نبض دسته‌جمعی هر ۵ دقیقه (energy_pulse_job) انجام میشه
+    سقف پویاست: پایه + 20 به ازای هر لول استقامت (راند ۱۵)
     """
-    if user.energy > config.MAX_ENERGY:
-        user.energy = config.MAX_ENERGY
+    from services import energy as energy_svc
+    cap = energy_svc.max_energy(user)
+    if user.energy > cap:
+        user.energy = cap
     if user.energy_updated_at is None:
         user.energy_updated_at = now_utc()
 
@@ -355,7 +358,8 @@ def add_xp(user: User, amount: int) -> list[str]:
 
         reward = config.LEVEL_CASH_REWARD * user.level
         user.cash += reward
-        user.energy = config.MAX_ENERGY
+        from services import energy as energy_svc
+        user.energy = energy_svc.max_energy(user)  # لول‌آپ انرژی رو تا سقف پویای استقامتی فول می‌کنه
         user.energy_updated_at = now_utc()
         battle_svc.full_heal(user)  # لول‌آپ یعنی جان تازه
 

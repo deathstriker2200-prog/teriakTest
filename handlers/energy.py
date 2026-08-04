@@ -21,13 +21,13 @@ def _bomb_pct() -> int:
     return int(round((config.ENERGY_DRINKS["bomb"]["boost"] or 0) * 100))
 
 
-def energy_home_text(energy_now: int, boost_left_s: int) -> str:
+def energy_home_text(energy_now: int, boost_left_s: int, energy_cap: int) -> str:
     """صفحه انرژی‌زا: شارژ فعلی + تایمر بوست فعال، آیتم‌ها با قیمت و مقدار فقط روی دکمه‌ها میان"""
     lines = [
         "<b>⚡ تی انرژی</b>",
         "",
         "⚡ انرژی تو",
-        f"{fa_num(energy_now)} از {fa_num(config.MAX_ENERGY)}",
+        f"{fa_num(energy_now)} از {fa_num(energy_cap)}",
     ]
     if boost_left_s:
         lines += [
@@ -54,11 +54,12 @@ async def render_energy(update: Update, alert: str | None = None) -> None:
         user, _ = await users.get_or_create(s, update.effective_user)
         users.apply_energy_regen(user)  # سقف انرژی حفظ بشه
         e_now = user.energy
+        e_cap = energy_svc.max_energy(user)
         b_left = energy_svc.boost_left(user)
         await s.commit()
-    if e_now >= config.MAX_ENERGY and not b_left:
+    if e_now >= e_cap and not b_left:
         return await respond(update, ENERGY_FULL_TEXT, kb.energy_kb(), alert=alert)
-    await respond(update, energy_home_text(e_now, b_left), kb.energy_kb(), alert=alert)
+    await respond(update, energy_home_text(e_now, b_left, e_cap), kb.energy_kb(), alert=alert)
 
 
 async def energy_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -69,10 +70,17 @@ async def energy_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 async def energy_buy_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """خرید و خوردن همون لحظه انرژی‌زا (en:buy:<key>)"""
     key = update.callback_query.data.split(":")[-1]
+    dq_done, dq_left, uname, tq = [], 0, "", None
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
         users.apply_energy_regen(user)
         ok, why, info = energy_svc.apply_drink(user, key)
+        if ok:
+            from services import quests as dq_svc
+            dq_done, dq_left = await dq_svc.track(s, user, "drink")  # کوئست روزانه انرژی‌زا
+            uname = users.display_name(user)
+            from services import teams as team_svc
+            tq = await team_svc.record_drink(s, user)  # کوئست تیمی انرژی‌زا
         await s.commit()
 
     if not ok:
@@ -91,3 +99,7 @@ async def energy_buy_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     else:
         alert = f"⚡ نوش جون، {fa_num(info['gain'])} انرژی شارژ شد"
     await render_energy(update, alert=alert)
+    from handlers.common import announce_notes
+    await announce_notes(update, [tq] if tq else [])
+    from handlers import dquests
+    await dquests.announce_completed(update, uname, dq_done, dq_left)

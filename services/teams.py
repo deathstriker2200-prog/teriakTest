@@ -686,6 +686,21 @@ async def record_team_deposit(session, user: User, amount: int) -> str | None:
     return await _record(session, user, "depbank", amount)
 
 
+async def record_drink(session, user: User) -> str | None:
+    """هر انرژی‌زای خورده‌شده عضو، کوئست تیمی نوشیدنی (راند ۱۵)"""
+    return await _record(session, user, "drink", 1)
+
+
+async def record_shipment(session, user: User) -> str | None:
+    """هر محموله ارسالی عضو، کوئست تیمی ارسال (راند ۱۵)"""
+    return await _record(session, user, "shipment", 1)
+
+
+async def record_sellres(session, user: User, n: int) -> str | None:
+    """هر واحد چوب یا آهن فروخته‌شده عضو، کوئست تیمی فروش منابع (راند ۱۵)"""
+    return await _record(session, user, "sellres", n)
+
+
 def quests_view(daily: TeamDaily, team_level: int = 1) -> list[dict]:
     """نمایش کوئست‌های باز برای لول تیم با پیشرفت، برای متن استعلام"""
     out = []

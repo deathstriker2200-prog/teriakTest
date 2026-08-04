@@ -145,11 +145,17 @@ async def ship_execute(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
         ok, alert, sh = await smg.send_shipment(s, user, crop, qty, chat_id_of(update))
-        ship_note = None
+        ship_note, tq = None, None
+        dq_done, dq_left, uname = [], 0, ""
         if ok:
             alert += f" | ⏱ {fa_dur(smg.shipment_seconds(qty))} دیگه میرسه"
             text, markup = await _ship_render(s, user)
             ship_note = await onb.first_shipment(s, user)
+            from services import quests as dq_svc  # (راند ۱۵) کوئست روزانه و تیمی ارسال محموله
+            from services import teams as team_svc
+            dq_done, dq_left = await dq_svc.track(s, user, "shipment")
+            uname = users.display_name(user)
+            tq = await team_svc.record_shipment(s, user)
         else:
             text, markup = None, None
         await s.commit()
@@ -158,6 +164,11 @@ async def ship_execute(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     await respond(update, text, markup, alert=alert)
     if ship_note:
         await update.effective_message.reply_html(ship_note)
+    if tq or dq_done:
+        from handlers.common import announce_notes
+        await announce_notes(update, [tq])
+        from handlers import dquests
+        await dquests.announce_completed(update, uname, dq_done, dq_left)
 
 
 # ═════════ کاروان قاچاق 🚚 ═════════

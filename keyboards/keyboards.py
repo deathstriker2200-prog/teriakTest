@@ -636,8 +636,8 @@ def pv_result_kb() -> InlineKeyboardMarkup:
 
 
 def pv_target_kb(target_id: int, reroll_cost: int, spy_cost: int) -> InlineKeyboardMarkup:
-    """پیش‌نمایش هدف پی‌وی: حمله | جاسوسی (دوباره همون طرف رایگانه) | هدف دیگه پولی | بازگشت"""
-    spy_label = "🕵 جاسوسی | رایگان 🔁" if spy_cost <= 0 else f"🕵 جاسوسی | 🪙 {money_tp(spy_cost)}"
+    """پیش‌نمایش هدف پی‌وی: حمله | جاسوسی پولی | هدف دیگه پولی | بازگشت"""
+    spy_label = f"🕵 جاسوسی | 🪙 {money_tp(spy_cost)}"
     return InlineKeyboardMarkup([
         [_btn("⚔️ حمله", f"patt:hit:{target_id}", DANGER)],
         [_btn(spy_label, f"patt:spy:{target_id}", PRIMARY)],

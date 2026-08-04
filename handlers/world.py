@@ -289,6 +289,13 @@ async def sellres_execute(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         user, _ = await users.get_or_create(s, update.effective_user)
         ok, err, total = res_svc.sell_resource(user, res, int(amount))
         cash = user.cash
+        dq_done, dq_left, uname, tq = [], 0, "", None
+        if ok:  # (راند ۱۵) کوئست روزانه و تیمی فروش منابع با تعداد واحد
+            from services import quests as dq_svc
+            from services import teams as team_svc
+            dq_done, dq_left = await dq_svc.track(s, user, "sellres", int(amount))
+            uname = users.display_name(user)
+            tq = await team_svc.record_sellres(s, user, int(amount))
         await s.commit()
     if not ok:
         return await respond(update, err, kb.sell_menu_kb())
@@ -298,6 +305,11 @@ async def sellres_execute(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         f"💵 نقدینگی: {money(cash)}"
     )
     await respond(update, text, kb.sell_menu_kb())
+    if tq or dq_done:
+        from handlers.common import announce_notes
+        await announce_notes(update, [tq])
+        from handlers import dquests
+        await dquests.announce_completed(update, uname, dq_done, dq_left)
 
 
 async def sellres_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -461,10 +473,14 @@ async def caravan_hit_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         atk, _ = combat.combat_stats(user, items, dogs, atk_extra=team_b)
 
         res = await world_svc.caravan_attack(s, chat_id, user, atk)
+        dq_done, dq_left, uname = [], 0, ""
         if res["status"] in ("hit", "killed"):
             tq = await team_svc.record_caravan(s, user)  # کوئست روزانه تیم، ضربه به کاروان
             if tq:
                 res.setdefault("notes", []).append(tq)
+            from services import quests as dq_svc
+            dq_done, dq_left = await dq_svc.track(s, user, "caravan")  # (راند ۱۵) کوئست روزانه ضربه کاروان
+            uname = users.display_name(user)
         await s.commit()
 
     if res["status"] == "cooldown":
@@ -476,6 +492,9 @@ async def caravan_hit_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     # تبریک لول‌آپ (تجربه ضربه کاروان) پیام جدا تو همون گروه
     from handlers.common import announce_notes
     await announce_notes(update, res.get("notes"))
+    if dq_done:
+        from handlers import dquests
+        await dquests.announce_completed(update, uname, dq_done, dq_left)
 
     # برد کاروان بعد هر ضربه ادیت نمیشه، جاب 2 دقیقه‌ای خودش رفرشش می‌کنه
 

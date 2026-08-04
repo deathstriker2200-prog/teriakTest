@@ -1,6 +1,6 @@
-"""بخش ⭐️ مهارت: هر لول‌آپ یه امتیاز مهارت، ۴ قابلیت تا لول ۸، ریست با پول
+"""بخش ⭐️ مهارت: هر لول‌آپ یه امتیاز مهارت، ۵ قابلیت تا لول ۸، ریست با پول
 
-قدرت (حمله بیشتر) | سرعت (کولدان حمله کمتر) | دفاع (دفاع بیشتر) | غارت (غارت بیشتر)
+قدرت (حمله بیشتر) | سرعت (کولدان حمله کمتر) | دفاع (دفاع بیشتر) | غارت (غارت بیشتر) | استقامت (سقف انرژی بیشتر، راند ۱۵)
 ریست مهارت‌ها همه امتیازهای خرج‌شده رو برمی‌گردونه که دوباره انتخاب کنی
 """
 
@@ -28,14 +28,19 @@ def skills_text(user) -> str:
     ]
     for key, sk in config.SKILLS.items():
         lv = users.skill_level(user, key)
-        now_pct = int(round(sk["per"] * lv * 100))
+        is_energy = sk.get("kind") == "energy"  # استقامت درصدی نیس، عددیه (راند ۱۵)
+        now_v = int(round(sk["per"] * lv * (1 if is_energy else 100)))
         lines.append(f"{sk['name']} | لول {fa_num(lv)} از {fa_num(config.SKILL_MAX_LEVEL)}")
         lines.append(f"▫️ {sk['desc']}")
         if lv >= config.SKILL_MAX_LEVEL:
-            lines.append(f"الان {fa_num(now_pct)}% ، 👑 مکس")
+            cur = f"+{fa_num(now_v)} انرژی" if is_energy else f"{fa_num(now_v)}%"
+            lines.append(f"الان {cur} ، 👑 مکس")
         else:
-            nxt_pct = int(round(sk["per"] * (lv + 1) * 100))
-            lines.append(f"الان {fa_num(now_pct)}% ، بعدی {fa_num(nxt_pct)}%")
+            nxt_v = int(round(sk["per"] * (lv + 1) * (1 if is_energy else 100)))
+            if is_energy:
+                lines.append(f"الان +{fa_num(now_v)} انرژی ، بعدی +{fa_num(nxt_v)} انرژی")
+            else:
+                lines.append(f"الان {fa_num(now_v)}% ، بعدی {fa_num(nxt_v)}%")
         lines.append("")
     lines.append(f"♻️ ریست همه امتیازاتو برمی‌گردونه و مهارت‌ها صفر میشن ({money(config.SKILL_RESET_COST)})")
     return "\n".join(lines)
