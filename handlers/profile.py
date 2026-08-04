@@ -24,13 +24,13 @@ async def _profile_caption(session, user) -> str:
     lvls = await users.get_item_levels(session, user.id)
     user_dogs = await dog_svc.get_user_dogs(session, user.id)
     atk, dfn = combat.combat_stats(user, item_keys, user_dogs)
-    # درصد باف روی استت پایه لول (سلاح/زره/سگ/مهارت/آرتیفکت)، مثل 458(+38%)
-    _base_atk = config.ATK_BASE + config.ATK_PER_LEVEL * user.level
-    _base_dfn = config.DEF_BASE + config.DEF_PER_LEVEL * user.level
-    atk_pct = max(0, round(atk / _base_atk * 100 - 100)) if _base_atk else 0
-    dfn_pct = max(0, round(dfn / _base_dfn * 100 - 100)) if _base_dfn else 0
-    atk_line = f"💪 حمله: {fa_num(atk)}" + (f"(+{fa_num(atk_pct)}%)" if atk_pct else "")
-    dfn_line = f"🛡 دفاع: {fa_num(dfn)}" + (f"(+{fa_num(dfn_pct)}%)" if dfn_pct else "")
+    # درصد بوستها همه additive یه‌جا (نژاد سگ + آرتیفکت + مهارت)، مثل 458(+20%)
+    # سلاح و زره عدد ثابتن و توی درصد نمیان که عدد باگ نده
+    atk_p, def_p = combat.combat_boost_pcts(user, item_keys, user_dogs)
+    atk_pct = round(atk_p * 100)
+    dfn_pct = round(def_p * 100)
+    atk_line = f"💪 حمله: {fa_num(atk)}" + (f"(+{fa_num(atk_pct)}%)" if atk_pct > 0 else "")
+    dfn_line = f"🛡 دفاع: {fa_num(dfn)}" + (f"(+{fa_num(dfn_pct)}%)" if dfn_pct > 0 else "")
     plots = await farming.get_user_plots(session, user.id)
 
     growing = sum(1 for p in plots if p.current_status()[0] == "growing")

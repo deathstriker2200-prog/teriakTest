@@ -1,9 +1,10 @@
 """استت‌های نبرد: قدرت حمله و دفاع از آیتم‌ها (با لول ارتقا) + سگ‌ها + آرتیفکت‌ها
+درصدهای بوست همه additive روی مقدار اولیه جمع میشن (درخواست کارفرما)
 مصرف‌کننده‌ها: services.battle | پروفایل | کاروان"""
 
 import config
 from models import User
-from services import dogs as dog_svc, economy, users
+from services import dogs as dog_svc, economy, energy as energy_svc, users
 
 
 # ───────── استت‌ها ─────────
@@ -67,11 +68,26 @@ def weapon_power(item_keys, user_level: int, user: User | None = None) -> int:
     return _effective_bonus(base, user_level)
 
 
-def combat_stats(user: User, item_keys, dogs: list) -> tuple[int, int]:
+def combat_boost_pcts(user: User, item_keys, dogs: list) -> tuple[float, float]:
     """
-    (حمله, دفاع) = پایه بر اساس لول + بهترین سلاح (با لول ارتقا) + سگ‌ها / بهترین زره
-    سگ‌ها فقط قدرت حمله میدن (شخصیت حذف شده)، بونس تیم و آب و هوا توی services.battle
-    آرتیفکت‌ها (قلب اژدها/سنگ نگهبان) درصدی روی مجموع اثر می‌ذارن
+    (جمع درصدهای بوست حمله، دفاع) روی مقدار اولیه، additive (درخواست کارفرما):
+    نژاد سگ (کانگال/دوبرمن) + آرتیفکت (قلب اژدها/سنگ نگهبان) + مهارت (قدرت/دفاع)
+    مثلاً آرتیفکت ۱۰% با مهارت ۱۰% دیگه ۲۱% نمیشه، تمیز و خوانا ۲۰% میشه
+    پروفایل همین رو به‌صورت یه درصد واحد کنار حمله/دفاع نشون میده
+    """
+    levels = _levels_map(item_keys)
+    artis = users.artifact_keys(levels)
+    atk_p = dog_svc.trait_atk_pct(dogs) + (users.artifact_atk_mult(artis) - 1) + skill_pct(user, "power")
+    def_p = dog_svc.trait_def_pct(dogs) + (users.artifact_def_mult(artis) - 1) + skill_pct(user, "defense")
+    atk_p += energy_svc.drink_atk_boost(user)  # بمب انرژی (راند ۱۳): بوست موقت فقط روی حمله، پس تو پی‌وی فقط مهاجم سود می‌بره
+    return atk_p, def_p
+
+
+def combat_raw_stats(user: User, item_keys, dogs: list) -> tuple[int, int]:
+    """
+    (حمله, دفاع) خام = پایه بر اساس لول + بهترین سلاح/زره (با لول ارتقا) + سگ‌ها | بدون درصدهای بوست
+    مبنای «قدرت کل» حمله پی‌وی راند ۱۲، که بوست‌ها نقش‌محور روش سوار میشن
+    سگ‌ها فقط قدرت حمله میدن (شخصیت حذف شده)
     """
     levels = _levels_map(item_keys)
     atk = config.ATK_BASE + config.ATK_PER_LEVEL * user.level
@@ -86,18 +102,20 @@ def combat_stats(user: User, item_keys, dogs: list) -> tuple[int, int]:
     dfn += _effective_bonus(armor_bonus, user.level)
 
     atk += sum(dog_svc.dog_attack(d) for d in dogs)
+    return atk, dfn
 
-    # ویژگی نژادی سگ‌ها: کانگال 💥 حمله و دوبرمن 🛡 دفاع رو درصدی بیشتر می‌کنن
-    atk = int(atk * (1 + dog_svc.trait_atk_pct(dogs)))
-    dfn = int(dfn * (1 + dog_svc.trait_def_pct(dogs)))
 
-    artis = users.artifact_keys(levels)
-    atk = int(atk * users.artifact_atk_mult(artis))
-    dfn = int(dfn * users.artifact_def_mult(artis))
-
-    # مهارت‌های 💥 قدرت و 🛡 دفاع درصدی به استت نهایی اضافه می‌کنن
-    atk = int(atk * (1 + skill_pct(user, "power")))
-    dfn = int(dfn * (1 + skill_pct(user, "defense")))
+def combat_stats(user: User, item_keys, dogs: list,
+                 atk_extra: float = 0.0, def_extra: float = 0.0) -> tuple[int, int]:
+    """
+    (حمله, دفاع) = استت خام + همه درصدها (نژاد سگ + آرتیفکت + مهارت + extraهای نبردی مثل باف تیم/هوا/سم)
+    روی مقدار اولیه جمع میشن (additive، درخواست کارفرما) نه ضرب پشت سر هم
+    بونس تیم و آب و هوا توی services.battle به‌صورت atk_extra/def_extra تزریق میشن
+    """
+    atk, dfn = combat_raw_stats(user, item_keys, dogs)
+    atk_p, def_p = combat_boost_pcts(user, item_keys, dogs)
+    atk = int(atk * (1 + atk_p + atk_extra))
+    dfn = int(dfn * (1 + def_p + def_extra))
     return atk, dfn
 
 

@@ -11,7 +11,7 @@
 
 from telegram.ext import Application, CallbackQueryHandler, ChatMemberHandler, CommandHandler, MessageHandler, filters
 
-from handlers import admin, attack, backup, bank, battle, common, company, dogs, dquests, farm, gate, gear, mine, pending, power, profile, rank, seen, shop, skills, smuggle, start, team, textcmd, world
+from handlers import admin, attack, backup, bank, battle, common, company, dogs, dquests, energy, farm, gate, gear, mine, pending, power, profile, rank, seen, shop, skills, smuggle, start, team, textcmd, world
 
 ZWNJ = "‌"
 S = rf"[\s{ZWNJ}]"  # فاصله یا نیم‌فاصله
@@ -30,6 +30,7 @@ TEXT_HANDLERS: list[tuple[str, str, object]] = [
     # نبرد HP گروهی، همه دستورهای جنگ با و بدون پیشوند (فقط تو گروه اجرا میشه)
     ("attack", rf"{TP}(?:حمله|شلیک|بنگ(?:{S}+بنگ)?|پیو(?:{S}+پیو)?)(?:{S}+\S+)?!?$", battle.attack_cmd),
     ("heal", rf"{T}درمان!?$", battle.heal_cmd),
+    ("energy", rf"{T}انرژی(?:{S}*زا)?!?$", energy.energy_cmd),
     ("harvest", rf"{TP}برداشت{S}*محصول!?$|{TP}برداشت!?$", textcmd.harvest_text),
     ("buy_dog", rf"{TP}خرید{S}+سگ{S}+(.+)$", textcmd.buy_dog_text),
     ("buy", rf"{TP}خرید{S}+(.+)$", textcmd.buy_text),
@@ -83,6 +84,8 @@ TEXT_HANDLERS: list[tuple[str, str, object]] = [
     ("bankdep", rf"{T}واریز{S}+(.+)$", bank.deposit_text),
     ("bankwd", rf"{T}برداشت{S}+([0-9۰-۹٠-٩,٬]+)$", bank.withdraw_text),
     ("help", rf"{T}راهنما!?$|{T}آموزشات!?$", start.help_cmd),
+    ("tracklog_stop", rf"{TP}توقف{S}+لاگ{S}+(.+)$", admin.tracklog_stop_text),  # توقف ردیابی بازیکن، فقط ادمین
+    ("tracklog", rf"{TP}لاگ{S}+(.+)$", admin.tracklog_start_text),  # شروع ردیابی بازیکن، فقط ادمین
     ("caravan_spawn", rf"{T}اسپان{S}+کاروان!?$", world.caravan_spawn_cmd),  # فقط ادمین
     ("smuggler_spawn", rf"{T}اسپان{S}+کاروان{S}+(.+?)!?$", smuggle.admin_spawn_text),  # کاروان قاچاق، فقط ادمین
 ]
@@ -125,6 +128,7 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CommandHandler("admin", admin.admin_cmd))
     app.add_handler(CommandHandler("help", start.help_cmd))
     app.add_handler(CommandHandler("heal", battle.heal_cmd))
+    app.add_handler(CommandHandler("energy", energy.energy_cmd))
     app.add_handler(CommandHandler("backup", backup.backup_cmd))
     app.add_handler(CommandHandler("upload_backup", backup.upload_backup_cmd))
     app.add_handler(CommandHandler("user", admin.user_cmd))
@@ -286,6 +290,7 @@ def register_handlers(app: Application) -> None:
 
     # ── نبرد HP گروهی + درمان ──
     app.add_handler(CallbackQueryHandler(battle.heal_buy_cb, pattern=r"^heal:buy:\w+$"))
+    app.add_handler(CallbackQueryHandler(energy.energy_buy_cb, pattern=r"^en:buy:\w+$"))
 
     # ── آموزشات (هلپ دکمه‌دار) ──
     app.add_handler(CallbackQueryHandler(start.help_section_cb, pattern=r"^help:sec:\w+$"))

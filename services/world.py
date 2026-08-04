@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import config
 from models import GameMeta, GroupActivity, GroupPlayer, Plot, SeedSale, SeedStock, User
 from services import economy
-from services.farming import get_stock, add_seed_stock
+from services.farming import get_stock, add_seed_stock, try_add_seed
 from services.users import add_xp
 from utils import esc, fa_dur, fa_num, money, now_iran, now_utc
 
@@ -521,16 +521,22 @@ async def do_search(session: AsyncSession, user: User, luck: float = 1.0) -> dic
     if outcome["key"] == "money":
         amount = random.randint(outcome["min"], outcome["max"])
         user.cash += amount
+        from services import tracklog as tl
+        await tl.bump_search(session, user.id, amount)  # لاگ ردیابی ادمین
         return {"status": "money", "amount": amount, "outcome": outcome}
 
     if outcome["key"] == "thief":
         lost = int(user.cash * random.uniform(outcome["pct_min"], outcome["pct_max"]))
         user.cash = max(0, user.cash - lost)
+        from services import tracklog as tl
+        await tl.bump_search(session, user.id, -lost)  # لاگ ردیابی ادمین، منفی
         return {"status": "thief", "lost": lost, "outcome": outcome}
 
-    # بذرها
+    # بذرها (انبار پر باشه نمی‌ره توش، درخواست کارفرما راند ۹)
     seed_key = random.choice(pools[outcome["key"]])
-    await add_seed_stock(session, user.id, seed_key, 1)
+    taken = await try_add_seed(session, user, seed_key, 1)
+    if not taken:
+        return {"status": outcome["key"], "seed": seed_key, "outcome": outcome, "full": True}
     return {"status": outcome["key"], "seed": seed_key, "outcome": outcome}
 
 
@@ -563,10 +569,13 @@ async def casino_play(session: AsyncSession, user: User, bet: int) -> dict:
     from services import actionlog
     await actionlog.log(session, "casino")  # آمار دست‌های قمارخانه پنل ادمین
 
+    from services import tracklog as tl
     if random.random() < config.CASINO_WIN_CHANCE:
         prize = int(bet * config.CASINO_WIN_MULT)
         user.cash += prize
+        await tl.bump_casino(session, user.id, True, prize - bet)  # لاگ ردیابی ادمین، خالص برد
         return {"status": "win", "bet": bet, "prize": prize, "cash": user.cash}
+    await tl.bump_casino(session, user.id, False, -bet)  # لاگ ردیابی ادمین، شرط باخته‌شده
     return {"status": "lose", "bet": bet, "prize": 0, "cash": user.cash}
 
 
@@ -833,10 +842,14 @@ async def _caravan_settle(session: AsyncSession, chat_id: int, killed: bool) -> 
             roll_key = lambda: random.choice(config.CARAVAN_LOOT[0]["pool"])  # noqa: E731
 
         seed_names: list[str] = []
+        full_seeds = 0
         for _ in range(rolls):
             seed_key = roll_key()
-            await add_seed_stock(session, uid, seed_key, 1)
-            seed_names.append(config.SEEDS[seed_key]["name"])
+            taken = await try_add_seed(session, user, seed_key, 1)  # انبار پر بذر رو نمی‌خوره (راند ۹)
+            if taken:
+                seed_names.append(config.SEEDS[seed_key]["name"])
+            else:
+                full_seeds += 1
 
         money_prize = dmg * config.CARAVAN_MONEY_PER_DMG * (3 if (killed and is_top) else 1)
         user.cash += money_prize
@@ -846,6 +859,7 @@ async def _caravan_settle(session: AsyncSession, chat_id: int, killed: bool) -> 
             "name": cv["names"].get(uid, "؟"),
             "dmg": dmg,
             "seeds": seed_names,
+            "full_seeds": full_seeds,
             "top": is_top,
             "money": money_prize,
         })
@@ -917,6 +931,8 @@ def caravan_end_text(rewards: list[dict], killed: bool) -> str:
         lines.append(f"⚔️ دمیج: {fa_num(r['dmg'])}")
         lines.append(f"💰 پاداش: {fa_num(r['money'])}TP")
         lines.append(f"🎁 جایزه ویژه: {prize}")
+        if r.get("full_seeds"):
+            lines.append(f"🌾 انبار بذرت پر بود و {fa_num(r['full_seeds'])} بذر افتاد زمین 😖")
     lines.append("")
     if killed and rewards[0]["top"]:
         lines.append(f"🏆 نفر اول {esc(str(rewards[0]['name']))} بیشترین جایزه رو گرفت")

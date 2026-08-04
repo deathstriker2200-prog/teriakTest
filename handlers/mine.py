@@ -98,6 +98,8 @@ async def _do_roll(update: Update) -> None:
             user.last_mine_at = now
             from services import actionlog
             await actionlog.log(s, "mine")  # آمار کنده‌کاری‌های پنل ادمین
+            from services import tracklog as tl
+            await tl.bump_mine(s, user.id, loot["cash"], loot["xp"])  # لاگ ردیابی ادمین، فقط اگه طرف ترک‌شده باشه
             notes = users.add_xp(user, loot["xp"])
             from services import onboarding as onb
             chain = await onb.first_mine(s, user)  # جایزه و راهنمای اولین کنده‌کاری

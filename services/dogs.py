@@ -236,10 +236,9 @@ async def hold_dog(session: AsyncSession, user: User, dog_key: str, chat_id: int
 
 
 async def cancel_pending(session: AsyncSession, user: User) -> str:
-    """لغو کار معلق، هیچکدوم هنوز پولی جابه‌جا نکردن و فقط اکشن پاک میشه"""
+    """لغو کار معلق، هر اکشنی پاک میشه (هیچکدوم هنوز پولی جابه‌جا نکردن)، راند ۱۱ جاافتاده‌ها مثل خرید بذر و محموله هم پوشش داده شدن"""
     action = user.pending_action
-    if action not in ("dogname", "teamname", "teamcf", "bankdep", "bankwd", "admtp", "admxp",
-                      "ressell", "teamkick", "fjchan", "resbuy", "bcast", "trf_to", "trf_amt"):
+    if not action:
         return "🤷 کاری در جریان نیس که"
 
     users.set_pending(user, None)
@@ -249,6 +248,10 @@ async def cancel_pending(session: AsyncSession, user: User) -> str:
         return "باشه بیخیال فروش منابع شدیم"
     if action == "resbuy":
         return "باشه بیخیال خرید منابع شدیم"
+    if action == "seedbuy":
+        return "باشه بی‌خیال خرید بذر شدیم 🌱"
+    if action in ("smqty", "smcqty"):
+        return "باشه بی‌خیال ارسال محموله شدیم 🚚"
     return "😅 بی‌خیال شدیم"
 
 

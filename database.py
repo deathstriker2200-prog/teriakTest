@@ -84,6 +84,7 @@ _NEW_COLUMNS = {
         ("equipped_weapon", "VARCHAR(32)"),
         ("equipped_armor", "VARCHAR(32)"),
         ("poison_until", "DATETIME"),
+        ("boost_until", "DATETIME"),
     ],
     "group_activity": [
         ("title", "VARCHAR(128)"),
@@ -116,6 +117,9 @@ _NEW_COLUMNS = {
     "team_daily": [
         ("qprog", "VARCHAR(256)"),
         ("qdone", "VARCHAR(128)"),
+    ],
+    "shipments": [
+        ("chat_id", "BIGINT"),
     ],
 }
 

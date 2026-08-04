@@ -292,16 +292,21 @@ def farm_kb(user: User, plots: list[Plot], next_price: int, ready_count: int) ->
     return InlineKeyboardMarkup(rows)
 
 
-def seeds_kb(user: User, plot: Plot, stock: dict[str, int]) -> InlineKeyboardMarkup:
-    """انتخاب بذر از انبار برای کاشت روی زمین"""
+def seeds_kb(user: User, plot: Plot, stock: dict[str, int],
+             grow_times: dict[str, int] | None = None) -> InlineKeyboardMarkup:
+    """
+    انتخاب بذر از انبار برای کاشت روی زمین
+    grow_times: زمان زنده هر بذر (آب‌وهوا + مهارت + لول زمین، مثل اجرای واقعی) | نباشه فقط لول زمین حساب میشه
+    """
     rows: list[list[InlineKeyboardButton]] = []
     for key, seed in config.SEEDS.items():
         have = stock.get(key, 0)
         if have <= 0:
             continue
+        secs = (grow_times or {}).get(key) or economy.crop_grow_seconds(key, plot.level)
         label = (
             f"{seed.get('emoji', '🌱')} {seed['name']} ×{fa_num(have)}"
-            f" | ⏱ {fa_dur(economy.crop_grow_seconds(key, plot.level))}"
+            f" | ⏱ {fa_dur(secs)}"
             f" | 💰 {money_tp(economy.crop_yield(key, plot.level, user.level))}"
         )
         rows.append([_btn(label, f"farm:plant:{plot.id}:{key}")])
@@ -666,6 +671,23 @@ def heal_kb() -> InlineKeyboardMarkup:
         rows.append([_btn(
             f"{it['name']} | 🪙 {money_tp(it['price'])} | 🏥 {gain}",
             f"heal:buy:{key}", SUCCESS,
+        )])
+    rows.append([_btn("🏠 منوی اصلی", "menu:home", PRIMARY)])
+    return InlineKeyboardMarkup(rows)
+
+
+def energy_kb() -> InlineKeyboardMarkup:
+    """کیبورد بخش انرژی‌زا ⚡، هر آیتم با یه کلیک خریده و همون لحظه خورده میشه"""
+    pct = int(round((config.ENERGY_DRINKS["bomb"]["boost"] or 0) * 100))
+    rows: list[list[InlineKeyboardButton]] = []
+    for key, it in config.ENERGY_DRINKS.items():
+        if it["energy"] is None:
+            gain = f"⚡ فول + 🔥 {fa_num(pct)}% حمله"
+        else:
+            gain = f"⚡ انرژی +{fa_num(it['energy'])}"
+        rows.append([_btn(
+            f"{it['name']} | 🪙 {money_tp(it['price'])} | {gain}",
+            f"en:buy:{key}", SUCCESS,
         )])
     rows.append([_btn("🏠 منوی اصلی", "menu:home", PRIMARY)])
     return InlineKeyboardMarkup(rows)

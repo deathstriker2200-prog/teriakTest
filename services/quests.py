@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 import config
 from models import User
-from services.farming import add_seed_stock
+from services.farming import add_seed_stock, try_add_seed
 from services.users import add_xp
 from utils import fa_num, iran_today, money
 
@@ -144,14 +144,19 @@ async def track(session: AsyncSession, user: User, kind: str, n: int = 1) -> tup
             q["done"] = True
             notes: list[str] = []
             r = q["reward"]
+            from services import tracklog as tl
             if r["type"] == "tp":
                 user.cash += r["amount"]
+                await tl.bump_quest(session, user.id, r["amount"], 0)  # لاگ ردیابی ادمین
             elif r["type"] == "xp":
                 notes = add_xp(user, r["amount"])
                 from services import teams as team_svc
                 notes += await team_svc.add_team_xp(session, user, r["amount"])
+                await tl.bump_quest(session, user.id, 0, r["amount"])  # لاگ ردیابی ادمین
             else:
-                await add_seed_stock(session, user.id, r["seed"], r["amount"])
+                taken = await try_add_seed(session, user, r["seed"], r["amount"])  # انبار پر بذر رو نمی‌خوره (راند ۹)
+                if taken < r["amount"]:
+                    notes.append("🌾 انبار بذرت پر بود و بذر جایزه افتاد زمین 😖")
             q["notes"] = notes
             completed.append(q)
     if touched:

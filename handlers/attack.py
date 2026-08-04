@@ -2,7 +2,7 @@
 هدف دیگه هزینه‌داره (با لول جست‌وجوگر از 25 تا 1000 تی‌پوینت) و هر حمله 1 دقیقه کولدان داره
 قربانی سپر ۶ ساعته داشته باشه مهاجم انتخاب داره: با پول بشکنه یا بی‌خیال
 بعد حمله، به قربانی تو پی‌وی خبر حمله می‌رسه که چقدر دزدیده شد و چه تجربه کمی گرفت
-سیستم قدیمی: مقایسه قدرت حمله با دفاع حریف و شانس درصدی برد
+راند ۱۲ قدرت کل (حمله + دفاع) با بوست‌های نقش‌محور | راند ۱۳: اختلاف تا ۱۰۰ شانس متناسبه و هدف‌های دیده‌شده تا ۲۰ نشون بعدی تکرار نمیشن
 نبرد HP فقط توی گروه‌ها با دستورهای جنگ انجام میشه، اینجا سیستم جداست"""
 
 from telegram import Update
@@ -21,12 +21,12 @@ from utils import esc, fa_dur, fa_num, money
 
 PV_PANEL_TEXT = (
     "<b>⚔️ حمله پی‌وی</b>\n\n"
-    "🎯 هدف شانسی نزدیک لولت رو پیدا کن\n\n"
-    "👀 قبل از حمله پیش‌نمایشش رو می‌بینی و می‌تونی عوضش کنی\n"
-    "🕵 با جاسوسی جیب و قدرت دفاع و شانس بردت لو میره\n"
-    "🎲 نتیجه نبرد بر اساس قدرت حمله و دفاع محاسبه میشه\n"
-    "🛡 بعد از حمله حریف مدتی از حمله‌های پی‌وی مصون میشه\n\n"
-    "⚔️ نبردهای واقعی با HP فقط داخل گروه‌ها انجام میشن"
+    "🎯 با شروع حمله، یک بازیکن نزدیک به سطح خودت به‌صورت شانسی پیدا میشه\n\n"
+    "👀 قبل از حمله می‌تونی پیش‌نمایش حریف رو ببینی؛ اگر مناسب نبود، امکان تغییر هدف داری\n\n"
+    "🕵️ با جاسوسی، اطلاعات بیشتری از حریف مثل مقدار پول و قدرت کلیش به دست میاری\n\n"
+    "💪 نتیجه نبرد بر اساس قدرت کلی (قدرت حمله + قدرت دفاع) محاسبه میشه؛ بازیکنی که قدرت بیشتری داشته باشه، پیروز میشه\n\n"
+    "🛡️ بعد از هر حمله، حریف برای مدتی وارد حالت محافظت میشه و امکان حمله دوباره بهش وجود نداره\n\n"
+    "⚔️ توجه: نبردهای واقعی همراه با سیستم HP فقط داخل گروه‌ها فعال هستند"
 )
 
 NO_TARGET_TEXT = "😴 هدفی حوالی لولت پیدا نشد"
@@ -49,14 +49,14 @@ async def attack_cb(update: Update, context: ContextTypes.DEFAULT_TYPE, alert: s
 
 
 async def _target_view(s, user: User, victim: User) -> tuple[str, object]:
-    """متن و کیبورد پیش‌نمایش هدف، شانس برد فقط با دکمه جاسوسی (هزینه‌دار) لو میره"""
+    """متن و کیبورد پیش‌نمایش هدف، قدرت کل طرف فقط با دکمه جاسوسی (هزینه‌دار) لو میره"""
     name = users.display_name(victim)
     text = (
         "<b>🎯 هدف پیدا شد</b>\n\n"
         f"👤 {esc(name)}\n"
         f"⭐ لول {fa_num(victim.level)}\n"
         f"⚡ هزینه حمله {fa_num(config.PV_ATTACK_ENERGY_COST)} انرژی\n\n"
-        "🕵 با جاسوسی جیب و قدرت دفاع و شانس بردت لو میره\n"
+        "🕵 با جاسوسی جیب و قدرت کل طرف لو میره\n"
         "می‌زنیش یا یه هدف دیگه می‌خوای؟"
     )
     spy_c = 0 if pvattack.spy_is_free(user, victim) else pvattack.spy_cost(user.level)
@@ -79,6 +79,7 @@ async def target_go_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             await s.commit()
             return await respond(update, NO_TARGET_TEXT, kb.pv_attack_kb())
 
+        pvattack.note_target_shown(user.telegram_id, victim.id)  # تا ۲۰ نشون بعدی تکرار نمیشه (راند ۱۳)
         text, markup = await _target_view(s, user, victim)
         await s.commit()
     await respond(update, text, markup)
@@ -110,13 +111,14 @@ async def target_next_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             return await respond(update, text, markup, alert=NO_OTHER_TARGET_ALERT)
 
         user.cash -= cost
+        pvattack.note_target_shown(user.telegram_id, victim.id)  # تا ۲۰ نشون بعدی تکرار نمیشه (راند ۱۳)
         text, markup = await _target_view(s, user, victim)
         await s.commit()
     await respond(update, text, markup)
 
 
 async def target_spy_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """🕵 جاسوسی، با پول جیب و قدرت دفاع و درصد شانس برد طرف لو میره"""
+    """🕵 جاسوسی، با پول جیب و استت‌ها و قدرت کل طرف و نتیجه مقایسه لو میره"""
     target_id = int(parts(update)[2])
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
@@ -133,18 +135,24 @@ async def target_spy_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         if not free:
             user.cash -= cost
         user.last_spy_target_id = cur.id
-        a_atk, _ = await pvattack.powers(s, user)
-        _, t_dfn = await pvattack.powers(s, cur)
-        pct = round(pvattack.win_chance(a_atk, t_dfn) * 100)
+        a_tot, t_tot, _info = await pvattack.total_powers(s, user, cur)
+        if pvattack.is_close(a_tot, t_tot):
+            ch = round(pvattack.close_win_chance(a_tot, t_tot) * 100)
+            verdict = f"🎲 قدرت‌هاتون نزدیکه، شانس بردت حدود {fa_num(ch)}%"
+        elif a_tot > t_tot:
+            verdict = "✅ قدرتت بیشتره، حمله بزنی میبری"
+        else:
+            verdict = "❌ قدرتش بیشتره، حمله بزنی میبازی"
         cash = cur.cash
         name = users.display_name(cur)
         text, markup = await _target_view(s, user, cur)
         await s.commit()
+    # قالب گزارش درخواست کارفرما (راند ۱۳): جیب + قدرت کلی طرف + حکم مقایسه
     alert = (
-        f"🕵 جاسوسی از «{esc(name)}» گزارش داد\n"
-        f"💰 جیبش {money(cash)}\n"
-        f"🛡 قدرت دفاع {fa_num(t_dfn)}\n"
-        f"🎲 شانس بردت {fa_num(pct)} درصد"
+        f"🕵 گزارش جاسوسی از «{esc(name)}» به شرح زیر است\n\n"
+        f"💰 پول توی جیب: {money(cash)}\n"
+        f"💪 قدرت کلی: {fa_num(t_tot)}\n"
+        f"{verdict}"
     )
     if free:
         alert += "\n🔁 همون طرفی که جاسوش بودی، این یکی رایگان بود"
@@ -152,7 +160,8 @@ async def target_spy_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
 
 async def target_back_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """🔙 بازگشت به پنل حمله پی‌وی"""
+    """🔙 بازگشت به پنل حمله پی‌وی، سرچ تمومه و لیست دیده‌شده‌ها پاک میشه"""
+    pvattack.clear_seen_targets(update.effective_user.id)
     await pv_panel(update)
 
 
@@ -171,6 +180,7 @@ def _victim_text(attacker_name: str, result: dict) -> str:
         "<b>🚨 بهت حمله شد</b>\n\n"
         f"{head}\n"
         f"{money_line}\n"
+        f"💪 قدرت کل تو {fa_num(result['d_pow'])} ✕ طرف {fa_num(result['a_pow'])}\n"
         f"✨ {fa_num(result['victim_xp'])} تجربه گرفتی\n\n"
         f"🛡 تا {fa_num(config.PV_ATTACK_SHIELD_SECONDS // 3600)} ساعت از حملات در امانی"
     )
@@ -227,6 +237,8 @@ async def _run_attack(update: Update, context, target_id: int, break_shield: boo
             victim.shield_until = None
 
         result = await pvattack.execute(s, user, victim)
+        if result["ok"]:
+            pvattack.clear_seen_targets(user.telegram_id)  # سرچ با حمله تموم شد، دور بعدی تازه (راند ۱۳)
         if not result["ok"]:
             await s.commit()
             reason = result["reason"]
@@ -253,6 +265,7 @@ async def _run_attack(update: Update, context, target_id: int, break_shield: boo
         text = (
             f"<b>⚔️ بردی!</b>\n\n"
             f"{loot_line}\n"
+            f"💪 قدرت کل تو {fa_num(result['a_pow'])} ✕ طرف {fa_num(result['d_pow'])}\n"
             f"✨ {fa_num(result['xp'])} تجربه گرفتی"
         )
     else:
@@ -263,6 +276,7 @@ async def _run_attack(update: Update, context, target_id: int, break_shield: boo
         text = (
             f"<b>🛡 حریف «{esc(name)}» تونست دفاع کنه، باختی</b>\n\n"
             f"{lose_line}\n"
+            f"💪 قدرت کل طرف {fa_num(result['d_pow'])} ✕ تو {fa_num(result['a_pow'])}\n"
             f"✨ {fa_num(result['xp'])} تجربه گرفتی"
         )
 

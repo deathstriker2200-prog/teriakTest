@@ -64,10 +64,15 @@ async def search_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         )
     else:
         seed_name = config.SEEDS[res["seed"]]["name"]
+        tail = (
+            "🌾 ولی انبار بذرت پر بود، افتاد زمین 😖"
+            if res.get("full") else
+            "رفت تو انبارت، بکارش یا نگهش دار 🌾"
+        )
         text = (
             "<b>🔍 جستجو</b>\n\n"
             f"{o['emoji']} {o['text']} <b>({esc(seed_name)})</b>\n\n"
-            "رفت تو انبارت، بکارش یا نگهش دار 🌾"
+            f"{tail}"
         )
     if luck > 1:
         text += "\n\n🍀 سگ خوش‌شانست شانس خوبت رو بیشتر کرد"
@@ -450,13 +455,10 @@ async def caravan_hit_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         user, _ = await users.get_or_create(s, update.effective_user)
         items = await users.get_item_keys(s, user.id)
         dogs = await dog_svc.get_user_dogs(s, user.id)
-        atk, _ = combat.combat_stats(user, items, dogs)
-
-        user_team = None
         from services import teams as team_svc
         user_team = await team_svc.get_team_of(s, user.id)
-        if user_team:
-            atk = int(atk * (1 + team_svc.atk_bonus(user_team)))
+        team_b = team_svc.atk_bonus(user_team) if user_team else 0.0
+        atk, _ = combat.combat_stats(user, items, dogs, atk_extra=team_b)
 
         res = await world_svc.caravan_attack(s, chat_id, user, atk)
         if res["status"] in ("hit", "killed"):

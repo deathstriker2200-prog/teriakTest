@@ -1,6 +1,6 @@
 """
 سیستم نبرد HP گروهی ⚔️
-HP دائمی تو دیتابیس | هر ضربه همون لحظه دمیج + غارت + تجربه | شکست = ۱۰ دقیقه بیهوشی
+HP دائمی تو دیتابیس | هر ضربه همون لحظه دمیج + غارت + تجربه | شکست = ۳۰ دقیقه بیهوشی
 
 ماژولاره: هر عدد/ضریب توی config (بخش «نبرد HP» و HEAL_ITEMS) قابل تغییره
 سلاح/زره/سگ/آیتم درمان/رویداد جدید فقط با یه خط به کاتالوگ‌ها اضافه میشه
@@ -97,9 +97,6 @@ async def battle_powers(session: AsyncSession, attacker: User, target: User) -> 
     a_dogs = await dog_svc.get_user_dogs(session, attacker.id)
     t_dogs = await dog_svc.get_user_dogs(session, target.id)
 
-    atk, _ = combat.combat_stats(attacker, a_items, a_dogs)
-    _, dfn = combat.combat_stats(target, t_items, t_dogs)
-
     info: dict = {"tbuff": 0.0, "defcut": 0.0, "weather": "normal"}
 
     from services import teams as team_svc
@@ -108,33 +105,34 @@ async def battle_powers(session: AsyncSession, attacker: User, target: User) -> 
     tbuff = team_svc.atk_bonus(a_team)
     tbuff_def = team_svc.def_bonus(t_team)
     if tbuff:
-        atk = int(atk * (1 + tbuff))
         info["tbuff"] = tbuff
-    if tbuff_def:
-        dfn = int(dfn * (1 + tbuff_def))
 
     from services import world as world_svc
     wkey, wpct, _ = await world_svc.weather_state(session)
     watk, wdef = world_svc.weather_combat_mods(wkey, wpct)
-    if watk:
-        atk = max(1, int(atk * (1 + watk)))
-    if wdef:
-        dfn = max(1, int(dfn * (1 + wdef)))
     info["weather"] = wkey
 
     # گرگ سیاه دفاع حریف رو خرد می‌کنه، تا ۳۰% بسته به لولش
     def_cut = dog_svc.rare_defense_cut(a_dogs)
     if def_cut:
-        dfn = max(1, int(dfn * (1 - def_cut)))
         info["defcut"] = def_cut
+
+    # همه مادیفایرها یه‌جا additive روی مقدار اولیه: باف تیم + هوا + (گرگ و پوینت‌کات منفی)
+    a_extra = tbuff + watk
+    d_extra = tbuff_def + wdef - def_cut
 
     # 💀 سم Viper-X: هر طرفی که مسمومه حمله و دفاعش کمتره
     if _poisoned(attacker):
-        atk = max(1, int(atk * (1 - config.POISON_CUT)))
+        a_extra -= config.POISON_CUT
         info["poison_self"] = True
     if _poisoned(target):
-        dfn = max(1, int(dfn * (1 - config.POISON_CUT)))
+        d_extra -= config.POISON_CUT
         info["poison_target"] = True
+
+    atk, _ = combat.combat_stats(attacker, a_items, a_dogs, atk_extra=a_extra)
+    _, dfn = combat.combat_stats(target, t_items, t_dogs, def_extra=d_extra)
+    atk = max(1, atk)
+    dfn = max(1, dfn)
 
     info["a_items"] = a_items
     info["t_items"] = t_items
@@ -148,18 +146,19 @@ async def battle_powers(session: AsyncSession, attacker: User, target: User) -> 
 def roll_damage(atk: int, dfn: int, victim_max_hp: int) -> tuple[int, bool]:
     """
     (دمیج نهایی یه ضربه, کریتیکال بود؟)
-    دمیج درصدی از مکس HP قربانیه: هرچی حمله نسبت به دفاع حریف قوی‌تر، درصد بالاتر
-    (بین کف و سقف کانفیگ) و بعد واریانس رندوم، که نبرد هیجانی و غیرقابل پیش‌بینی بمونه
-    دمیج صفر فقط وقتی حریف حسابی قوی‌تره (دفاع ≥ نسبت کانفیگ برابر حمله)
+    فرمول درخواستی کارفرما (راند ۹): (حمله - دفاع حریف) ÷ BATTLE_DMG_DIVISOR
+    بعد واریانس رندوم که نبرد هیجانی و غیرقابل پیش‌بینی بمونه
+    دمیج صفر دو حالت داره: دفاع ≥ نسبت کانفیگ برابر حمله (زیادی قدرتمنده) یا دفاع حریف
+    به‌بزرگی حمله‌ست که ضربه اصلاً نمی‌نشینه (هر دو پیام زیادی قدرتمنده رو میدن)
     کریتیکال با شانس کم دمیج نهایی رو چند برابر می‌کنه
     """
     if dfn >= atk * config.BATTLE_NO_DAMAGE_DEF_RATIO:
         return 0, False
-    ratio = atk / max(1, atk + dfn)  # ۰ تا ۱، برتری نسبی حمله به دفاع
-    pct = config.BATTLE_DMG_PCT_MIN + (config.BATTLE_DMG_PCT_MAX - config.BATTLE_DMG_PCT_MIN) * ratio
-    raw = max(1, victim_max_hp) * pct
+    base = (atk - dfn) / config.BATTLE_DMG_DIVISOR
+    if base < 1:
+        return 0, False
     v = config.BATTLE_DMG_VARIANCE
-    dmg = max(1, round(raw * random.uniform(1 - v, 1 + v)))
+    dmg = max(1, round(base * random.uniform(1 - v, 1 + v)))
     crit = random.random() < config.BATTLE_CRIT_CHANCE
     if crit:
         dmg = max(1, round(dmg * config.BATTLE_CRIT_MULT))
@@ -334,6 +333,9 @@ async def execute_hit(session: AsyncSession, attacker: User, target: User) -> di
         quest_msg = await team_svc.record_kill(session, attacker)
         if quest_msg:
             notes.append(quest_msg)
+
+    from services import tracklog as tl
+    await tl.bump_battle(session, attacker.id, target.id, steal, xp, killed)  # لاگ ردیابی ادمین
 
     return {
         "ok": True,

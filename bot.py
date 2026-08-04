@@ -6,7 +6,7 @@ from telegram import BotCommand, Update
 from telegram.ext import Application
 
 import config
-from database import init_db
+from database import init_db, session_scope
 from handlers import register_handlers
 
 logging.basicConfig(
@@ -23,6 +23,12 @@ async def on_start(app: Application) -> None:
 
     config.ensure_sqlite_dir()   # اگه ولوم ریلوی تازه سوار شده پوشه رو بساز
     await init_db()
+
+    # کش ردیابی بازیکن‌های ادمین (🕵️) یک‌بار اینجا از دیتابیس لود میشه، چک‌های اکشن بعدش فقط روی حافظه‌ان
+    from services import tracklog
+    async with session_scope() as _ts:
+        await tracklog.refresh(_ts)
+        await _ts.commit()
 
     me = await app.bot.get_me()
     keyboards.BOT_USERNAME = me.username or ""

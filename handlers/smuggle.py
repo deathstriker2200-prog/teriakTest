@@ -144,7 +144,7 @@ async def ship_execute(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     qty = int(n)
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
-        ok, alert, sh = await smg.send_shipment(s, user, crop, qty)
+        ok, alert, sh = await smg.send_shipment(s, user, crop, qty, chat_id_of(update))
         ship_note = None
         if ok:
             alert += f" | ⏱ {fa_dur(smg.shipment_seconds(qty))} دیگه میرسه"

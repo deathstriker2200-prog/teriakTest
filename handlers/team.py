@@ -256,11 +256,11 @@ def _team_rank_badge(i: int) -> str:
 
 
 async def top_teams_text(update: Update, context: ContextTypes.DEFAULT_TYPE, tab: str | None = None) -> None:
-    """🏆 لیدربرد تیم‌ها بر اساس جمع مدال‌های اعضا، تب روزانه/هفتگی/کلی («تیم لیدربرد»)"""
+    """🏆 لیدربرد تیم‌ها بر اساس جمع مدال‌های اعضا، تب روزانه/هفتگی/کلی با پیش‌فرض کلی («تیم لیدربرد»)"""
     keys = [k for k, _ in _TEAM_TOP_TABS]
     titles = dict(_TEAM_TOP_TABS)
     if tab not in keys:
-        tab = "week"  # پیش‌فرض رقابت هفتگی
+        tab = "all"  # پیش‌فرض رقابت کلی (راند ۱۰)، کاربر خودش با دکمه‌ها تب رو عوض می‌کنه
 
     async with session_scope() as s:
         winners = await teams.maybe_weekly_rollover(s)

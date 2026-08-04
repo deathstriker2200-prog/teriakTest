@@ -505,6 +505,43 @@ async def addseed_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     await update.message.reply_html(text)
 
 
+# ───────── ردیابی دوره‌ای بازیکن 🕵 (لاگ خلاصه هر ۱۰ دقیقه به چت لاگ) ─────────
+
+async def tracklog_start_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """«لاگ @یوزر» شروع ردیابی یه بازیکن تا خلاصه دوره‌ای به چت لاگ بره، فقط ادمین"""
+    if not _is_admin(update):
+        return
+    from services import tracklog as tl
+    query = (update.message.text or "").strip().split()[-1].lstrip("@").strip()
+    if not query or query == "لاگ":
+        return await respond(update, "🤷 این‌جوری بنویس: «لاگ @یوزرنیم» (آیدی عددی یا بخشی از اسم هم میشه)")
+    async with session_scope() as s:
+        found = await users.search_users(s, query)
+        if not found:
+            await s.commit()
+            return await respond(update, "🤷 کسی با این مشخصات تو بازی پیدا نشد")
+        msg = await tl.start(s, found[0])
+        await s.commit()
+    await respond(update, msg)
+
+
+async def tracklog_stop_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """«توقف لاگ @یوزر» خاموش کردن ردیابی + پاک شدن آمار جاری، فقط ادمین"""
+    if not _is_admin(update):
+        return
+    from services import tracklog as tl
+    query = (update.message.text or "").strip().split()[-1].lstrip("@").strip()
+    if not query or query in ("لاگ", "توقف"):
+        return await respond(update, "🤷 این‌جوری بنویس: «توقف لاگ @یوزرنیم»")
+    async with session_scope() as s:
+        found = await users.search_users(s, query)
+        if not found:
+            await s.commit()
+            return await respond(update, "🤷 کسی با این مشخصات تو بازی پیدا نشد")
+        msg = await tl.stop(s, found[0])
+        await s.commit()
+    await respond(update, msg)
+
 # ───────── /detp و /dexp، کم کردن مستقیم ─────────
 
 async def detp_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

@@ -1,7 +1,10 @@
 """
 حمله پی‌وی کلاسیک ⚔️، سیستم قدیمی بدون HP
 
-قدرت حمله مهاجم با دفاع حریف مقایسه میشه و شانس برد درصدی درمیاد
+راند ۱۲ درخواست کارفرما: «قدرت کل» (حمله + دفاع خام) دو طرف مقایسه میشه و درصدی نیس، مهاجم بیشتر بود برده وگرنه باخته
+بوست‌ها نقش‌محورن: مهاجم فقط بوست‌های حمله‌ای (نژاد سگ | آرتیفکت | مهارت قدرت | هوای تهاجمی) رو می‌گیره و هدف فقط بوست‌های دفاعی
+جاسوسی به‌جای شانس درصدی، استت‌ها و قدرت کل طرف رو نشون میده
+راند ۱۳: اختلاف قدرت تا PV_ATTACK_CLOSE_DIFF شانسی متناسب نسبت قدرت‌هاست، بیرونش قطعیه | هر هدف دیده‌شده تا ۲۰ نشون بعدی تکرار نمیشه
 هدف‌ها اول حوالی لول خودتن (±۲ لول)، هر مرحله خالی بود یه لول بازتر تا ±۱۰، بعدش فالبک: اول بالاترها بعد پایین‌ترها
 بعد هر حمله قربانی ۶ ساعت مصونیت می‌گیره
 و از لیست حمله‌های پی‌وی خارج میشه
@@ -9,6 +12,7 @@
 """
 
 import random
+from collections import deque
 from datetime import timedelta
 
 from sqlalchemy import func, select
@@ -65,13 +69,55 @@ def spy_cost(level: int) -> int:
     return int(lo + (hi - lo) * (lv - 1) / span)
 
 
-# ───────── قدرت و شانس 🎲 ─────────
+# ───────── قدرت کل نقش‌محور 💪 (راند ۱۲) ─────────
 
-async def powers(session: AsyncSession, user: User) -> tuple[int, int]:
-    """(حمله, دفاع) کاربر با آیتم‌ها و سگ‌هاش، مبنای مقایسه کلاسیک"""
-    items = await user_svc.get_item_keys(session, user.id)
-    dogs = await dog_svc.get_user_dogs(session, user.id)
-    return combat.combat_stats(user, items, dogs)
+def is_close(a_total: int, t_total: int) -> bool:
+    """اختلاف قدرت‌ها تو رنج نزدیکه؟ (راند ۱۳: اینجا برد قطعی نیس و شانس رول میشه)"""
+    return abs(a_total - t_total) <= config.PV_ATTACK_CLOSE_DIFF
+
+
+def close_win_chance(a_total: int, t_total: int) -> float:
+    """شانس برد مهاجم تو رنج نزدیک، متناسب سهمش از جمع قدرت‌ها (تساوی یعنی پنجاه‌پنجاه)"""
+    tot = max(1, a_total + t_total)
+    return a_total / tot
+
+
+def decide_win(a_total: int, t_total: int) -> bool:
+    """
+    داور نهایی برد مهاجم (راند ۱۳، درخواست کارفرما):
+    اختلاف تا PV_ATTACK_CLOSE_DIFF شانسی متناسب نسبت قدرت‌هاست، بیرونش قطعیه و بیشتر بود برده، تساوی یا کمتر باخته
+    """
+    if is_close(a_total, t_total):
+        return random.random() < close_win_chance(a_total, t_total)
+    return a_total > t_total
+
+
+async def total_powers(session: AsyncSession, attacker: User, target: User) -> tuple[int, int, dict]:
+    """
+    (قدرت کل مهاجم, قدرت کل هدف, جزئیات استت خام) | مبنا = حمله + دفاع خام هر دو طرف
+    بوست‌ها نقش‌محورن (درخواست کارفرما): به قدرت کل مهاجم فقط بوست‌های حمله‌ای‌اش اضافه میشه (نه بوست دفاع)
+    و به قدرت کل هدف فقط بوست‌های دفاعی‌اش (نه بوست حمله) | هوا هم همین نقش رو داره (طوفان مهاجم رو ضعیف می‌کنه، مه مدافع رو قوی)
+    """
+    a_items = await user_svc.get_item_keys(session, attacker.id)
+    t_items = await user_svc.get_item_keys(session, target.id)
+    a_dogs = await dog_svc.get_user_dogs(session, attacker.id)
+    t_dogs = await dog_svc.get_user_dogs(session, target.id)
+
+    a_atk0, a_def0 = combat.combat_raw_stats(attacker, a_items, a_dogs)
+    t_atk0, t_def0 = combat.combat_raw_stats(target, t_items, t_dogs)
+    a_ap, _ = combat.combat_boost_pcts(attacker, a_items, a_dogs)
+    _, t_dp = combat.combat_boost_pcts(target, t_items, t_dogs)
+
+    from services import world as world_svc
+    wkey, wpct, _ = await world_svc.weather_state(session)
+    watk, wdef = world_svc.weather_combat_mods(wkey, wpct)
+
+    a_total = int((a_atk0 + a_def0) * (1 + a_ap + watk))
+    t_total = int((t_atk0 + t_def0) * (1 + t_dp + wdef))
+    return max(1, a_total), max(1, t_total), {
+        "a_atk0": a_atk0, "a_def0": a_def0,
+        "t_atk0": t_atk0, "t_def0": t_def0, "weather": wkey,
+    }
 
 
 def pv_steal_range(cash: int) -> float:
@@ -83,21 +129,36 @@ def pv_steal_range(cash: int) -> float:
     return random.uniform(lo, hi)
 
 
-def win_chance(a_atk: int, t_dfn: int) -> float:
-    """شانس برد مهاجم، پایه ۵۰ درصد و هر واحد اختلاف قدرت جابه‌جاش می‌کنه (با کف و سقف)"""
-    raw = config.PV_BASE_CHANCE + (a_atk - t_dfn) * config.PV_ATTACK_CHANCE_SCALE
-    return max(config.PV_ATTACK_MIN_CHANCE, min(config.PV_ATTACK_MAX_CHANCE, raw))
-
 
 # ───────── هدف شانسی 🎯 ─────────
 
-async def pick_random_target(session: AsyncSession, user: User, exclude_id: int | None = None) -> User | None:
-    """
-    یه هدف شانسی حوالی لول کاربر (±۴)، خودش و کسایی که مصونیت دارن حذف میشن
-    توی رنج کسی نبود فالبک وسیع: اول شانسی بین همه بالاترلولی‌ها، نبود بین پایین‌ترلولی‌ها
-    exclude_id آیدی هدف فعلی پیش‌نمایشه که دکمه «هدف دیگه» باید ردش کنه
-    هدفی نبود None برمی‌گرده
-    """
+# دیده‌شده‌های سرچ هر کاربر (راند ۱۳، حافظه فرّار با کلید آیدی تلگرام | با ری‌استارت ریست میشه):
+# هر هدفی که پیش‌نمایش داده میشه تا PV_SEEN_EXCLUDE_LAST نشون بعدی تکرار نمیشه
+_SEEN: dict[int, deque] = {}
+
+
+def note_target_shown(user_id: int, target_id: int) -> None:
+    """هدف نشون‌داده‌شده رو لیست اخیرهای کاربر (آیدی تلگرام) بنداز، فقط آخرین N تا نگه می‌مونه (چرخه‌ای)"""
+    dq = _SEEN.get(user_id)
+    if dq is None or dq.maxlen != config.PV_SEEN_EXCLUDE_LAST:
+        dq = deque(maxlen=config.PV_SEEN_EXCLUDE_LAST)
+        _SEEN[user_id] = dq
+    dq.append(target_id)
+
+
+def seen_targets(user_id: int) -> set[int]:
+    """ست آیدی هدف‌های اخیراً دیده‌شده کاربر"""
+    return set(_SEEN.get(user_id, ()))
+
+
+def clear_seen_targets(user_id: int) -> None:
+    """با تموم شدن سرچ (حمله یا برگشت به پنل) لیست دیده‌شده‌ها پاک میشه تا سرچ بعدی تازه باشه"""
+    _SEEN.pop(user_id, None)
+
+
+async def _pick(session: AsyncSession, user: User, exclude_id: int | None = None,
+                exclude_ids: set[int] | None = None) -> User | None:
+    """بدنه انتخاب هدف با امکان حذف دسته‌جمعی (دیده‌شده‌های سرچ)"""
     base = [
         User.id != user.id,
         (User.shield_until.is_(None)) | (User.shield_until <= now_utc()),
@@ -105,6 +166,8 @@ async def pick_random_target(session: AsyncSession, user: User, exclude_id: int 
     ]
     if exclude_id:
         base.append(User.id != exclude_id)
+    if exclude_ids:
+        base.append(User.id.notin_(exclude_ids))
     # اول نزدیک‌ترین بازه لول، هر مرحله که خالی بود یه لول بازتر میشه تا رنج مکس
     for rng in range(config.PV_ATTACK_LEVEL_RANGE, config.PV_ATTACK_MAX_RANGE + 1):
         q = select(User).where(*base, User.level >= user.level - rng, User.level <= user.level + rng)             .order_by(func.random()).limit(1)
@@ -119,6 +182,20 @@ async def pick_random_target(session: AsyncSession, user: User, exclude_id: int 
     # فالبک آخر: هرکی پایین‌تره
     q = select(User).where(*base, User.level < user.level).order_by(func.random()).limit(1)
     return (await session.execute(q)).scalar_one_or_none()
+
+
+async def pick_random_target(session: AsyncSession, user: User, exclude_id: int | None = None) -> User | None:
+    """
+    یه هدف شانسی حوالی لول کاربر، خودش و مصونیت‌دارها و نامرئی‌ها حذف میشن
+    اهداف اخیراً دیده‌شده تو سرچ همین کاربر (تا PV_SEEN_EXCLUDE_LAST تای آخر) هم کنار گذاشته میشن
+    exclude_id آیدی هدف فعلی پیش‌نمایشه که دکمه «هدف دیگه» باید ردش کنه
+    فالبک آخر: همه حوالی دیده شده باشن لیست دیده‌شده نادیده گرفته میشه تا سرچ هرگز نخشکه
+    """
+    seen = seen_targets(user.telegram_id)
+    t = await _pick(session, user, exclude_id=exclude_id, exclude_ids=seen or None)
+    if t is None and seen:
+        t = await _pick(session, user, exclude_id=exclude_id)
+    return t
 
 
 # ───────── اجرای حمله ⚔️ ─────────
@@ -148,11 +225,9 @@ async def execute(session: AsyncSession, attacker: User, victim: User) -> dict:
     attacker.pv_attack_at = now_utc()
     await actionlog.log(session, "pvattack")  # آمار حمله‌های پی‌وی پنل ادمین
 
-    a_atk, _ = await powers(session, attacker)
-    _, t_dfn = await powers(session, victim)
+    a_total, t_total, _info = await total_powers(session, attacker, victim)
     artis = user_svc.artifact_keys(await user_svc.get_item_keys(session, attacker.id))
-    chance = win_chance(a_atk, t_dfn)
-    won = random.random() < chance
+    won = decide_win(a_total, t_total)
 
     # مصونیت قربانی بعد از حمله، تو برد و باخت هر دو
     victim.shield_until = now_utc() + timedelta(seconds=config.PV_ATTACK_SHIELD_SECONDS)
@@ -187,15 +262,16 @@ async def execute(session: AsyncSession, attacker: User, victim: User) -> dict:
     if victim_xp:
         user_svc.add_xp(victim, victim_xp)
         await team_svc.add_team_xp(session, victim, victim_xp)
+    from services import tracklog as tl
+    await tl.bump_pv(session, attacker.id, won, steal if won else -penalty, xp)  # لاگ ردیابی ادمین
     return {
         "ok": True,
         "won": won,
-        "chance": chance,
         "steal": steal,
         "penalty": penalty,
         "xp": xp,
         "victim_xp": victim_xp,
         "notes": notes,
-        "a_pow": a_atk,
-        "d_pow": t_dfn,
+        "a_pow": a_total,
+        "d_pow": t_total,
     }

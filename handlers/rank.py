@@ -1,4 +1,4 @@
-"""رتبه‌بندی بازیکن‌ها بر اساس مدال 🎖️، سه دکمه ثابت روزانه/هفتگی/کلی بالای دکمه منو"""
+"""رتبه‌بندی بازیکن‌ها بر اساس مدال 🎖️، سه دکمه ثابت روزانه/هفتگی/کلی بالای دکمه منو، باز کردنش مستقیم روی کلی می‌افته"""
 
 from telegram import Update
 from telegram.ext import ContextTypes
@@ -25,7 +25,7 @@ TAB_ORDER = ["day", "week", "all"]
 
 async def rank_cb(update: Update, context: ContextTypes.DEFAULT_TYPE, tab: str | None = None) -> None:
     if tab not in TAB_ORDER:
-        tab = "week"  # پیش‌فرض لیدربرد هفتگی
+        tab = "all"  # پیش‌فرض لیدربرد کلی (راند ۱۰)، کاربر خودش با دکمه‌ها تب رو عوض می‌کنه
 
     async with session_scope() as s:
         from sqlalchemy import func as _func, select as _select

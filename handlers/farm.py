@@ -133,7 +133,12 @@ async def plant_picker(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             return await render_farm(update, alert="❌ این زمین الان خالی نیس")
 
         stock = await farming.get_stock(s, user.id)
-        markup = kb.seeds_kb(user, plot, stock)
+        # تایم هر بذر دقیقاً همون تابع اجراست (آب‌وهوا + مهارت + لول تازه زمین) که عدد صفحه با واقعیت یکی بشه
+        grow_times = {
+            k: await farming.grow_seconds(s, user, plot, k)
+            for k in stock if k in config.SEEDS and stock[k] > 0
+        }
+        markup = kb.seeds_kb(user, plot, stock, grow_times)
         text = _picker_text(stock)
         await s.commit()
 

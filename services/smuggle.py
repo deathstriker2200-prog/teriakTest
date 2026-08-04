@@ -132,8 +132,10 @@ def shipment_confirm_text(crop: str, qty: int, value: int) -> str:
     ])
 
 
-async def send_shipment(session: AsyncSession, user: User, crop: str, qty: int) -> tuple[bool, str, Shipment | None]:
-    """ثبت ارسال محموله: محصول از انبار کم میشه و سرنوشت محموله همینجا رول میشه"""
+async def send_shipment(session: AsyncSession, user: User, crop: str, qty: int,
+                        chat_id: int | None = None) -> tuple[bool, str, Shipment | None]:
+    """ثبت ارسال محموله: محصول از انبار کم میشه و سرنوشت محموله همینجا رول میشه
+    chat_id چتیه که ارسال از توش انجام شده و خبر رسیدن همونجا میره (راند ۱۳، درخواست کارفرما)"""
     if crop not in config.SEEDS:
         return False, "❌ همچین محصولی نیس", None
     ongoing = await active_shipments(session, user.id)
@@ -151,7 +153,7 @@ async def send_shipment(session: AsyncSession, user: User, crop: str, qty: int) 
     pay = value if outcome != "police" else round(value * config.SHIPMENT_POLICE_PAY)
     sh = Shipment(
         user_id=user.id, crop=crop, qty=qty, value=value, pay=pay,
-        outcome=outcome, hops=0,
+        outcome=outcome, hops=0, chat_id=chat_id,
         deliver_at=now_utc() + timedelta(seconds=shipment_seconds(qty)),
     )
     session.add(sh)
@@ -190,6 +192,7 @@ async def process_due_shipments(session: AsyncSession) -> list[dict]:
             sh.deliver_at = now_utc() + timedelta(seconds=shipment_seconds(sh.qty))
             out.append({
                 "tg": user.telegram_id,
+                "chat": sh.chat_id or user.telegram_id,  # خبر همونجا میره که کامیون راه افتاد (راند ۱۳)
                 "text": (
                     "<b>🚛 راننده مسیر رو عوض کرد</b>\n\n"
                     f"⏱ محموله {emoji} {name} ×{fa_num(sh.qty)}\n"
@@ -199,6 +202,8 @@ async def process_due_shipments(session: AsyncSession) -> list[dict]:
             continue
 
         user.cash += sh.pay
+        from services import tracklog as tl
+        await tl.bump_sell(session, sh.user_id, {sh.crop: (sh.qty, sh.pay)})  # لاگ ردیابی ادمین
         await world_svc.record_sale(session, sh.crop, sh.qty)  # عرضه واقعی بازار پویا
         await session.delete(sh)
         if sh.outcome == "police":
@@ -221,7 +226,7 @@ async def process_due_shipments(session: AsyncSession) -> list[dict]:
                 f"{emoji} {name} ×{fa_num(sh.qty)} تحویل داده شد\n\n"
                 f"💵 {money(sh.pay)} گرفتی"
             )
-        out.append({"tg": user.telegram_id, "text": text})
+        out.append({"tg": user.telegram_id, "chat": sh.chat_id or user.telegram_id, "text": text})
     return out
 
 
@@ -454,6 +459,8 @@ async def sell_to_caravan(session: AsyncSession, user: User, qty: int) -> tuple[
         return False, f"📦 {fa_num(qty)} تا {sd['name']} تو انبارت نداری", 0
     gain = round(value * (1 + cv["bonus"] / 100))
     user.cash += gain
+    from services import tracklog as tl
+    await tl.bump_sell(session, user.id, {cv["crop"]: (qty, gain)})  # لاگ ردیابی ادمین
     await world_svc.record_sale(session, cv["crop"], qty)  # عرضه واقعی بازار پویا
     return True, (
         f"💰 {money(gain)} از کاروان گرفتی\n"
