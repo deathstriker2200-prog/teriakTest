@@ -165,7 +165,13 @@ async def tx_confirm_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
 async def plant_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = _match_arg(update)
-    key, seed = find_by_name(config.SEEDS, query)
+    # راند ۲۰: «کاشت کوکائین 3» یعنی سه‌تا بذر سه‌تا زمین (درخواست کارفرما)
+    count = 1
+    m_cnt = re.match(r"^(.*?)\s+(\d+)$", query.strip())
+    name_q = query
+    if m_cnt:
+        name_q, count = m_cnt.group(1), int(m_cnt.group(2))
+    key, seed = find_by_name(config.SEEDS, name_q.strip())
     if not key:
         names = " | ".join(s["name"] for s in config.SEEDS.values())
         return await respond(update, f"🤷 محصولی با این اسم ندارم\n\nگزینه‌ها:\n{names}")
@@ -178,10 +184,44 @@ async def plant_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         user, _ = await users.get_or_create(s, update.effective_user)
 
         plots = await farming.get_user_plots(s, user.id)
-        empty = next((p for p in plots if p.current_status()[0] == "empty"), None)
+        empties = [p for p in plots if p.current_status()[0] == "empty"]
+        empty = empties[0] if empties else None
         building = next((p for p in plots if p.current_status()[0] == "building"), None)
 
-        if not plots:
+        if count > 1:
+            stock = await farming.get_stock(s, user.id)
+            have = stock.get(key, 0)
+            planted20 = 0
+            if not plots:
+                msg = "🌱 زمینی نداری، اول از مزرعه زمین بخر"
+            elif len(empties) < count:
+                msg = (f"🌱 زمین کافی برای اینهمه بذر نداری\n"
+                       f"{fa_num(count)} تا می‌خوای بکاری ولی فقط {fa_num(len(empties))} تا زمین خالیه")
+            elif have < count:
+                msg = (f"🌾 بذر کافی نداری\n"
+                       f"الان {fa_num(have)} تا {seed['name']} داری ولی {fa_num(count)} تا می‌خوای بکاری")
+            else:
+                for plot20 in empties[:count]:
+                    ok, msg = await farming.plant(s, user, plot20, key)
+                    if not ok:
+                        break
+                    planted20 += 1
+                    from services import quests as dq_svc
+                    d20, l20 = await dq_svc.track(s, user, "plant")
+                    dq_done += d20
+                    dq_left = max(dq_left, l20)
+                    uname = users.display_name(user)
+                    if chain is None:
+                        from services import onboarding as onb
+                        chain = await onb.first_plant(s, user)
+                        congrats = await onb.maybe_congrats(s, user)
+                    from services import teams as team_svc
+                    tq_one20 = await team_svc.record_plant(s, user)
+                    if tq_one20 and tq_one20 != tq:
+                        tq = (tq + "\n" + tq_one20) if tq else tq_one20
+                if planted20:
+                    msg = f"🌱 {seed['name']} ×{fa_num(planted20)} کاشته شد، همه شروع کردن رشد کردن 🌾"
+        elif not plots:
             msg = "🌱 زمینی نداری، اول از مزرعه زمین بخر"
         elif empty is None:
             if building is not None:

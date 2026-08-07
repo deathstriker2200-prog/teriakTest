@@ -31,8 +31,8 @@ def _set_level(user: User, fac_key: str, level: int) -> None:
         user.ironmill_level = level
 
 
-def factory_production(fac_key: str, level: int) -> int:
-    """تولید هر تیک (۱۰ دقیقه)"""
+def factory_production(fac_key: str, level: int) -> float:
+    """تولید هر تیک (۱۰ دقیقه) | راند ۲۱ نصف شد و آهن اعشاریه (۲٫۵)، جاهای مصرف int می‌گیرن"""
     return config.FACTORIES[fac_key]["per_tick"] * level
 
 
@@ -50,7 +50,7 @@ def _set_stock(user: User, fac_key: str, val: int) -> None:
 
 def factory_stock_cap(fac_key: str, level: int) -> int:
     """ظرفیت انبار کارخونه، جوری تنظیم شده که تو ۱۲ ساعت از خالی پر شه"""
-    return factory_production(fac_key, level) * config.FACTORY_FILL_TICKS
+    return int(factory_production(fac_key, level) * config.FACTORY_FILL_TICKS)
 
 
 def build_cost(fac_key: str) -> tuple[int, int]:
@@ -90,7 +90,7 @@ async def settle(session: AsyncSession, user: User) -> dict:
             continue
         cap = factory_stock_cap(key, lv)
         cur = factory_stock(user, key)
-        added = min(factory_production(key, lv) * ticks, max(0, cap - cur))
+        added = min(int(factory_production(key, lv) * ticks), max(0, cap - cur))
         if added > 0:
             _set_stock(user, key, cur + added)
         got[cfg["res"]] = added
@@ -198,7 +198,7 @@ def company_text(user: User, got: dict | None = None) -> str:
             cap = factory_stock_cap(key, lv)
             full = stock >= cap
             status = "متوقف شده 🔴" if full else "در حال تولید 🟢"
-            per_hour = factory_production(key, lv) * ticks_per_hour
+            per_hour = int(factory_production(key, lv) * ticks_per_hour)
             lines.append(f"وضعیت {cfg['name']}: {status} (لول {fa_num(lv)})")
             lines.append(f"📦 انبار کارخونه: {fa_num(stock)}/{fa_num(cap)}")
             lines.append(f"⚙️ سرعت تولید: {fa_num(per_hour)} {res_name[key]} در ساعت")

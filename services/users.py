@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import config
 from models import InventoryItem, Plot, User
 from services.economy import xp_need
-from utils import fa_num, iran_today, iran_week_key, money, now_utc
+from utils import esc, fa_num, iran_today, iran_week_key, money, now_utc
 
 
 async def get_or_create(session: AsyncSession, tg_user) -> tuple[User, bool]:
@@ -363,7 +363,8 @@ def add_xp(user: User, amount: int) -> list[str]:
         user.energy_updated_at = now_utc()
         battle_svc.full_heal(user)  # لول‌آپ یعنی جان تازه
 
-        note = f"🎉 تبریک، لول‌آپ شدی ({fa_num(user.level - 1)}←{fa_num(user.level)})"
+        # راند ۲۰: تبریک لول‌آپ با تگ لینک‌دار طرف، همون‌جور که کارفرما خواست (درخواست کارفرما)
+        note = f"🎉 تبریک <a href=\"tg://user?id={user.telegram_id}\">{esc(display_name(user))}</a>، لولت رفت ({fa_num(user.level - 1)}←{fa_num(user.level)})"
         note += f"\n🎖 {fa_num(pts)} امتیاز مهارت گرفتی، برو تو «مهارت» خرجش کن"
         if user.level == config.MAX_LEVEL:
             note += "\n👑 لولت مکس شد، از این به بعد فقط تجربه جمع میشه"

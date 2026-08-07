@@ -77,6 +77,8 @@ def _wsec_text(user, sec: str) -> str:
         lines += [SEP, ""]
         lines.append(f"🔒 {w['name']} (قفل)" if locked else _item_head(sc["emoji"], w["name"]))
         lines.append(f"💥 دمیج {fa_num(w['attack'])}")
+        if w.get("ability"):
+            lines.append(f"🎯 قابلیت: {config.WEAPON_ABILITY_TEXT.get(w['ability']['kind'], '')}")
         lines.append(f"🪙 هزینه: ⛏️ {fa_num(w['iron'])} آهن + 💰 {money(w['price'])}")
         if locked:
             lines.append(f"⭕️ بازگشایی در سطح {fa_num(w['min_level'])}")
@@ -85,13 +87,40 @@ def _wsec_text(user, sec: str) -> str:
     return "\n".join(lines)
 
 
-def _arm_text(user) -> str:
-    lines = ["<b>🛒 فروشگاه</b>", _status_line(user), "", "🛡 زره‌ها", "", "برای خرید روی آیتم موردنظر بزن", ""]
-    for a in config.ARMORS.values():
+def _arm_home_text(user) -> str:
+    """خانه بخش زره: دو دسته معمولی و ویژه (راند ۱۹ درخواست کارفرما)"""
+    lines = ["<b>🛒 فروشگاه</b>", _status_line(user), "", "🛡 زره‌ها تو دو دسته‌ان", ""]
+    for sec, sc in config.ARMOR_SECTIONS.items():
+        keys = [k for k, a in config.ARMORS.items() if a.get("sec", "normal") == sec]
+        if not keys:
+            continue
+        locked = all(user.level < config.ARMORS[k]["min_level"] for k in keys)
+        first, last = config.ARMORS[keys[0]]["name"], config.ARMORS[keys[-1]]["name"]
+        head = f"🔒 {sc['emoji']} {sc['name']} (قفل)" if locked else f"{sc['emoji']} {sc['name']}"
+        lines.append(head)
+        lines.append(f"▫️ از {first} تا {last}")
+        if sc.get("desc"):
+            lines.append(f"▫️ {sc['desc']}")
+        lines.append("")
+    lines.append(SEP)
+    return "\n".join(lines)
+
+
+def _arm_text(user, sec: str) -> str:
+    """صفحه یه دسته زره: نام | دفاع | قابلیت ویژه | قیمت | وضعیت (راند ۱۹)"""
+    sc = config.ARMOR_SECTIONS.get(sec) or config.ARMOR_SECTIONS["normal"]
+    lines = [f"<b>{sc['emoji']} {sc['name']}</b>", _status_line(user), "", "برای خرید روی آیتم موردنظر بزن", ""]
+    for key, a in config.ARMORS.items():
+        if a.get("sec", "normal") != sec:
+            continue
         locked = user.level < a["min_level"]
         lines += [SEP, ""]
         lines.append(f"🔒 {a['name']} (قفل)" if locked else f"🛡 {a['name']}")
         lines.append(f"🛡 دفاع {fa_num(a['defense'])}")
+        if a.get("ability"):
+            lines.append(f"🎯 قابلیت: {config.ARMOR_ABILITY_TEXT.get(a['ability']['kind'], '')}")
+        if a.get("desc"):
+            lines.append(f"▫️ {a['desc']}")
         lines.append(f"💰 {money(a['price'])}")
         if locked:
             lines.append(f"⭕️ بازگشایی در سطح {fa_num(a['min_level'])}")
@@ -179,12 +208,25 @@ def _gear_up_text(kind: str, owned_lvls: dict[str, int], user) -> str:
         lines.append("")
         lines.append(f"{_item_head(emoji, item['name'])} | لول {fa_num(lv)}")
         lines.append(f"{stat_emoji} {stat_name} {fa_num(economy.gear_stat(kind, key, lv))}")
+        abil = item.get("ability")
+        if abil and kind == "weap":
+            pct_now = economy.gear_ability_pct_now(abil, lv)
+            if pct_now:
+                lines.append(f"🎯 قابلیت الان: {config.WEAPON_ABILITY_TEXT.get(abil['kind'], '')} | واقعی الان: {fa_num(int(round(pct_now * 100)))}%")
+        if abil and kind == "arm":
+            pct_now = economy.gear_ability_pct_now(abil, lv)
+            if pct_now:
+                lines.append(f"🎯 قابلیت الان: {config.ARMOR_ABILITY_TEXT.get(abil['kind'], '')} | واقعی الان: {fa_num(int(round(pct_now * 100)))}%")
         if lv >= config.GEAR_UPG_MAX:
             lines.append("👑 لول مکس")
         else:
             tp = economy.gear_upg_tp(kind, key, lv)
             iron = economy.gear_upg_iron(kind, key, lv)
             lines.append(f"⬆️ لول بعدی: {stat_name} {fa_num(economy.gear_stat(kind, key, lv + 1))}")
+            if abil:
+                pct_next = economy.gear_ability_pct_now(abil, lv + 1)
+                if pct_next:
+                    lines.append(f"⬆️ قابلیت بعد ارتقا: {fa_num(int(round(pct_next * 100)))}%")
             lines.append(f"🪙 هزینه: 💰 {money(tp)} + ⛏️ {fa_num(iron)} آهن")
             req = economy.gear_upg_min_level(lv)
             if user.level < req:
@@ -200,7 +242,9 @@ async def _section_text(session, user, kind: str) -> str:
     if kind.startswith("w") and kind[1:] in config.WEAPON_SECTIONS:
         return _wsec_text(user, kind[1:])
     if kind == "arm":
-        return _arm_text(user)
+        return _arm_home_text(user)
+    if kind.startswith("a") and kind[1:] in config.ARMOR_SECTIONS:
+        return _arm_text(user, kind[1:])
     if kind == "arti":
         return _arti_text(user)
     if kind == "res":
@@ -250,7 +294,9 @@ async def render_section(update: Update, kind: str, alert: str | None = None) ->
         elif kind.startswith("w") and kind[1:] in config.WEAPON_SECTIONS:
             markup = kb.shop_weap_kb(user, item_keys, kind[1:])
         elif kind == "arm":
-            markup = kb.shop_arm_kb(user, item_keys)
+            markup = kb.shop_arm_sections_kb(user)
+        elif kind.startswith("a") and kind[1:] in config.ARMOR_SECTIONS:
+            markup = kb.shop_arm_kb(user, item_keys, kind[1:])
         elif kind == "seed":
             markup = kb.shop_seed_kb(user, await farming.get_stock(s, user.id))
         elif kind == "dog":

@@ -165,8 +165,11 @@ async def main() -> None:
           < config.WEAPONS["oblivion"]["price"])
 
     legends = [k for k, a in config.ARMORS.items() if a.get("legendary")]
-    check("فقط یه زره افسانه‌ای هست", legends == ["legend"])
-    check("توضیح زره افسانه‌ای دقیق ست شده", "نصف مقدار سکه‌ای که دشمن از شما دریافت می‌کند از بین برود" in config.ARMORS["legend"]["desc"])
+    check("راند ۱۹: قابلیت زره افسانه‌ای پاک شد و اسمش آدامانتیوم (درخواست کارفرما)",
+          legends == [] and config.ARMORS["legend"]["name"] == "زره آدامانتیوم 👑"
+          and config.ARMORS["legend"]["sec"] == "normal" and "ability" not in config.ARMORS["legend"])
+    check("دفاع آدامانتیوم و لولش مثل افسانه‌ای سابق مونده",
+          config.ARMORS["legend"]["defense"] == 110 and config.ARMORS["legend"]["min_level"] == 14)
 
     rares = [k for k, d in config.DOGS.items() if d.get("rare")]
     check("فقط یه سگ کمیاب هست", len(rares) == 1, str(rares))
@@ -218,7 +221,11 @@ async def main() -> None:
     _k47, _ = find_by_name(config.WEAPONS, "کلاشنیکف")
     check("ak47 اسمش کلاشنیکفه و با اسم فارسی پیدا میشه",
           _k47 == "ak47" and config.WEAPONS["ak47"]["name"] == "کلاشنیکف 🔫")
-    check("8 تا زره داریم", len(config.ARMORS) == 8, str(len(config.ARMORS)))
+    check("12 تا زره داریم (راند ۱۹: ۸ معمولی + ۴ ویژه)", len(config.ARMORS) == 12, str(len(config.ARMORS)))
+    sp19 = [k for k, a in config.ARMORS.items() if a.get("sec") == "special"]
+    check("چهار زره ویژه جدید با قابلیت مخصوص خودشون",
+          sp19 == ["plasma", "void", "neutron", "gods"] and all(config.ARMORS[k].get("ability") for k in sp19)
+          and all(config.ARMORS[k]["defense"] == 130 for k in sp19), str(sp19))
     check("کِولار و تیتانیومی هست", "kevlar" in config.ARMORS and "titan" in config.ARMORS)
     check("شوکر از کلت ضعیف‌تر و ارزون‌تره (اسلحه قوی‌تره)",
           config.WEAPONS["shocker"]["attack"] < config.WEAPONS["colt"]["attack"]
@@ -372,7 +379,7 @@ async def main() -> None:
         check("خرید تکراری سلاح رد میشه", not ok)
 
         ok, msg = await shop_svc.purchase(s, u1, "arm", "legend")
-        check("زره افسانه‌ای خریده", ok)
+        check("زره آدامانتیوم خریده (افسانه‌ای سابق)", ok)
 
         # ── سگ‌ها (فلو جدید: اول اسم می‌پرسه → فاکتور تایید → اونجا پول کم میشه) ──
         cash_before = u1.cash
@@ -521,8 +528,8 @@ async def main() -> None:
               battle_svc.steal_for_hit(200, 200, 100_000_000, [], [], [])[0] == 1_000_000,
               str(battle_svc.steal_for_hit(200, 200, 100_000_000, [], [], [])[0]))
         st_leg, meta_leg = battle_svc.steal_for_hit(200, 200, 10000, [], ["legend"], [])
-        check("زره افسانه‌ای غارت رو نصف می‌کنه",
-              meta_leg["halved"] and abs(st_leg * 2 - st_full) <= 1, f"{st_leg} vs {st_full}")
+        check("زره آدامانتیوم دیگه غارت رو نصف نمی‌کنه (قابلیتش راند ۱۹ پاک شد)",
+              not meta_leg.get("halved") and st_leg == st_full, f"{st_leg} vs {st_full}")
         check("جیب خالی غارتی نداره", battle_svc.steal_for_hit(50, 200, 0, [], [], [])[0] == 0)
         st_cap, meta_cap = battle_svc.steal_for_hit(200, 200, 10000, [wolf], [], [])
         check("بونس گرگ اعمال میشه ولی سقف پله حفظه",
@@ -537,7 +544,7 @@ async def main() -> None:
         check("جدول HP تو کانفیگ ۲۰ رده داره", len(config.HP_TABLE) == 20)
         check("سقف لول بازی ۲۰ه", config.MAX_LEVEL == 20)
 
-        # ── دمیج نبرد HP: فرمول (حمله - دفاع) ÷ 3 با واریانس ۳۰٪ و قانون زیادی‌قوتی ──
+        # ── دمیج نبرد HP: فرمول (حمله - دفاع) ÷ 2 با واریانس ۳۰٪ (راند ۱۹ هر دفاع ۱ کاهش، درخواست کارفرما) ──
         random.seed(7)
         _old_crit = config.BATTLE_CRIT_CHANCE
         config.BATTLE_CRIT_CHANCE = 0.0
@@ -547,16 +554,15 @@ async def main() -> None:
             config.BATTLE_CRIT_CHANCE = _old_crit
         raw_exp = (150 - 100) / config.BATTLE_DMG_DIVISOR
         v30 = config.BATTLE_DMG_VARIANCE
-        check("دمیج تابع فرمول (حمله منهی دفاع) تقسیم بر 3 و تو بازه واریانس 30% نوسان داره",
+        check("دمیج تابع فرمول (حمله منهی دفاع) تقسیم بر 2 و تو بازه واریانس 30% نوسان داره",
               all(round(raw_exp * (1 - v30)) <= d <= round(raw_exp * (1 + v30)) for d in dms)
               and max(dms) > min(dms), f"{min(dms)}..{max(dms)} (خام {raw_exp:.1f})")
         check("دفاع به‌بزرگی حمله یا بیشتر، هیچ دمیجی نمی‌خوره",
               battle_svc.roll_damage(100, 100, 200)[0] == 0 and battle_svc.roll_damage(100, 130, 200)[0] == 0)
-        check("دفاع به اندازه نسبت قانون بزرگ‌تر، هیچ دمیجی نمی‌خوره",
-              battle_svc.roll_damage(10, int(10 * config.BATTLE_NO_DAMAGE_DEF_RATIO), 200)[0] == 0)
-        check("کانفیگ دمیج: تقسیمگر 3 و واریانس 30% و نسبت قانون (راند ۹ درخواست کارفرما)",
-              config.BATTLE_DMG_VARIANCE == 0.30 and config.BATTLE_NO_DAMAGE_DEF_RATIO == 3.0
-              and config.BATTLE_DMG_DIVISOR == 3)
+        check("قانون نسبت قدیم راند ۱۹ حذف شد، الان فقط اختلاف حمله و دفاع مهمه",
+              not hasattr(config, "BATTLE_NO_DAMAGE_DEF_RATIO"))
+        check("کانفیگ دمیج: تقسیمگر 2 و واریانس 30% (راند ۱۹ درخواست کارفرما)",
+              config.BATTLE_DMG_VARIANCE == 0.30 and config.BATTLE_DMG_DIVISOR == 2)
         random.seed(21)
         _oc2 = config.BATTLE_CRIT_CHANCE
         config.BATTLE_CRIT_CHANCE = 0.0
@@ -1515,7 +1521,7 @@ async def main() -> None:
             kb.tx_confirm_kb("weap", "knife", 123),
             kb.bank_kb(u1), kb.team_bld_kb(SimpleNamespace(atk_bld=1, def_bld=2), True, u1.telegram_id),
             kb.team_bld_confirm_kb("atk", u1.telegram_id),
-            kb.shelter_kb(u1), kb.casino_kb(), kb.caravan_kb(),
+            kb.shelter_kb(u1), kb.casino_games_kb(), kb.casino_bets_kb("dice"), kb.casino_mines_kb(1), kb.casino_card_kb(True, True), kb.caravan_kb(),
             kb.team_back_kb(), kb.team_mine_kb(), kb.team_bank_kb(),
             kb.release_confirm_kb(dogs[0].id, 424242), kb.dog_card_kb(dogs[0], 3),
             kb.dquests_kb(), kb.team_create_confirm_kb(424242),
@@ -1543,9 +1549,9 @@ async def main() -> None:
     check("هزینه ارتقای بانک از جدول میاد و به ۱ میلیون ختم میشه",
           [bank_svc.bank_upgrade_price(i) for i in range(1, 11)]
           == [25000, 50000, 100000, 200000, 350000, 500000, 650000, 800000, 900000, 1000000])
-    check("گیت لول داشتن هر لول بانک",
+    check("گیت لول داشتن هر لول بانک (سیستم اولیه: آپگریدها تو لول زوج)",
           [bank_svc.bank_min_level(i) for i in range(1, 12)] == config.BANK_MIN_LEVELS
-          and bank_svc.bank_min_level(2) == 4 and bank_svc.bank_min_level(5) == 16 and bank_svc.bank_min_level(11) == 20)
+          and bank_svc.bank_min_level(2) == 2 and bank_svc.bank_min_level(5) == 8 and bank_svc.bank_min_level(11) == 20)
 
     async with session_scope() as s:
         b, _ = await users.get_or_create(s, tg(7711, "bnk", "بانکدار"))
@@ -1571,10 +1577,10 @@ async def main() -> None:
         ok, msg = await bank_svc.deposit(s, b, 1)
         check("بیشتر از ظرفیت رد میشه", not ok and "ظرفیت" in msg or "پر" in msg, msg)
 
-        # ارتقای بانک به لول خودت گره خورده (لول ۲ بانک، لول ۴ بازیکن می‌خواد)
+        # ارتقای بانک به لول خودت گره خورده (لول ۲ بانک، لول ۲ بازیکن می‌خواد | راند ۲۱)
         ok, msg = await bank_svc.upgrade_bank(s, b)
-        check("ارتقا بدون لول کافی رد (لول ۴ می‌خواد بره لول ۲)", not ok and "لول" in msg, msg)
-        b.level = 4
+        check("ارتقا بدون لول کافی رد (لول ۲ می‌خواد بره لول ۲)", not ok and "لول" in msg, msg)
+        b.level = 2
         cash_b = b.cash
         ok, msg = await bank_svc.upgrade_bank(s, b)
         check("ارتقا با لول کافی انجام شد",
@@ -2258,8 +2264,8 @@ async def main() -> None:
         r = await world_svc.casino_play(s, cu, 1000)
         check("دست اول قمار انجام شد", r["status"] in ("win", "lose"), r["status"])
         r2 = await world_svc.casino_play(s, cu, 1000)
-        check("کولدان ۱۲ ساعت قمار فعاله",
-              r2["status"] == "cooldown" and r2["left"] > 11 * 3600, str(r2.get("left")))
+        check("کولدان نیم‌ساعت قمار فعاله (راند ۱۹ درخواست کارفرما)",
+              r2["status"] == "cooldown" and r2["left"] > 29 * 60, str(r2.get("left")))
         check("برد قمار 1.8 برابر شرطه", config.CASINO_WIN_MULT == 1.8)
 
         # بلندمدت ضرر، ۳۰۰۰ دست شبیه‌سازی
@@ -2740,6 +2746,8 @@ async def main() -> None:
     qc = _FjQ(8860)
     updc = _fj_upd()
     updc.callback_query = qc
+    gate_h._LAST_GATE[8860] = 0  # خاطره ارسال قبلی رو می‌پرونیم، تست بدون وابستگی به زمان اجرای سوییت
+    sent_g0 = len(bot_g.sent)
     stopped = False
     try:
         await gate_h.gate_callbacks(updc, ctx_g)
@@ -2747,13 +2755,13 @@ async def main() -> None:
         stopped = True
     check("دکمه غیرعضو هم گیت میشه و پیام لینک فقط یه بار میره",
           stopped and any("عضو شو" in a for a in qc.answers)
-          and len(bot_g.sent) == 1 and "عضویت اجباری" in bot_g.sent[0][1]
+          and len(bot_g.sent) == sent_g0 + 1 and "عضویت اجباری" in bot_g.sent[-1][1]
           and gate_h.PENDING.get(8860) is updc)
     try:
         await gate_h.gate_callbacks(updc, ctx_g)
     except _AHS:
         pass
-    check("پیام گیت کالبکی پشت سر هم اسپم نمیشه", len(bot_g.sent) == 1)
+    check("پیام گیت کالبکی پشت سر هم اسپم نمیشه", len(bot_g.sent) == sent_g0 + 1)
 
     # ── خاموش کردن، کاملاً عبوری ──
     gate_h.PENDING.pop(8860, None)  # آپدیت کالبکی که تو تست قبلی گذاشتیم
@@ -2798,7 +2806,7 @@ async def main() -> None:
           all(x in stats_txt for x in ["📊 آمار زنده ربات", "<b>⚡️ عملکرد</b>", "🚀 زمان پاسخ ربات:",
                                        "📡 پینگ تلگرام:", "⚙️ پردازش داخلی:", "<b>👥 بازیکنان</b>",
                                        "⚡️ فعال ۱ ساعت اخیر:", "👤 فعال ۲۴ ساعت اخیر:",
-                                       "🆕 بازیکنان جدید:", "🌍 کل بازیکنان:", "📈 نرخ فعالیت: %",
+                                       "🆕 جدید ۲۴ ساعت اخیر:", "🌍 کل بازیکنان:", "📈 نرخ فعالیت: %",
                                        "<b>🌍 وضعیت محله</b>", "🏴 تیم‌ها:", "🐕 سگ‌ها:",
                                        "🌱 محصولات در حال رشد:", "🚛 کاروان‌های فعال:",
                                        "<b>💰 اقتصاد</b>", "💵 تی‌پوینت کل:", "🏦 موجودی بانک:",
@@ -2840,7 +2848,7 @@ async def main() -> None:
     check("بخش‌های خلاصه آمار قالب جدید همه تو پیامن",
           all(x in st_all for x in [
               "🚀 زمان پاسخ ربات:", "📡 پینگ تلگرام:", "⚙️ پردازش داخلی:",
-              "👤 فعال ۲۴ ساعت اخیر:", "🆕 بازیکنان جدید:", "🌍 کل بازیکنان:",
+              "👤 فعال ۲۴ ساعت اخیر:", "🆕 جدید ۲۴ ساعت اخیر:", "🌍 کل بازیکنان:",
               "🌐 کل گروه‌ها:", "👥 فعال ۲۴ ساعت اخیر:",
               "🏴 تیم‌ها:", "🐕 سگ‌ها:", "💵 تی‌پوینت کل:", "🏦 موجودی بانک:", "💸 دست بازیکنان:",
               "📊 مجموع اکشن‌ها:", "⏱️ آمار زنده‌ست، با 🔃 به‌روزرسانی میشه",
@@ -3099,7 +3107,7 @@ async def main() -> None:
     # ── 🆕 تازه‌واردها و فعال‌های ۱ و ۲۴ ساعت اخیر (بخش بازیکنان) ──
     act_h0 = _stat_int(st_b1, "⚡️ فعال ۱ ساعت اخیر:")
     act0 = _stat_int(st_b1, "👤 فعال ۲۴ ساعت اخیر:")
-    new0 = _stat_int(st_b1, "🆕 بازیکنان جدید:")
+    new0 = _stat_int(st_b1, "🆕 جدید ۲۴ ساعت اخیر:")
     tot0 = _stat_int(st_b1, "🌍 کل بازیکنان:")
     async with session_scope() as s:
         u_new, _ = await users.get_or_create(s, tg(7309, "newb", "تازه‌وارد"))
@@ -3118,7 +3126,7 @@ async def main() -> None:
         await s.commit()
     st_c1 = await admin_h._stats_text()
     check("جدید فقط تازه‌واردها رو میشمره نه کاربرای قدیمی",
-          _stat_int(st_c1, "🆕 بازیکنان جدید:") == new0 + 2,
+          _stat_int(st_c1, "🆕 جدید ۲۴ ساعت اخیر:") == new0 + 2,
           f"{_stat_int(st_c1, '🆕 بازیکنان جدید:')} vs {new0}")
     check("فعال ۲۴ ساعت اخیر فقط تازه‌فعالا رو میشمره نه کهنه‌کار غیرفعال",
           _stat_int(st_c1, "👤 فعال ۲۴ ساعت اخیر:") == act0 + 4,
@@ -3477,10 +3485,10 @@ async def main() -> None:
         t = await users.get_by_tg(s, 8812)
         check("/addxp مستقیم xp داد", t.xp > 0 or t.level > 5, f"lvl={t.level} xp={t.xp}")
         check("گزارش addxp تمیز و بدون تبریک چسبیده‌ست",
-              any("تجربه دادی" in c[1] and "لول‌آپ شدی" not in c[1] for c in updx.message.calls),
+              any("تجربه دادی" in c[1] and "لولت رفت (" not in c[1] for c in updx.message.calls),
               str([c[1][:60] for c in updx.message.calls]))
         check("تبریک لول‌آپ به‌صورت پیام جدا با قالب اورجینال اومد",
-              any("لول‌آپ شدی (" in c[1] and c[1].startswith("🎉 تبریک") for c in updx.message.calls),
+              any("لولت رفت (" in c[1] and c[1].startswith("🎉 تبریک <a href=\"tg://user?id=") for c in updx.message.calls),
               str([c[1][:60] for c in updx.message.calls]))
 
     updx = await _run_admin_cmd(admin_h.addtp_cmd, ["999999999", "5000"], 1001)
@@ -5176,8 +5184,7 @@ async def main() -> None:
         cu.iron = 0
         got = await comp_svc.settle(s, cu)
         check("تسویه lazy سه تیک تولید داد و ریخت تو انبار کارخونه",
-              got["ticks"] == 3 and got["wood"] == 3 * config.FACTORIES["lumber"]["per_tick"]
-              and got["iron"] == 3 * config.FACTORIES["ironmill"]["per_tick"]
+              got["ticks"] == 3 and got["wood"] == 6 and got["iron"] == 7
               and cu.lumber_stock == got["wood"] and cu.ironmill_stock == got["iron"]
               and cu.wood == 0 and cu.iron == 0, str(got))
         got2 = await comp_svc.collect(s, cu, "lumber")
@@ -5473,21 +5480,21 @@ async def main() -> None:
         cz.cash = 500000
         cz.last_casino_at = None
         await s.commit()
-    upd_z = _fake_update("cascf:25000", uid=9610)
-    await world_h2.casino_execute(upd_z, None)
+    upd_z = _fake_update("cf:csg:go:simple:25000", uid=9610)
+    await world_h2.casino_router(upd_z, None)
     ztxt = next((c[1] for c in upd_z.callback_query.calls if c[0] == "edit"
                  or (c[0] == "reply" and True)), "")
     ztxt = upd_z.callback_query.calls[-1][1]
     won_z = "زدی تو خال" in ztxt
-    check("متن قمار قالب جدید رو داره (برد یا باخت)",
-          (won_z and all(x in ztxt for x in ["🎰 زدی تو خال", "تی‌پوینت برنده شدی", "💵 موجودی فعلی",
-                                             "⏳ دست بعدی", "ساعت دیگه"]))
-          or (not won_z and all(x in ztxt for x in ["🎰 این دست شانس باهات یار نبود", "تی‌پوینت رو باختی",
-                                                    "💰 موجودی فعلی", "⏳ دست بعدی", "ساعت دیگه"])),
+    check("متن قمار قالب جدید رو داره (برد یا باخت، راند ۱۹)",
+          (won_z and all(x in ztxt for x in ["زدی تو خال", "تی‌پوینت برنده شدی", "💵 موجودی فعلی",
+                                             "⏳ بازی بعدی", "دقیقه دیگه"]))
+          or (not won_z and all(x in ztxt for x in ["این دست شانس باهات یار نبود", "تی‌پوینت رو باختی",
+                                                    "💵 موجودی فعلی", "⏳ بازی بعدی"])),
           ztxt.replace("\n", " | ")[:120])
     check("مبلغ قمار با تی‌پوینت کامله", "تی‌پوینت برنده شدی" in ztxt or "تی‌پوینت رو باختی" in ztxt)
-    check("زمان دست بعدی خط خودشه",
-          ztxt.rstrip().endswith("⏳ دست بعدی\n12 ساعت دیگه"), ztxt.split("\n")[-2:])
+    check("زمان بازی بعدی نیم‌ساعته (راند ۱۹)",
+          ztxt.rstrip().endswith("⏳ بازی بعدی\n30 دقیقه دیگه"), ztxt.split("\n")[-2:])
 
     # ═══ این دور: دکمه بدون قیمت | سلاح ۳ دسته | فروش منابع | گیت پناهگاه | لول تیم | کنده‌کاری گروهی ═══
     check("سه دسته سلاح: سرد و گرم و ویژه",
@@ -7075,7 +7082,7 @@ async def main() -> None:
     bk_lock = kb3.bank_kb(SimpleNamespace(bank_level=1, level=1))
     bk_flat = [(b.text, b.callback_data, b.style) for r in bk_lock.inline_keyboard for b in r]
     check("دکمه قفل ارتقای بانک با سطح لازم، قرمزه",
-          any("🔒 ارتقای بانک | لول 2 | سطح 4" in t and c == "noop:banklock" and st == "danger"
+          any("🔒 ارتقای بانک | لول 2 | سطح 2" in t and c == "noop:banklock" and st == "danger"
               for t, c, st in bk_flat), str(bk_flat))
     bk_open = kb3.bank_kb(SimpleNamespace(bank_level=1, level=4))
     bk_flat2 = [(b.text, b.callback_data) for r in bk_open.inline_keyboard for b in r]
@@ -7112,8 +7119,8 @@ async def main() -> None:
           and f"📦 انبار کارخونه: {fa_num(comp_svc.factory_stock_cap('ironmill', 1))}/{fa_num(comp_svc.factory_stock_cap('ironmill', 1))}" in ctx_full,
           ctx_full.replace("\n", " | ")[:240])
     check("ظرفیت انبار کارخونه دقیق ۱۲ ساعت تولیده",
-          comp_svc.factory_stock_cap("lumber", 1) == 288 and comp_svc.factory_stock_cap("ironmill", 1) == 360
-          and comp_svc.factory_stock_cap("ironmill", 2) == 720,
+          comp_svc.factory_stock_cap("lumber", 1) == 144 and comp_svc.factory_stock_cap("ironmill", 1) == 180
+          and comp_svc.factory_stock_cap("ironmill", 2) == 360,
           f"{comp_svc.factory_stock_cap('lumber', 1)}/{comp_svc.factory_stock_cap('ironmill', 1)}")
 
     # ── متن ابزار (ادغام‌شده تو صفحه اصلی کنده‌کاری) با تی‌پوینت کامل ──
@@ -7188,13 +7195,13 @@ async def main() -> None:
           ed_cc is not None and "💸 تی‌پوینت" in ed_cc[1] and "🪵 چوب" in ed_cc[1],
           ed_cc[1][:120] if ed_cc else "-")
 
-    # ── متن لول‌آپ اورجینال: 🎉 تبریک، لول‌آپ شدی (5←6) ──
+    # ── متن لول‌آپ راند ۲۰: 🎉 تبریک <لینک طرف>، لولت رفت (5←6) با تگ درخواست کارفرما ──
     async with session_scope() as s:
         lu, _ = await users.get_or_create(s, tg(9901, "lvup", "لول‌آپی"))
         lu.level, lu.xp = 1, 0
         notes_lu = users.add_xp(lu, 60)
         check("قالب اورجینال لول‌آپ",
-              notes_lu and notes_lu[0].startswith("🎉 تبریک، لول‌آپ شدی (1←2)"),
+              notes_lu and notes_lu[0].startswith("🎉 تبریک <a href=\"tg://user?id=") and "، لولت رفت (1←2)" in notes_lu[0],
               notes_lu[0][:60] if notes_lu else "-")
         check("خط جایزه و انرژی از متن لول‌آپ حذف شده (جایزه‌ها همچنان واریز میشن)",
               notes_lu and "جایزه" not in notes_lu[0] and "شارژ" not in notes_lu[0]
@@ -7235,7 +7242,7 @@ async def main() -> None:
         n9 = users.add_xp(lv9, economy.xp_need(8))
         _j9 = "\n".join(n9 or [])
         check("لول 9 هیچ آیتمی باز نمی‌کنه (درسته) ولی به جای سکوت خط دلگرمی میاد",
-              n9 and n9[0].startswith("🎉 تبریک، لول‌آپ شدی (8←9)")
+              n9 and n9[0].startswith("🎉 تبریک <a href=\"tg://user?id=") and "، لولت رفت (8←9)" in n9[0]
               and "🔓 آیتم های جدید باز شدن" not in _j9 and "💪" in _j9, _j9[:150])
         await s.commit()
     check("لول 18 سلاح ویژه Vampire باز می‌کنه (دیگه بذر ابلیس حساب نمیشه)",
@@ -7263,15 +7270,15 @@ async def main() -> None:
     upd_dqn = _text_update("x", uid=555040, uname="dqn", fname="کوئستی‌لول")
     q_xp = [{"kind": "mine", "target": 20, "progress": 20, "done": True,
              "reward": {"type": "xp", "amount": 60},
-             "notes": ["🎉 تبریک، لول‌آپ شدی (1←2)"]}]
+             "notes": ["🎉 تبریک <a href=\"tg://user?id=1\">یارو</a>، لولت رفت (1←2)"]}]
     from handlers import dquests as dquests_h2
     await dquests_h2.announce_completed(upd_dqn, "کوئستی‌لول", q_xp, 1)
     dq_texts = [c[1] for c in upd_dqn.message.calls if c[0] == "reply"]
     check("اعلان کوئست قاطی تبریک لول‌آپ نمیشه",
-          dq_texts and "کوئست «20 بار کنده‌کاری»" in dq_texts[0] and "لول‌آپ شدی" not in dq_texts[0],
+          dq_texts and "کوئست «20 بار کنده‌کاری»" in dq_texts[0] and "لولت رفت (" not in dq_texts[0],
           str(dq_texts))
     check("تبریک لول‌آپ کوئست پیام جدا اومد",
-          any(t.startswith("🎉 تبریک، لول‌آپ شدی") for t in dq_texts[1:]), str(dq_texts))
+          any(t.startswith("🎉 تبریک <a href=\"tg://user?id=") for t in dq_texts[1:]), str(dq_texts))
 
     # ═══ این دور: خط وضعیت زیر تیتر شاپ | ایموجی دوبل نشه | درصد آرتیفکت و سگ | بذر با نوار | لیدربرد ۳ دکمه‌ای | ریست ۱۲ شب ═══
     from utils import bar
@@ -7290,7 +7297,7 @@ async def main() -> None:
         "خانه سلاح": shop_h2._weap_home_text(sh_ns),
         "سلاح گرم": shop_h2._wsec_text(sh_ns, "hot"),
         "سلاح سرد": shop_h2._wsec_text(sh_ns, "cold"),
-        "زره": shop_h2._arm_text(sh_ns),
+        "زره": shop_h2._arm_text(sh_ns, "normal"),
         "سگ": shop_h2._dog_text(sh_ns),
         "آرتیفکت": shop_h2._arti_text(sh_ns),
         "منابع": res_txt_st,
@@ -9195,9 +9202,9 @@ async def main() -> None:
           len(config.FACTORIES["lumber"]["up_tp"]) == config.FACTORY_MAX_LEVEL - 1
           and config.FACTORIES["lumber"]["up_tp"] == sorted(config.FACTORIES["lumber"]["up_tp"])
           and config.FACTORIES["ironmill"]["up_wood"] == sorted(config.FACTORIES["ironmill"]["up_wood"]))
-    check("تولید هر تیک کمتر شده (چوب 4، آهن 5) و 12 ساعت لول مکس میشه 2880/3600",
-          config.FACTORIES["lumber"]["per_tick"] == 4 and config.FACTORIES["ironmill"]["per_tick"] == 5
-          and comp_svc.factory_stock_cap("lumber", 10) == 2880 and comp_svc.factory_stock_cap("ironmill", 10) == 3600)
+    check("تولید هر تیک نصف شده (چوب 2، آهن 2.5) و 12 ساعت لول مکس میشه 1440/1800",
+          config.FACTORIES["lumber"]["per_tick"] == 2 and config.FACTORIES["ironmill"]["per_tick"] == 2.5
+          and comp_svc.factory_stock_cap("lumber", 10) == 1440 and comp_svc.factory_stock_cap("ironmill", 10) == 1800)
 
     # ── خرید بذر تعدادی: خدمات ──
     async with session_scope() as s:
@@ -10104,8 +10111,8 @@ async def main() -> None:
           "shelter:cat:prod" not in shop_d and "smc:page" not in shop_d and "sm:page" not in shop_d, str(shop_d))
 
     # ═══ این دور: تقویت دمیج نبرد (مکس‌دوئل 30 تا 40 درخواست کارفرما) + غارت ضربه پله‌ای ═══
-    check("فرمول دمیج راند ۹ درخواست کارفرما: (حمله - دفاع حریف) تقسیم بر 3",
-          config.BATTLE_DMG_DIVISOR == 3)
+    check("فرمول دمیج راند ۱۹ درخواست کارفرما: هر حمله ۱ دمیج منهای دفاع و تقسیم بر 2",
+          config.BATTLE_DMG_DIVISOR == 2)
     check("سقف غارت هر ضربه پله‌ای شد (زیر 10هزار 5٪، بالای 500هزار 1٪)",
           config.BATTLE_STEAL_TIERS[0] == (10_000, 0.05) and config.BATTLE_STEAL_TIERS[-1] == (None, 0.01))
     random.seed(42)
@@ -10120,13 +10127,13 @@ async def main() -> None:
     mean_m = sum(d_maxed) / len(d_maxed)
     mean_t = sum(d_titan) / len(d_titan)
     mean_n = sum(d_naked) / len(d_naked)
-    check("دوئل مکس‌شده (حمله 700 طرف 443) میانگین دمیج حدود 86ه یعنی (700-443)/3",
-          80 <= mean_m <= 92, f"میانگین {mean_m:.1f}")
-    check("ضربه‌های مکس‌دوئل حدود 60 تا 111 پخش میشن (با واریانس)",
-          min(d_maxed) >= 55 and max(d_maxed) <= 118 and max(d_maxed) >= 95,
+    check("دوئل مکس‌شده (حمله 700 طرف 443) میانگین دمیج حدود 129ـه یعنی (700-443)/2 (راند ۱۹)",
+          120 <= mean_m <= 138, f"میانگین {mean_m:.1f}")
+    check("ضربه‌های مکس‌دوئل با واریانس 30% حدود 90 تا 168 پخش میشن",
+          min(d_maxed) >= 85 and max(d_maxed) <= 172 and max(d_maxed) >= 150,
           f"{min(d_maxed)}..{max(d_maxed)}")
-    check("زره ضعیف‌تر دمیج خیلی بیشتره (دفاع 43 یعنی 219 میانگین)",
-          mean_m < mean_t < mean_n and mean_n >= 200,
+    check("زره ضعیف‌تر دمیج خیلی بیشتره (دفاع 43 یعنی 329 میانگین با ÷2)",
+          mean_m < mean_t < mean_n and mean_n >= 300,
           f"{mean_m:.1f} < {mean_t:.1f} < {mean_n:.1f}")
     st_max, _ = battle_svc.steal_for_hit(600, 600, 100000, [], [], [])
     check("ضربه تمام‌قد روی جیب 100هزارتا فقط ۱٫۵٪ (1500) غارت می‌کنه (پله جدید)",
@@ -11127,15 +11134,15 @@ async def main() -> None:
 
     # ═══ بالانس نبرد راند ۸+۹ درخواست کارفرما ═══
     # فرمول دمیج جدید + بیهوشی طولانی‌تر (۳۰ دقیقه) + درمان گران‌تر + درصد بوست additive واحد
-    check("بیهوشی ۱۸۰۰ ثانیه و تقسیمگر دمیج 3 (فرمول راند ۹)",
-          config.BATTLE_DEAD_SECONDS == 1800 and config.BATTLE_DMG_DIVISOR == 3)
+    check("بیهوشی ۱۸۰۰ ثانیه و تقسیمگر دمیج 2 (فرمول راند ۱۹ درخواست کارفرما)",
+          config.BATTLE_DEAD_SECONDS == 1800 and config.BATTLE_DMG_DIVISOR == 2)
     check("راند ۸: درمان گران‌تر شد تا برگشتن به نبرد هزینه‌دار بشه",
           config.HEAL_ITEMS["band"]["price"] == 750 and config.HEAL_ITEMS["kit"]["price"] == 2000
           and config.HEAL_ITEMS["box"]["price"] == 6000
           and config.HEAL_ITEMS["band"]["price"] < config.HEAL_ITEMS["kit"]["price"]
           < config.HEAL_ITEMS["box"]["price"])
 
-    # فرمول (حمله - دفاع) ÷ 3: هر ضربه چقدر از HP می‌دزده
+    # فرمول راند ۱۹ (حمله - دفاع) ÷ 2: هر ضربه چقدر از HP می‌دزده (درخواست کارفرما)
     random.seed(9)
     _ocr9 = config.BATTLE_CRIT_CHANCE
     config.BATTLE_CRIT_CHANCE = 0.0
@@ -11145,10 +11152,10 @@ async def main() -> None:
     finally:
         config.BATTLE_CRIT_CHANCE = _ocr9
     _m_eq, _m_hi = sum(_d_eq) / len(_d_eq), sum(_d_hi) / len(_d_hi)
-    check("دوئل مکس‌گر هر ضربه میانگین ~86 دمیج (≈۷ ضربه تا زمین زدن 600 HP)",
-          80 <= _m_eq <= 92 and 6 <= 600 / _m_eq <= 8, f"میانگین {_m_eq:.1f} -> {600 / _m_eq:.1f} ضربه")
-    check("مهاجم مکس روی مدافع ضعیف ~219 دمیج (≈۳ ضربه، دفاع پایین دیگه جون نمی‌کنه)",
-          205 <= _m_hi <= 233 and 600 / _m_hi <= 3.3, f"میانگین {_m_hi:.1f} -> {600 / _m_hi:.1f} ضربه")
+    check("دوئل مکس‌گر هر ضربه میانگین ~129 دمیج (≈۵ ضربه تا زمین زدن 600 HP)",
+          120 <= _m_eq <= 138 and 4 <= 600 / _m_eq <= 5.5, f"میانگین {_m_eq:.1f} -> {600 / _m_eq:.1f} ضربه")
+    check("مهاجم مکس روی مدافع ضعیف ~329 دمیج (≈۲ ضربه، دفاع پایین دیگه جون نمی‌کنه)",
+          310 <= _m_hi <= 350 and 600 / _m_hi <= 2.2, f"میانگین {_m_hi:.1f} -> {600 / _m_hi:.1f} ضربه")
     check("دفاع به‌بزرگی حمله یا بیشتر ضربه نمی‌نشینه (صفر دمیج، پیام زیادی قدرتمنده)",
           battle_svc.roll_damage(100, 100, 600)[0] == 0 and battle_svc.roll_damage(100, 250, 600)[0] == 0)
 
@@ -11473,16 +11480,16 @@ async def main() -> None:
           and all(config.BANK_UPGRADE_PRICES[i] <= config.BANK_CAPS[i + 1] - config.BANK_CAPS[i]
                   for i in range(len(config.BANK_UPGRADE_PRICES))),
           str(config.BANK_UPGRADE_PRICES))
-    check("گیت لول لول‌های جدید بانک از ۱۷ شروع میشه و سه تای آخر لول مکس می‌خوان",
-          config.BANK_MIN_LEVELS == [1, 4, 8, 12, 16, 17, 18, 19, 20, 20, 20])
+    check("گیت آپگریدهای بانک سیستم اولیه شد: 2/4/6 تا 20 (راند ۲۱)",
+          config.BANK_MIN_LEVELS == [1, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20])
     async with session_scope() as s:
         bk6, _ = await users.get_or_create(s, tg(99121, "bank6", "میلیونر"))
-        bk6.level = 16
+        bk6.level = 9
         bk6.bank_level = 5
         bk6.cash = 400000
         ok6, msg6 = await bank_svc.upgrade_bank(s, bk6)
-        check("بانک لول ۶ با لول بازیکن ۱۶ گیت می‌خوره", not ok6 and "لول 17" in msg6, msg6[:60])
-        bk6.level = 17
+        check("بانک لول ۶ با لول بازیکن ۹ گیت می‌خوره و لول ۱۰ می‌خواد", not ok6 and "لول 10" in msg6, msg6[:60])
+        bk6.level = 10
         cash6b = bk6.cash
         ok6, msg6 = await bank_svc.upgrade_bank(s, bk6)
         check("ارتقا به لول ۶ با 350 هزار و ظرفیت ۱ میلیون",
@@ -11616,19 +11623,21 @@ async def main() -> None:
           )), attack_h2.PV_PANEL_TEXT[:130])
 
     # ── رنج نزدیک: شانس متناسب + رول ──
-    check("کانفیگ راند ۱۳ پی‌وی: اختلاف نزدیک ۱۰۰ و ضدتکرار ۲۰ تایی",
-          config.PV_ATTACK_CLOSE_DIFF == 100 and config.PV_SEEN_EXCLUDE_LAST == 20)
-    check("رنج نزدیک دقیقاً تا اختلاف ۱۰۰ هستش",
-          pv_svc.is_close(150, 100) and pv_svc.is_close(100, 100) and pv_svc.is_close(100, 200)
-          and not pv_svc.is_close(201, 100) and not pv_svc.is_close(100, 201))
-    check("شانس تو رنج نزدیک متناسب نسبت قدرت‌هاست و کران داره",
+    check("کانفیگ پی‌وی: اختلاف نزدیک ۵۰ (راند ۱۷) و برتری لبه ۷۵٪ و ضدتکرار ۲۰ تایی",
+          config.PV_ATTACK_CLOSE_DIFF == 50 and config.PV_ATTACK_CLOSE_EDGE_CHANCE == 0.75
+          and config.PV_SEEN_EXCLUDE_LAST == 20)
+    check("رنج نزدیک دقیقاً تا اختلاف ۵۰ هستش (راند ۱۷)",
+          pv_svc.is_close(150, 100) and pv_svc.is_close(100, 100) and pv_svc.is_close(100, 150)
+          and not pv_svc.is_close(151, 100) and not pv_svc.is_close(100, 151))
+    check("شانس رنج نزدیک با برتری قوی‌تره: تساوی پنجاه‌پنجاه و لبه ۷۵٪ (راند ۱۷)",
           abs(pv_svc.close_win_chance(100, 100) - 0.5) < 1e-9
-          and pv_svc.close_win_chance(200, 100) == 200 / 300
-          and 0 < pv_svc.close_win_chance(1, 10000) < 1)
+          and abs(pv_svc.close_win_chance(150, 100) - 0.75) < 1e-9
+          and abs(pv_svc.close_win_chance(100, 150) - 0.25) < 1e-9
+          and pv_svc.close_win_chance(110, 100) == 0.55)
     _rr13 = pvattack.random.random
     try:
         pvattack.random.random = lambda: 0.99
-        _c1 = not pv_svc.decide_win(190, 100)
+        _c1 = not pv_svc.decide_win(140, 100)
         pvattack.random.random = lambda: 0.01
         _c2 = pv_svc.decide_win(110, 100)
         pvattack.random.random = lambda: 0.30
@@ -12029,6 +12038,814 @@ async def main() -> None:
           'track(s, user, "sellres", int(amount))' in _w15 and "record_sellres(s, user, int(amount))" in _w15)
     check("ارسال محموله به کوئست روزانه و تیمی می‌خوره",
           'track(s, user, "shipment")' in _sm15 and "record_shipment(s, user)" in _sm15)
+
+    # ═══ راند ۱۶: نرمالایزر آدرس دیتابیس (asyncpg) + اسکریپت مهاجرت SQLite به Postgres ═══
+
+    # ── config._normalize_db_url: فرم‌های خام postgres رو به درایور async لینک می‌کنه ──
+    check("نرمالایزر postgres:// خام به asyncpg لینک می‌شه",
+          config._normalize_db_url("postgres://u:p@h:5432/d") == "postgresql+asyncpg://u:p@h:5432/d")
+    check("نرمالایزر postgresql:// خام هم به asyncpg لینک می‌شه",
+          config._normalize_db_url("postgresql://u:p@localhost/d") == "postgresql+asyncpg://u:p@localhost/d")
+    check("نرمالایزر آدرس sqlite و asyncpg آماده رو دست نمی‌زنه",
+          config._normalize_db_url("sqlite+aiosqlite:///x.db") == "sqlite+aiosqlite:///x.db"
+          and config._normalize_db_url("postgresql+asyncpg://u:p@h/d") == "postgresql+asyncpg://u:p@h/d")
+
+    # ── اسکریپت مهاجرت: کپی سرتاسری + idempotent + verify-only (روی sqlite تا منطق یکی بمونه) ──
+    import os as _os16
+    import subprocess as _sp16
+    import sys as _sys16
+    _src16, _dst16, _dst16b = "/tmp/tk_mig_src16.db", "/tmp/tk_mig_dst16.db", "/tmp/tk_mig_dst16b.db"
+    for _f16 in (_src16, _dst16, _dst16b):
+        if _os16.path.exists(_f16):
+            _os16.remove(_f16)
+    from sqlalchemy.ext.asyncio import create_async_engine as _cae16
+    from database import Base as _B16
+    _eng16 = _cae16(f"sqlite+aiosqlite:///{_src16}")
+    async with _eng16.begin() as _c16:
+        await _c16.run_sync(_B16.metadata.create_all)
+        await _c16.execute(_B16.metadata.tables["users"].insert(), [
+            {"telegram_id": 777101, "username": "migsrc1", "first_name": "مهاجری"},
+            {"telegram_id": 777102, "username": "migsrc2", "first_name": "مهاجردو"},
+        ])
+    await _eng16.dispose()
+
+    def _mig_run(env_extra, *flags):
+        env = dict(_os16.environ, **env_extra)
+        return _sp16.run([_sys16.executable, "migrate_to_postgres.py", *flags],
+                         capture_output=True, text=True, env=env, cwd=".", timeout=180)
+
+    _env16 = {"TERIAKY_MIGRATE_FROM": _src16, "TERIAKY_MIGRATE_TO": f"sqlite:///{_dst16}"}
+    _r1 = _mig_run(_env16, "--yes")
+    check("اسکریپت مهاجرت با --yes همه جدول‌ها رو کپی می‌کنه و verify سبز میشه",
+          _r1.returncode == 0 and "🎉 مهاجرت تموم شد" in _r1.stdout
+          and "📦 users: 2 ردیف جدید" in _r1.stdout and "verify برقراره" in _r1.stdout,
+          (_r1.stdout + _r1.stderr)[-220:])
+    _r2 = _mig_run(_env16, "--yes")
+    check("اجرای دوباره idempotent ـه و هیچ ردیف تکراری اضافه نمی‌شه",
+          _r2.returncode == 0 and "0 ردیف جدید کپی شد" in _r2.stdout, _r2.stdout[-180:])
+    _r3 = _mig_run(_env16, "--verify-only")
+    check("verify-only روی مقصد سینک‌شده سبز میشه",
+          _r3.returncode == 0 and "تعداد ردیف همه جدول‌ها یکیه" in _r3.stdout, _r3.stdout[-180:])
+    _r4 = _mig_run({"TERIAKY_MIGRATE_FROM": _src16, "TERIAKY_MIGRATE_TO": f"sqlite:///{_dst16b}"}, "--verify-only")
+    check("verify-only مقصد خالی رو با خروج 1 و گزارش تمیز ناموفق اعلام می‌کنه",
+          _r4.returncode == 1 and "verify شکست خورد" in _r4.stdout, (_r4.stdout + _r4.stderr)[-180:])
+    check("بدون env های مهاجرت اسکریپت با پیام واضح و خروج 1 می‌میره",
+          _mig_run({}, "--yes").returncode == 1)
+    for _f16 in (_src16, _dst16, _dst16b):
+        if _os16.path.exists(_f16):
+            _os16.remove(_f16)
+
+    # ═══ راند ۱۷: تایید اثر آرتیفکت شانسی رو جستجو + بازه نزدیک ۵۰ برتری قوی‌تر + خواننده .env + بک‌آپ روزانه ۴ صبح + یوزیج سرور ═══
+
+    # ── جواب سوال کارفرما: شبدر افسانه‌ای 🍀 واقعاً رو جستجو اعمال میشه ──
+    check("آرتیفکت شانسی شبدر دقیقاً 1.5 شانس میده",
+          config.ARTIFACTS["clover"]["luck"] == 1.5 and users.artifact_luck({"clover"}) == 1.5
+          and users.artifact_luck({"dragon"}) == 1.0)
+    _w17 = open("handlers/world.py", encoding="utf-8").read()
+    check("هندلر جستجو شانس آرتیفکت رو مکس می‌گیره و تحویل موتور رول میده",
+          "artifact_luck(artis)" in _w17 and "do_search(s, user, luck=luck)" in _w17)
+    _sw17 = open("services/world.py", encoding="utf-8").read()
+    check("موتور جستجو با شانس بالای 1 وزن دزد رو کم و وزن بقیه نتایج رو زیاد می‌کنه",
+          'o["key"] == "thief" and luck > 1' in _sw17 and "w /= luck" in _sw17 and "w *= luck" in _sw17)
+
+    # ── شانس رنج نزدیک از تناسب سهم قدیمی بالاتره (برتری قوی‌تر، راند ۱۷) ──
+    check("شانس رنج نزدیک از تناسب سهم قدرت بالاتره و خطی تا لبه میره",
+          pv_svc.close_win_chance(110, 100) == 0.55 and pv_svc.close_win_chance(110, 100) > 110 / 210
+          and pv_svc.close_win_chance(130, 100) == 0.65)
+    check("شانس همیشه بین صفر و یک کلمپه",
+          pv_svc.close_win_chance(10000, 1) == 1.0 and pv_svc.close_win_chance(1, 10000) == 0.0)
+
+    # ── خواننده .env (ربات به‌خاطرش نمی‌افته) ──
+    import os as _os17
+    _p17 = "/tmp/tk17_test.env"
+    for _k17 in ("TK17_A", "TK17_B", "TK17_C", "TK17_D", "TK17_E"):
+        _os17.environ.pop(_k17, None)
+    _os17.environ["TK17_B"] = "keep"
+    with open(_p17, "w", encoding="utf-8") as _f17:
+        _f17.write("# توضیح\n\r\nTK17_A=hello\nexport TK17_C=\"wo rld\"\nTK17_B=new\nTK17_D=raw # کامنت\nTK17_E=\nBADLINE\n")
+    config._load_dotenv(_p17)
+    check("خواننده .env مقدار ساده و export و کوتیشن و کامنت ته‌خطی رو می‌فهمه",
+          _os17.environ.get("TK17_A") == "hello" and _os17.environ.get("TK17_C") == "wo rld"
+          and _os17.environ.get("TK17_D") == "raw" and "TK17_E" not in _os17.environ)
+    check("متغیر محیط ست‌شده با .env اوررایت نمیشه",
+          _os17.environ.get("TK17_B") == "keep")
+    for _k17 in ("TK17_A", "TK17_B", "TK17_C", "TK17_D", "TK17_E"):
+        _os17.environ.pop(_k17, None)
+    check("فایل .env ناموجود یا بایت خراب هیچ خطایی نمی‌ده",
+          config._load_dotenv("/tmp/nonexist17.env") is None and config._load_dotenv(_p17) is None)
+    with open(_p17, "wb") as _f17b:
+        _f17b.write(b"\xff\xfe\x00 broken bytes")
+    config._load_dotenv(_p17)  # نباید کرش کنه
+    check("فایل .env آماده کنار پروژه هست و متغیر بک‌آپ روزانه رو داره",
+          _os17.path.isfile(".env")
+          and "TERIAKY_TOKEN" in open(".env", encoding="utf-8").read()
+          and "TERIAKY_DAILY_BACKUP_CHAT_ID" in open(".env", encoding="utf-8").read())
+
+    # ── بک‌آپ خودکار روزانه ۴ صبح به‌وقت ایران ──
+    check("کانفیگ بک‌آپ روزانه: ساعت ۴ و ۰۰ دقیقه به‌وقت ایران و پیش‌فرض خاموش",
+          config.DAILY_BACKUP_CHAT_ID == 0 and config.DAILY_BACKUP_HOUR_IRAN == 4
+          and config.DAILY_BACKUP_MINUTE_IRAN == 0)
+    _pl17 = await backup_svc.make_upload_payload()
+    check("payload بک‌آپ روی sqlite فایل .db سالم با هدر SQLite می‌سازه",
+          _pl17 is not None and _pl17[1].endswith(".db") and _pl17[0][:15] == b"SQLite format 3",
+          str(len(_pl17[0]) if _pl17 else None))
+    check("postgres هم برای بک‌آپ روزانه پشتیبانی اعلام میشه (pg_dump)",
+          backup_svc.dump_supported())
+
+    class _BkBot17:
+        def __init__(self):
+            self.docs, self.msgs = [], []
+        async def send_document(self, chat_id, document, caption=None, **k):
+            self.docs.append((chat_id, document.filename, caption))
+        async def send_message(self, chat_id, text, **k):
+            self.msgs.append((chat_id, text))
+
+    _bk17 = _BkBot17()
+    _ctx17 = SimpleNamespace(bot=_bk17)
+    await jobs_h13.daily_backup_job(_ctx17)
+    check("جاب بک‌آپ روزانه با آیدی صفر هیچی نمی‌فرسته", not _bk17.docs and not _bk17.msgs)
+    config.DAILY_BACKUP_CHAT_ID = -100555
+    try:
+        await jobs_h13.daily_backup_job(_ctx17)
+    finally:
+        config.DAILY_BACKUP_CHAT_ID = 0
+    check("جاب بک‌آپ روزانه فایل دی‌بی رو با کپشن فارسی به گروه ست‌شده می‌فرسته",
+          len(_bk17.docs) == 1 and _bk17.docs[0][0] == -100555
+          and _bk17.docs[0][1].endswith(".db")
+          and "بک‌آپ خودکار روزانه تریاکی" in (_bk17.docs[0][2] or "")
+          and "به‌وقت ایران" in (_bk17.docs[0][2] or ""), str(_bk17.docs)[:170])
+    _j17 = open("handlers/jobs.py", encoding="utf-8").read()
+    check("جاب daily-backup با run_daily و ساعت کانفیگ به‌وقت ایران رجیستر شده",
+          'name="daily-backup"' in _j17 and "run_daily" in _j17 and "DAILY_BACKUP_HOUR_IRAN" in _j17)
+
+    # ── یوزیج سرور توی آمار ادمین ──
+    from services import sysinfo as _si17
+    _u17 = _si17.server_usage()
+    check("server_usage لود CPU و رم و دیسک و آپتایم رو برمی‌گردونه",
+          _u17 is not None and _u17["cores"] >= 1 and 0 <= _u17["mem_pct"] <= 100
+          and _u17["mem_total_gb"] and _u17["disk_total_gb"] and _u17["uptime_s"] >= 0,
+          str(_u17)[:140])
+    _st17 = await admin_h._stats_text()
+    check("آمار ادمین سکشن 🖥 سرور با CPU و رم و دیسک و آپتایم داره",
+          "<b>🖥 سرور</b>" in _st17 and "⚙️ CPU" in _st17 and "🧠 رم" in _st17
+          and "💽 دیسک" in _st17 and "⏱ آپتایم:" in _st17,
+          str([ln for ln in _st17.splitlines() if "🖥" in ln or "💽" in ln])[:120])
+
+    # ═══ راند ۱۸: تک‌فایل .env تنها منبع تنظیمات + teriaky_set ست دائمی + لاگ بوت منبع توکن ═══
+    import teriaky_set as tset18
+    _p18 = "/tmp/tk18_suite.env"
+    if os.path.exists(_p18):
+        os.remove(_p18)
+    check("teriaky_set روی فایل ناموجود خودش فایل .env رو می‌سازه",
+          tset18.set_var("TK18_A", "hello", path=_p18) is False and os.path.isfile(_p18)
+          and "TK18_A=hello" in open(_p18, encoding="utf-8").read())
+    check("ست دوباره همون کلید آپدیت میشه و فقط یه خط ازش می‌مونه (idempotent)",
+          tset18.set_var("TK18_A", "world", path=_p18) is True
+          and open(_p18, encoding="utf-8").read().count("TK18_A=") == 1
+          and "TK18_A=world" in open(_p18, encoding="utf-8").read())
+    check("کامنت‌ها و کلیدای دیگه فایل موقع ست سر جاشون می‌مونن",
+          tset18.set_var("TK18_B", "2", path=_p18) is False
+          and all(x in open(_p18, encoding="utf-8").read() for x in ("TK18_A=world", "TK18_B=2")))
+    _q18 = "/tmp/tk18_quote.env"
+    if os.path.exists(_q18):
+        os.remove(_q18)
+    tset18.set_var("TK18_Q", "مقدار با فاصله # و کامنت", path=_q18)
+    os.environ.pop("TK18_Q", None)
+    config._load_dotenv(_q18)
+    check("مقدار با فاصله و شارپ کوتیشن میشه و بک‌اپ‌گیر خواننده .env سالم برمی‌گردونه",
+          os.environ.get("TK18_Q") == "مقدار با فاصله # و کامنت")
+    _c18 = "/tmp/tk18_crlf.env"
+    open(_c18, "w", encoding="utf-8", newline="").write("# کامنت\r\nTK18_R = spacer\r\n")
+    os.environ.pop("TK18_R", None)
+    config._load_dotenv(_c18)
+    check("خواننده .env با CRLF ویندوزی و فاصله دور مساوی مشکلی نداره",
+          os.environ.get("TK18_R") == "spacer")
+    _v18 = "/tmp/tk18_prec.env"
+    open(_v18, "w", encoding="utf-8").write("TK18_P=from-file\n")
+    os.environ["TK18_P"] = "from-env"
+    config._load_dotenv(_v18)
+    check("محیط سیستم همیشه بر فایل .env غلبه می‌کنه",
+          os.environ.get("TK18_P") == "from-env")
+    os.environ.pop("TK18_P", None)
+    check("config منبع توکن و لیست کلیدای لودشده از فایل رو نگه می‌داره",
+          isinstance(config.TOKEN_SOURCE, str) and config.TOKEN_SOURCE in ("فایل .env", "محیط سیستم", "ست نشده")
+          and isinstance(config.DOTENV_KEYS, list))
+    _b18 = open("bot.py", encoding="utf-8").read()
+    check("بوت ربات لاگ می‌زنه چند متغیر از .env اومده و توکن از کجاست (عیب‌یابی نیافتن .env)",
+          "متغیر از فایل .env لود شد" in _b18 and "منبع توکن" in _b18)
+    _m18 = "/tmp/tk18_cli.env"
+    if os.path.exists(_m18):
+        os.remove(_m18)
+    _rc18 = tset18.main(["--file", _m18, "TK18_CLI", "v1"])
+    check("کامندلاین teriaky_set KEY VALUE صفر برمی‌گردونه و فایل رو پر می‌کنه",
+          _rc18 == 0 and "TK18_CLI=v1" in open(_m18, encoding="utf-8").read())
+    tset18.main(["--file", _m18, "TERIAKY_TOKEN", "123456789:supersecrettoken"])
+    import io as _io18, contextlib as _cx18
+    _buf18 = _io18.StringIO()
+    with _cx18.redirect_stdout(_buf18):
+        _rcL18 = tset18.main(["--file", _m18, "--list"])
+    _out18 = _buf18.getvalue()
+    check("--list متغیرها رو نشون میده ولی توکن رو ماسک می‌کنه",
+          _rcL18 == 0 and "TK18_CLI=v1" in _out18 and "123456…" in _out18
+          and "supersecrettoken" not in _out18)
+    try:
+        tset18.set_var("BAD KEY", "x", path=_m18)
+        _bad18 = False
+    except ValueError:
+        _bad18 = True
+    check("اسم متغیر بد (فاصله‌دار) ریجکت میشه",
+          _bad18 and tset18.main(["--file", _m18, "BAD KEY", "x"]) == 2)
+    for _f18 in (_p18, _q18, _c18, _v18, _m18):
+        if os.path.exists(_f18):
+            os.remove(_f18)
+
+    # ═══ راند ۱۹: فرمول دمیج جدید + زره دو دسته‌ای با قابلیت‌ها + قمار ۵‌بازی نیم‌ساعته + باف ساختمان تیم رو پروفایل و پی‌وی + درصد آپگرید + رتبه پروفایل درست + قدرت کل + آمار جدید ═══
+    from services import casino as casino_svc19
+    from handlers import profile as profile_h19
+    from models import InventoryItem, Team as _Team19x
+
+    # ── زره‌ها: دو دسته و چهار ویژه با قابلیت و ایموجی خودشون (درخواست کارفرما) ──
+    check("کانفیگ دو دسته زره معمولی و ویژه",
+          set(config.ARMOR_SECTIONS) == {"normal", "special"})
+    check("چهار زره ویژه با ایموجی و اسم درخواستی کارفرما",
+          config.ARMORS["plasma"]["name"] == "🛡️ زره پلاسمایی" and config.ARMORS["void"]["name"] == "🌑 زره خلأ"
+          and config.ARMORS["neutron"]["name"] == "☄️ زره نواترون" and config.ARMORS["gods"]["name"] == "👑 زره خدایان")
+    check("ضرایب قابلیت زره‌ها تو کانفیگه",
+          config.PLASMA_REFLECT == 0.20 and config.VOID_CHANCE == 0.12
+          and config.NEUTRON_CUT == 0.25 and config.GODS_SAVE_CHANCE == 0.10)
+    check("متن قابلیت چهار زره ویژه ست شده",
+          all(k in config.ARMOR_ABILITY_TEXT for k in ("reflect", "void", "reduce", "godshield")))
+    check("درصد قابلیت زره با لول ارتقا رشد می‌کنه (لول ۱ هشت، لول ۵ 36 درصد برای خلأ پایه 12)",
+          abs(economy.gear_ability_pct_now(config.ARMORS["plasma"]["ability"], 1) - 0.20) < 1e-9
+          and abs(economy.gear_ability_pct_now(config.ARMORS["plasma"]["ability"], 5) - 0.36) < 1e-9)
+
+    # ── execute_hit با قابلیت‌های زره (قطعی با کانفیگ) ──
+    async with session_scope() as s:
+        _cr19, _vr19, _nr19, _pr19, _gr19 = (config.BATTLE_CRIT_CHANCE, config.BATTLE_DMG_VARIANCE,
+                                             config.VOID_CHANCE, config.NEUTRON_CUT, config.PLASMA_REFLECT)
+        _save19 = config.GODS_SAVE_CHANCE
+        try:
+            config.BATTLE_CRIT_CHANCE = 0.0
+            config.BATTLE_DMG_VARIANCE = 0.0
+            # مهاجم مکس با آرپی‌جی (بدون قابلیت) تا دمیجش از فرمول صفر نباشه
+            av19, _ = await users.get_or_create(s, tg(19601, "av19", "مهاجم۱۹"))
+            av19.level = 20
+            av19.energy = config.MAX_ENERGY
+            av19.last_attack_at = None
+            av19.hp = battle_svc.max_hp(av19.level)
+            s.add(InventoryItem(user_id=av19.id, item_key="rpg", level=1))
+            # 🌑 خلأ با شانس کامل: حمله قورت داده میشه
+            config.VOID_CHANCE = 1.0
+            tv19v, _ = await users.get_or_create(s, tg(19602, "tv19v", "هدف۱۹خلأ"))
+            tv19v.level = 10
+            tv19v.hp = battle_svc.max_hp(tv19v.level)
+            s.add(InventoryItem(user_id=tv19v.id, item_key="void", level=1))
+            await s.flush()
+            r19 = await battle_svc.execute_hit(s, av19, tv19v)
+            check("زره خلأ با شانس کامل حمله رو می‌بلعه و دمیج صفره",
+                  r19["ok"] and r19.get("nodmg") and tv19v.hp == battle_svc.max_hp(tv19v.level)
+                  and any("قورت داد" in l for l in r19.get("armor_lines", [])), str(r19)[:120])
+            # ☄️ نواترون: دمیج دقیقاً نصف
+            config.VOID_CHANCE, config.NEUTRON_CUT = 0.0, 0.5
+            tv19n, _ = await users.get_or_create(s, tg(19603, "tv19n", "هدف۱۹نواترون"))
+            tv19n.level = 10
+            tv19n.hp = battle_svc.max_hp(tv19n.level)
+            s.add(InventoryItem(user_id=tv19n.id, item_key="neutron", level=1))
+            await s.flush()
+            atk19, dfn19, _ = await battle_svc.battle_powers(s, av19, tv19n)
+            exp19 = max(1, round((atk19 - dfn19) / 2))
+            av19.last_attack_at = None
+            av19.energy = config.MAX_ENERGY
+            r19 = await battle_svc.execute_hit(s, av19, tv19n)
+            got19 = battle_svc.max_hp(tv19n.level) - tv19n.hp
+            check("زره نواترون دقیقاً پنجاه درصد دمیج رو کم می‌کنه",
+                  exp19 >= 2 and got19 == max(0, round(exp19 * 0.5))
+                  and any("له کرد" in l for l in (r19.get("armor_lines") or []) + (r19.get("abil_lines") or [])),
+                  f"expected {exp19 * 0.5} got {got19}")
+            # 🛡️ پلاسما: نصف دمیج برمی‌گرده به مهاجم
+            config.NEUTRON_CUT, config.PLASMA_REFLECT = 0.0, 0.5
+            tv19p, _ = await users.get_or_create(s, tg(19604, "tv19p", "هدف۱۹پلاسما"))
+            tv19p.level = 10
+            tv19p.hp = battle_svc.max_hp(tv19p.level)
+            s.add(InventoryItem(user_id=tv19p.id, item_key="plasma", level=1))
+            await s.flush()
+            atk19, dfn19, _ = await battle_svc.battle_powers(s, av19, tv19p)
+            exp19 = max(1, round((atk19 - dfn19) / 2))
+            av19.last_attack_at = None
+            av19.energy = config.MAX_ENERGY
+            av19.hp = battle_svc.max_hp(av19.level)
+            r19 = await battle_svc.execute_hit(s, av19, tv19p)
+            back19 = battle_svc.max_hp(av19.level) - av19.hp
+            check("زره پلاسما نصف دمیج رو به مهاجم برمی‌گردونه",
+                  back19 == max(0, round(exp19 * 0.5)) and any("برگشت" in l for l in (r19.get("armor_lines") or []) + (r19.get("abil_lines") or [])),
+                  f"back {back19} expected {exp19 * 0.5}")
+            # 👑 خدایان: با شانس کامل از مرگ نجات میده
+            config.PLASMA_REFLECT, config.GODS_SAVE_CHANCE = 0.0, 1.0
+            tv19g, _ = await users.get_or_create(s, tg(19605, "tv19g", "هدف۱۹خدایان"))
+            tv19g.level = 1
+            tv19g.hp = 5
+            s.add(InventoryItem(user_id=tv19g.id, item_key="gods", level=1))
+            await s.flush()
+            av19.last_attack_at = None
+            av19.energy = config.MAX_ENERGY
+            wins19 = av19.wins
+            r19 = await battle_svc.execute_hit(s, av19, tv19g)
+            check("زره خدایان ضربه مرگبار رو خنثی می‌کنه و حریف با ۱ HP می‌مونه",
+                  r19["ok"] and not r19.get("killed") and tv19g.hp == 1 and av19.wins == wins19
+                  and any("برکت" in l for l in (r19.get("armor_lines") or []) + (r19.get("abil_lines") or [])), str(r19)[:120])
+        finally:
+            (config.BATTLE_CRIT_CHANCE, config.BATTLE_DMG_VARIANCE, config.VOID_CHANCE,
+             config.NEUTRON_CUT, config.PLASMA_REFLECT) = (_cr19, _vr19, _nr19, _pr19, _gr19)
+            config.GODS_SAVE_CHANCE = _save19
+        await s.rollback()
+
+    # ── باف ساختمان تیم رو قدرت کل پی‌وی (باگ گزارش‌شده کارفرما) ──
+    async with session_scope() as s:
+        to19, _ = await users.get_or_create(s, tg(19610, "txown", "رهبر۱۹"))
+        tv19b, _ = await users.get_or_create(s, tg(19611, "tv19b", "حریف۱۹"))
+        to19.level, tv19b.level = 12, 12
+        to19.cash, tv19b.cash = 2_000_000, 2_000_000
+        await s.flush()
+        ok19, _ = await team_svc.create_team(s, to19, "تیم۱۹")
+        check("تیم برای تست باف ساختمان ساخته شد", ok19)
+        m19 = await team_svc.get_membership(s, to19.id)
+        team19 = await s.get(_Team19x, m19.team_id)
+        a0, t0, _ = await pvattack.total_powers(s, to19, tv19b)
+        team19.atk_bld = 3
+        await s.flush()
+        a1, t1, _ = await pvattack.total_powers(s, to19, tv19b)
+        check("قدرت کل مهاجم با ساختمان حمله لول ۳ دقیقاً ۹ درصد بیشتره",
+              a1 > a0 and abs((a1 - a0) / a0 - 0.09) < 0.02, f"{a0} -> {a1}")
+        check("قدرت کل حریف بدون تیم تغییر نکرد", t1 == t0, f"{t0} -> {t1}")
+        team19.atk_bld, team19.def_bld = 0, 3
+        m19b = await team_svc.get_membership(s, tv19b.id)
+        check("حریف بدون تیمه (کنترل سمت مدافع)", m19b is None)
+        # مدافع تیم‌دار
+        ok19b, _ = await team_svc.create_team(s, tv19b, "تیم۱۹ب")
+        m19c = await team_svc.get_membership(s, tv19b.id)
+        team19b = await s.get(_Team19x, m19c.team_id)
+        team19b.def_bld = 2
+        await s.flush()
+        _, t2, _ = await pvattack.total_powers(s, to19, tv19b)
+        check("قدرت کل مدافع با ساختمان دفاع لول ۲ بیشتره",
+              t2 > t0 and abs((t2 - t0) / t0 - config.TEAM_DEF_BONUS_PER_LEVEL * 2) < 0.03, f"{t0} -> {t2}")
+        await s.rollback()
+
+    # ── پروفایل: رتبه بر اساس مدال درسته نه پول + خط قدرت کل ──
+    async with session_scope() as s:
+        rich19, _ = await users.get_or_create(s, tg(19620, "rich19", "پولدار"))
+        champ19, _ = await users.get_or_create(s, tg(19621, "champ19", "قهرمان"))
+        rich19.cash, champ19.cash = 999_000_000, 7
+        rich19.xp, champ19.xp = 0, 500_000
+        rich19.medals, champ19.medals = 0, 500_000
+        await s.flush()
+        rk_r = await users.medal_rank(s, rich19, "all")
+        rk_c = await users.medal_rank(s, champ19, "all")
+        check("رتبه پروفایل بر اساس مداله: قهرمان خُرد با پول نفت از پولدار صفرمدالی بهتره",
+              rk_c < rk_r, f"champ {rk_c} vs rich {rk_r}")
+        cap19 = await profile_h19._profile_caption(s, champ19)
+        check("پروفایل رتبه رو همون مدالی و خط «🏋 قدرت کل» زیر حمله و دفاع رو داره",
+              f"🏆 رتبه {fa_num(rk_c)} از" in cap19 and "🏋 قدرت کل:" in cap19
+              and cap19.index("🛡 دفاع:") < cap19.index("🏋 قدرت کل:") < cap19.index("✅ برد:"), cap19[-200:])
+        await s.rollback()
+
+    # ── قمارخانه راند ۱۹: کانفیگ و ارزش انتظاری‌ها ──
+    check("تایم قمار نیم‌ساعته و ثابت ساعتی قدیمی پاک شده",
+          config.CASINO_COOLDOWN_MINUTES == 30 and not hasattr(config, "CASINO_COOLDOWN_HOURS"))
+    check("پنج بازی قمار با اسم و قانونشون تو سرویس هست",
+          set(casino_svc19.GAMES) == {"simple", "dice", "wheel", "card", "mines"})
+    _ev19 = sum(m * w for m, w in config.CASINO_WHEEL) / 100
+    check("ارزش انتظاری همه بازی‌ها زیر یکه (سودده نیس): تاس 0.96 گردونه %.2f کارت 0.85" % _ev19,
+          config.CASINO_DICE_CHANCE * config.CASINO_DICE_MULT < 1.0
+          and config.CASINO_WIN_CHANCE * config.CASINO_WIN_MULT < 1.0
+          and _ev19 < 1.0 and config.CASINO_CARD_MARGIN < 1.0, f"wheel EV {_ev19:.2f}")
+    _surv19, _evs19 = 1.0, []
+    for _p19, _m19 in config.CASINO_MINES_LEVELS:
+        _surv19 *= (1 - _p19)
+        _evs19.append(_surv19 * _m19)
+    check("ارزش انتظاری هر لول مین زیر یکه و هرچی عمیق‌تر رفتن بدتره",
+          all(e < 1.0 for e in _evs19) and all(_evs19[i] > _evs19[i + 1] for i in range(len(_evs19) - 1)),
+          str([round(e, 3) for e in _evs19]))
+    kb_games19 = kb.casino_games_kb()
+    check("کیبورد منوی بازی‌ها هر پنج بازی رو با کال‌بک csg:b داره",
+          sorted(c.callback_data.split(":")[-1] for row in kb_games19.inline_keyboard for c in row
+                 if c.callback_data.startswith("csg:b:")) == ["card", "dice", "mines", "simple", "wheel"])
+
+    # ── فلوی بازی‌های قمار (قطعی با مونکی‌پچ) ──
+    async with session_scope() as s:
+        import random as _rnd19
+        u19, _ = await users.get_or_create(s, tg(19630, "g19a", "گ۱۹الف"))
+        u19.level, u19.cash, u19.last_casino_at = 10, 500000, None
+        await s.flush()
+        r = await casino_svc19.start(s, u19, "dice", 1000)
+        check("تاس دوبل یه‌مرحله‌ایه و شرط کم شد و کولدان خورد",
+              r["status"] in ("win", "lose") and u19.cash in (499000, 501000)
+              and u19.last_casino_at is not None, str(r))
+        r = await casino_svc19.start(s, u19, "wheel", 1000)
+        check("تا نیم ساعت بازی بعدی کولدانه", r["status"] == "cooldown")
+
+        uw19, _ = await users.get_or_create(s, tg(19631, "g19b", "گ۱۹ب"))
+        uw19.level, uw19.cash, uw19.last_casino_at = 10, 100000, None
+        await s.flush()
+        r = await casino_svc19.start(s, uw19, "wheel", 5000)
+        segs19 = [m for m, _ in config.CASINO_WHEEL]
+        check("گردونه یه‌مرحله‌ایه و ضریبش تو ناحیه‌های کانفیگه",
+              r["status"] in ("win", "lose") and (r.get("seg") in segs19)
+              and (r["status"] == "win") == (r.get("seg", 0) > 0), str(r))
+
+        uc19, _ = await users.get_or_create(s, tg(19632, "g19c", "گ۱۹ج"))
+        uc19.level, uc19.cash, uc19.last_casino_at = 10, 100000, None
+        await s.flush()
+        r = await casino_svc19.start(s, uc19, "card", 1000)
+        check("کارت بالا/پایین با کارت اولیه شروع میشه",
+              r["status"] == "started" and isinstance(r.get("card"), int) and r["mult"] == 1.0, str(r))
+        casino_svc19._GAMES[uc19.id]["card"] = 5
+        _oldri19 = _rnd19.randint
+        _rnd19.randint = lambda a, b: 9
+        try:
+            r2 = await casino_svc19.card_step(s, uc19, "hi")
+        finally:
+            _rnd19.randint = _oldri19
+        check("حدس درست کارت ضریب رو از ضریب منصفانه با مارجین بالا می‌بره",
+              r2["status"] == "next" and r2["steps"] == 1
+              and abs(r2["mult"] - round(config.CASINO_CARD_MARGIN / 0.75, 2)) < 0.01, str(r2))
+        uc19.cash -= 0  # شرط موقع start کم شده
+        cash19 = uc19.cash
+        r3 = await casino_svc19.cash_out(s, uc19)
+        check("کش‌اوت کارت جایزه رو واریز می‌کنه و بازی پاک میشه",
+              r3["status"] == "win" and r3["prize"] == int(1000 * r2["mult"])
+              and uc19.cash == cash19 + int(1000 * r2["mult"])
+              and casino_svc19.state_of(uc19.id) is None, str(r3))
+
+        ub19, _ = await users.get_or_create(s, tg(19633, "g19d", "گ۱۹د"))
+        ub19.level, ub19.cash, ub19.last_casino_at = 10, 100000, None
+        await s.flush()
+        await casino_svc19.start(s, ub19, "card", 1000)
+        casino_svc19._GAMES[ub19.id]["card"] = 13
+        cash19 = ub19.cash
+        _oldri19 = _rnd19.randint
+        _rnd19.randint = lambda a, b: 2
+        try:
+            r4 = await casino_svc19.card_step(s, ub19, "hi")
+        finally:
+            _rnd19.randint = _oldri19
+        check("حدس غلط کارت شرط رو می‌سوزونه و بازی پاک میشه",
+              r4["status"] == "lose" and r4["nxt"] == 2 and ub19.cash == cash19
+              and casino_svc19.state_of(ub19.id) is None, str(r4))
+
+        um19, _ = await users.get_or_create(s, tg(19634, "g19e", "گ۱۹ه"))
+        um19.level, um19.cash, um19.last_casino_at = 10, 100000, None
+        await s.flush()
+        await casino_svc19.start(s, um19, "mines", 1000)
+        _oldrr19 = _rnd19.random
+        _rnd19.random = lambda: 0.99
+        try:
+            r5 = await casino_svc19.mines_step(s, um19)
+        finally:
+            _rnd19.random = _oldrr19
+        check("مین با شانس صفر بمب لول ۱ امنه و ضریبش از کانفیگه",
+              r5["status"] == "safe" and r5["level"] == 1
+              and r5["mult"] == config.CASINO_MINES_LEVELS[0][1], str(r5))
+        cash19 = um19.cash
+        r6 = await casino_svc19.cash_out(s, um19)
+        check("کش‌اوت مین بعد لول ۱ جایزه می‌ده",
+              r6["status"] == "win" and r6["prize"] == int(1000 * config.CASINO_MINES_LEVELS[0][1])
+              and um19.cash == cash19 + int(1000 * config.CASINO_MINES_LEVELS[0][1]), str(r6))
+        r6b = await casino_svc19.cash_out(s, um19)
+        check("کش‌اوت دوباره چیزی نمی‌ده", r6b["status"] == "no_game")
+
+        ux19, _ = await users.get_or_create(s, tg(19635, "g19f", "گ۱۹و"))
+        ux19.level, ux19.cash, ux19.last_casino_at = 10, 100000, None
+        await s.flush()
+        await casino_svc19.start(s, ux19, "mines", 1000)
+        cash19 = ux19.cash
+        _oldrr19 = _rnd19.random
+        _rnd19.random = lambda: 0.0
+        try:
+            r7 = await casino_svc19.mines_step(s, ux19)
+        finally:
+            _rnd19.random = _oldrr19
+        check("بمب لول اول شرط رو می‌سوزونه",
+              r7["status"] == "lose" and r7["level"] == 1 and ux19.cash == cash19, str(r7))
+
+        # بازی بی‌صاحب بعد TTL می‌سوزه
+        casino_svc19._GAMES[ux19.id] = {"game": "mines", "bet": 1000, "level": 1,
+                                        "started": now_utc() - timedelta(seconds=config.CASINO_STATE_TTL + 60)}
+        check("حالت کهنه بازی بعد TTL پاک میشه و شرط برنمی‌گرده",
+              casino_svc19.state_of(ux19.id) is None
+              and (await casino_svc19.mines_step(s, ux19))["status"] == "no_game")
+        await s.commit()
+
+    # ── متن‌های شاپ: بخش زره دو دسته‌ای و قابلیت‌ها و درصد آپگرید ──
+    sh19 = SimpleNamespace(cash=999999, level=20, wood=0, iron=999, shelter_level=0)
+    arm_home19 = shop_h2._arm_home_text(sh19)
+    check("خانه زره دو دسته معمولی و ویژه رو نشون میده",
+          "زره معمولی" in arm_home19 and "زره ویژه" in arm_home19)
+    arm_sp19 = shop_h2._arm_text(sh19, "special")
+    check("صفحه زره ویژه اسم چهارتاشون و خط قابلیت هرکدوم رو داره",
+          all(x in arm_sp19 for x in ["🛡️ زره پلاسمایی", "🌑 زره خلأ", "☄️ زره نواترون", "👑 زره خدایان"])
+          and arm_sp19.count("🎯 قابلیت:") == 4, arm_sp19[:120])
+    wsp19 = shop_h2._wsec_text(sh19, "special")
+    check("صفحه سلاح ویژه خط توضیح قابلیت هر پنج سلاح رو داره (درخواست کارفرما)",
+          wsp19.count("🎯 قابلیت:") == 5 and config.WEAPON_ABILITY_TEXT["poison"] in wsp19
+          and config.WEAPON_ABILITY_TEXT["oblivion"] in wsp19)
+    upw19 = shop_h2._gear_up_text("weap", {"viperx": 2}, sh19)
+    check("صفحه آپگرید سلاح درصدی درصد فعلی و بعدی قابلیت رو می‌گه (لول ۲ ۱۲ و بعد ۱۴)",
+          "قابلیت الان:" in upw19 and "واقعی الان: 12%" in upw19 and "قابلیت بعد ارتقا: 14%" in upw19,
+          upw19.replace("\n", " | ")[:200])
+    upa19 = shop_h2._gear_up_text("arm", {"plasma": 2}, sh19)
+    check("صفحه آپگرید زره ویژه هم درصد فعلی و بعدی قابلیت رو می‌گه (لول ۲ ۲۴ و بعد ۲۸)",
+          "قابلیت الان:" in upa19 and "واقعی الان: 24%" in upa19 and "قابلیت بعد ارتقا: 28%" in upa19,
+          upa19.replace("\n", " | ")[:200])
+    kb_arm19 = kb.shop_arm_sections_kb(sh19)
+    check("کیبورد زره دو دسته‌بندی با کال‌بک فروشگاه داره",
+          any(c.callback_data == "shop:sec:anormal" for row in kb_arm19.inline_keyboard for c in row)
+          and any(c.callback_data == "shop:sec:aspecial" for row in kb_arm19.inline_keyboard for c in row))
+
+    # ── آمار ادمین: پلیرای جدید ۱ ساعته و ۲۴ ساعته ──
+    stats19 = await admin_h._stats_text()
+    check("آمار ادمین خط جدید یک ساعت اخیر و ۲۴ ساعت اخیر رو داره (درخواست کارفرما)",
+          "🌱 جدید ۱ ساعت اخیر:" in stats19 and "🆕 جدید ۲۴ ساعت اخیر:" in stats19)
+
+    # ═══ راند ۲۰: تگ لینک‌دار تو لول‌آپ و رسیدن محموله + کاشت با تعداد + چت داخلی تیم (۲۰ پیام آخر) + تیم اعضا با آیدی + کارت درخواست با مدال و قدرت کل ═══
+    from handlers import team as team_h20
+    from handlers import pending as pending_h20
+    from models import Shipment, TeamMember  # noqa: E402
+
+    class _Q20(SimpleNamespace):
+        async def answer(self, *a, **k):
+            self.calls.append(("answer", a, k))
+        async def edit_message_text(self, text, **k):
+            self.calls.append(("edit", text, k))
+
+    def _cb20(data, uid, uname, fname):
+        """کالبک‌فیک با پروفایل درست، تا get_or_create کاربر رو رینیم نکنه"""
+        q = _Q20(data=data, message=SimpleNamespace(photo=None), calls=[])
+        async def _qr(text, **k):
+            q.calls.append(("reply", text, k))
+        q.message.reply_html = _qr
+        return SimpleNamespace(
+            callback_query=q, message=q.message, effective_message=q.message,
+            effective_user=SimpleNamespace(id=uid, username=uname, first_name=fname, last_name=None),
+            effective_chat=SimpleNamespace(type="private"),
+        )
+
+    # ── منتشن لول‌آپ (درخواست کارفرما: تبریک «ممد» لینک‌دار) ──
+    async with session_scope() as s:
+        lv20, _ = await users.get_or_create(s, tg(20601, "lv20", "ممد"))
+        lv20.level, lv20.xp = 1, 0
+        notes20 = users.add_xp(lv20, 50)
+        check("تبریک لول‌آپ طرف رو با لینک tg تگ می‌کنه (در خواست کارفرما)",
+              notes20 and f"tg://user?id=20601" in notes20[0] and ">ممد</a>" in notes20[0]
+              and "، لولت رفت (1←2)" in notes20[0], notes20[0] if notes20 else None)
+        await s.rollback()
+
+    # ── منتشن موقع رسیدن محموله ──
+    async with session_scope() as s:
+        sh20, _ = await users.get_or_create(s, tg(20602, "sh20", "قاچاقچی"))
+        s.add(Shipment(user_id=sh20.id, chat_id=None, crop="cocaine", qty=25, value=100000,
+                       pay=135428, deliver_at=now_utc() - timedelta(seconds=5),
+                       outcome="clean", hops=0))
+        await s.flush()
+        out20 = await smg_svc.process_due_shipments(s)
+        check("خبر رسیدن محموله صاحبش رو با لینک tg تگ می‌کنه (درخواست کارفرما)",
+              len(out20) == 1 and "محموله سالم رسید" in out20[0]["text"]
+              and '👤 <a href="tg://user?id=20602">' in out20[0]["text"]
+              and ">قاچاقچی</a>" in out20[0]["text"]
+              and "کوکائین ×25 تحویل داده شد" in out20[0]["text"]
+              and "135,428 تی‌پوینت گرفتی" in out20[0]["text"],
+              out20[0]["text"][:150] if out20 else None)
+        await s.rollback()
+
+    # ── کاشت متنی با تعداد («کاشت کوکائین 3»، درخواست کارفرما) ──
+    async with session_scope() as s:
+        p20a, _ = await users.get_or_create(s, tg(20610, "p20a", "بی‌زمین"))
+        check("کاربر تست کاشت زمینی نداره", not (await farming.get_user_plots(s, p20a.id)))
+        await s.commit()
+    upd20 = _text_update("تریاکی کاشت کوکائین 3", uid=20610, fname="بی‌زمین")
+    await textcmd_h2.plant_text(upd20, None)
+    check("کاشت با تعداد بدون زمین میگه زمینی نداری",
+          any("زمینی نداری" in c[1] for c in upd20.message.calls), str(upd20.message.calls)[:120])
+
+    async with session_scope() as s:
+        p20b, _ = await users.get_or_create(s, tg(20611, "p20b", "یک‌زمین"))
+        p20b.level = 10
+        await farming.add_seed_stock(s, p20b.id, "cocaine", 5)
+        s.add(Plot(user_id=p20b.id, status="empty"))
+        await s.commit()
+    upd20 = _text_update("تریاکی کاشت کوکائین 3", uid=20611, fname="یک‌زمین")
+    await textcmd_h2.plant_text(upd20, None)
+    check("زمین کمتر از تعداد بذر خطای «زمین کافی نداری» رو میده (درخواست کارفرما)",
+          any("زمین کافی برای اینهمه بذر نداری" in c[1] and "فقط 1 تا زمین خالیه" in c[1]
+              for c in upd20.message.calls), str(upd20.message.calls)[:160])
+
+    async with session_scope() as s:
+        p20c, _ = await users.get_or_create(s, tg(20612, "p20c", "بی‌بذر"))
+        p20c.level = 10
+        await farming.add_seed_stock(s, p20c.id, "cocaine", 1)
+        for _i in range(3):
+            s.add(Plot(user_id=p20c.id, status="empty"))
+        await s.commit()
+    upd20 = _text_update("تریاکی کاشت کوکائین 3", uid=20612, fname="بی‌بذر")
+    await textcmd_h2.plant_text(upd20, None)
+    check("بذر کمتر از تعداد خطای «بذر کافی نداری» با تعداد فعلی رو میده (درخواست کارفرما)",
+          any("بذر کافی نداری" in c[1] and "1 تا" in c[1] and "3 تا می‌خوای بکاری" in c[1]
+              for c in upd20.message.calls), str(upd20.message.calls)[:160])
+
+    async with session_scope() as s:
+        p20d, _ = await users.get_or_create(s, tg(20613, "p20d", "کشاورز۲۰"))
+        p20d.level = 10
+        await farming.add_seed_stock(s, p20d.id, "cocaine", 4)
+        for _i in range(3):
+            s.add(Plot(user_id=p20d.id, status="empty"))
+        await s.commit()
+    upd20 = _text_update("تریاکی کاشت کوکائین 3", uid=20613, fname="کشاورز۲۰")
+    await textcmd_h2.plant_text(upd20, None)
+    async with session_scope() as s:
+        plots20 = await farming.get_user_plots(s, (await users.get_by_tg(s, 20613)).id)
+        stock20 = await farming.get_stock(s, plots20[0].user_id)
+        check("کاشت موفق ۳ عددی هر سه زمین رو می‌کاره و ۴ بذر میشه ۱",
+              sum(1 for p in plots20 if p.current_status()[0] == "growing") == 3
+              and stock20.get("cocaine", 0) == 1, str([p.crop for p in plots20]))
+        await s.commit()
+    check("پیام کاشت گروهی تعداد رو می‌گه",
+          any("کوکائین ×3 کاشته شد" in c[1] for c in upd20.message.calls), str(upd20.message.calls)[:120])
+
+    # ── تیم + کارت درخواست غنی‌شده (لول + مدال + قدرت کل) ──
+    async with session_scope() as s:
+        ow20, _ = await users.get_or_create(s, tg(20620, "ow20", "رهبر۲۰"))
+        ow20.level, ow20.cash = 15, 2_000_000
+        await s.flush()
+        await team_svc.create_team(s, ow20, "تیم‌بیست")
+        rq20, _ = await users.get_or_create(s, tg(20621, "rq20", "متقاضی۲۰"))
+        rq20.level, rq20.medals = 9, 12345
+        s.add(InventoryItem(user_id=rq20.id, item_key="rpg", level=1))
+        await s.flush()
+        ok20, _ = await team_svc.request_join(s, rq20, "تیم‌بیست")
+        check("درخواست عضویت برای کارت غنی‌سازی شده صف شد", ok20)
+        await s.commit()
+    upd20 = _cb20("team:req", 20620, "ow20", "رهبر۲۰")
+    await team_h20.render_requests(upd20)
+    rqt20 = next((c[1] for c in upd20.callback_query.calls if c[0] in ("edit", "reply")), "")
+    check("کارت تایید درخواست به رهبر لول و مدال و قدرت کل متقاضی رو نشون میده (درخواست کارفرما)",
+          "متقاضی۲۰" in rqt20 and "⭐ لول 9" in rqt20 and "🎖 مدال 12,345" in rqt20
+          and "💥 قدرت کل" in rqt20, rqt20[:200])
+
+    # ── «تیم اعضا» با آیدی‌ها ──
+    async with session_scope() as s:
+        mm20, _ = await users.get_or_create(s, tg(20622, "mm20", "عضو۲۰"))
+        team20 = await team_svc.get_team_of(s, (await users.get_by_tg(s, 20620)).id)
+        s.add(TeamMember(team_id=team20.id, user_id=mm20.id, role="member"))
+        ad20, _ = await users.get_or_create(s, tg(20623, "ad20", "ادمین۲۰"))
+        ad20.username = None
+        s.add(TeamMember(team_id=team20.id, user_id=ad20.id, role="admin"))
+        await s.commit()
+    upd20 = _text_update("تیم اعضا", uid=20620, uname="ow20", fname="رهبر۲۰")
+    await team_h20.team_text(upd20, None)
+    mbt20 = upd20.message.calls[-1][1] if upd20.message.calls else ""
+    check("تیم اعضا سه نفر رو با نقش و آیدی عددی نشون میده (درخواست کارفرما)",
+          "👥 اعضای «تیم‌بیست» (3)" in mbt20
+          and "👑 رهبر۲۰ | @ow20 | آیدی: 20620" in mbt20
+          and "⭐ ادمین۲۰ | بدون یوزرنیم | آیدی: 20623" in mbt20
+          and "👤 عضو۲۰" in mbt20, mbt20[:400])
+
+    # ── چت تیم: ارسال، نقش‌ها، سقف ۲۰ پیام ──
+    check("کانفیگ تاریخچه چت تیم ۲۰ـته (درخواست کارفرما)", config.TEAM_CHAT_HISTORY == 20)
+    async with session_scope() as s:
+        ow20x = await users.get_by_tg(s, 20620)
+        ad20x = await users.get_by_tg(s, 20623)
+        ok20, _ = await team_svc.chat_post(s, ow20x, "سلام گل من")
+        ok20b, _ = await team_svc.chat_post(s, ad20x, "درود به تو")
+        ok20c, _ = await team_svc.chat_post(s, mm20, "بچه ها بنظرتون چطوره خوبه یا نه؟")
+        check("سه نقش تیم می‌تونن تو چت پیام بفرستن", ok20 and ok20b and ok20c)
+        team20 = await team_svc.get_team_of(s, ow20x.id)
+        page20 = await team_svc.chat_page(s, team20)
+        check("چت تیم قالب نقش‌دار کارفرما: 👑(رهبر) و ⭐(ادمین) و 👤 ساده",
+          "👑‌ رهبر۲۰(رهبر): سلام گل من" in page20
+            and "⭐\u200c ادمین۲۰(ادمین): درود به تو".encode().decode("unicode_escape") in page20 or "⭐‌ ادمین۲۰(ادمین): درود به تو" in page20
+            and "👤‌ عضو۲۰: بچه ها بنظرتون چطوره خوبه یا نه؟" in page20, page20[:220])
+        for i in range(25):
+            await team_svc.chat_post(s, ow20x, f"پیام شماره {i}")
+        from models import TeamChatMessage as _TCM20
+        n20 = len(list((await s.execute(select(_TCM20).where(_TCM20.team_id == team20.id))).scalars()))
+        page20b = await team_svc.chat_page(s, team20)
+        check("فقط ۲۰ پیام آخر چت تیم نگه‌داشته میشه و قدیمی‌ها پاک میشن (درخواست کارفرما)",
+              n20 == 20 and "سلام گل من" not in page20b and f"پیام شماره 24" in page20b, str(n20))
+        oth20, _ = await users.get_or_create(s, tg(20629, "oth20", "غریبه۲۰"))
+        ok20n, why20 = await team_svc.chat_post(s, oth20, "هاک")
+        check("غیرعضو نمی‌تونه تو چت تیم بنویسه", not ok20n and "تیمی نیستی" in why20)
+        await s.commit()
+
+    kb_tc20 = kb.team_chat_kb()
+    check("کیبورد چت تیم دکمه ارسال پیام و بروزرسانی و برگشت داره",
+          any(c.callback_data == "tc:send" and "ارسال پیام" in c.text for row in kb_tc20.inline_keyboard for c in row)
+          and any(c.callback_data == "tc:ref" for row in kb_tc20.inline_keyboard for c in row)
+          and any(c.callback_data == "tc:back" for row in kb_tc20.inline_keyboard for c in row))
+    tk20 = kb.team_kb(is_owner=True, is_manager=True)
+    check("پنل تیم دکمه 💬 چت تیم داره",
+          any(c.callback_data == "tc:page" and "💬 چت تیم" in c.text for row in tk20.inline_keyboard for c in row))
+
+    upd20 = _cb20("tc:page", 20620, "ow20", "رهبر۲۰")
+    await team_h20.team_chat_cb(upd20, None)
+    cpt20 = next((c[1] for c in upd20.callback_query.calls if c[0] in ("edit", "reply")), "")
+    check("دستور/دکمه چت تیم صفحه پیام‌ها رو باز می‌کنه",
+          "💬 چت تیم «تیم‌بیست»" in cpt20 and "پیام شماره 24" in cpt20, cpt20[:160])
+
+    # فلوی ارسال پیام با دکمه: pending ست میشه و پیام بعدی طرف میره تو چت و صفحه رفرش میشه
+    upd20s = _cb20("tc:send", 20620, "ow20", "رهبر۲۰")
+    await team_h20.team_chat_cb(upd20s, None)
+    async with session_scope() as s:
+        u20s = await users.get_by_tg(s, 20620)
+        check("دکمه ارسال پیام حالت pending رو روی کاربر می‌ذاره", u20s.pending_action == "teamchat")
+        await s.commit()
+    upd_t20 = _text_update("خداحافظ بچه‌ها 👋", uid=20620, uname="ow20", fname="رهبر۲۰")
+    try:
+        await pending_h20.capture(upd_t20, None)
+    except Exception as he20:
+        if type(he20).__name__ != "ApplicationHandlerStop":
+            raise
+    pt20 = next((c[1] for c in upd_t20.message.calls if "چت تیم" in c[1]), "")
+    check("پیام بعدی طرف مستقیم تو چت تیم رفت و صفحه برگشت (ارسال پیام به درخواست کارفرما)",
+          "✉️ رهبر۲۰(رهبر): خداحافظ" in pt20 or "رهبر۲۰(رهبر): خداحافظ" in pt20, pt20[:200])
+    async with session_scope() as s:
+        u20s = await users.get_by_tg(s, 20620)
+        check("pending بعد از ارسال پاک شد", u20s.pending_action is None)
+        await s.commit()
+
+
+    # ═══ راند ۲۱: گیت اولیه بانک (آپگریدها تو لول 2/4/6…20) + نرف نصف تولید کارخونه ═══
+    check("گیت آپگریدهای بانک دقیقاً همون ۱۰ تا عدد کارفرماست",
+          config.BANK_MIN_LEVELS == [1, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20]
+          and len(config.BANK_MIN_LEVELS) == config.BANK_MAX_LEVEL
+          and all(config.BANK_MIN_LEVELS[i] == 2 * i for i in range(1, 11)))
+    check("ظرفیت و قیمت‌های بانک دست‌نخورده مونده (راند ۲۱ فقط گیت لول عوض شد)",
+          config.BANK_CAPS == [20000, 50000, 100000, 200000, 500000, 1000000,
+                               2000000, 4000000, 6000000, 8000000, 10000000]
+          and config.BANK_UPGRADE_PRICES[0] == 25000 and config.BANK_UPGRADE_PRICES[-1] == 1000000)
+    async with session_scope() as s:
+        g21, _ = await users.get_or_create(s, tg(217721, "gate21", "گیت‌بانک"))
+        g21.level = 1
+        g21.bank_level = 1
+        g21.cash = 30000
+        ok21, m21 = await bank_svc.upgrade_bank(s, g21)
+        check("آپگرید اول بانک تو لول ۱ قفله و لول ۲ رو می‌خواد",
+              not ok21 and "لول 2" in m21, m21[:70])
+        g21.level = 2
+        ok21, m21 = await bank_svc.upgrade_bank(s, g21)
+        check("تو لول ۲ آپگرید اول باز میشه و بانک میره رو ۲",
+              ok21 and g21.bank_level == 2, m21[:70])
+        await s.commit()
+    async with session_scope() as s:
+        t21, _ = await users.get_or_create(s, tg(217722, "top21", "مکس‌بانک"))
+        t21.level = 19
+        t21.bank_level = 10
+        t21.cash = 2000000
+        ok21b, m21b = await bank_svc.upgrade_bank(s, t21)
+        check("آپگرید آخر (لول ۱۱ بانک) تو لول ۱۹ قفله و لول ۲۰ می‌خواد",
+              not ok21b and "لول 20" in m21b, m21b[:70])
+        t21.level = 20
+        ok21b, m21b = await bank_svc.upgrade_bank(s, t21)
+        check("تو لول ۲۰ بانک میره رو لول مکس ۱۱ با ظرفیت ۱۰ میلیون",
+              ok21b and t21.bank_level == 11 and bank_svc.bank_capacity(11) == 10000000, m21b[:70])
+        ok21c, m21c = await bank_svc.upgrade_bank(s, t21)
+        check("بعد از مکس دیگه آپگریدی نیس", not ok21c)
+        await s.commit()
+    lk21 = kb3.bank_kb(SimpleNamespace(bank_level=10, level=19))
+    lk21f = [(b.text, b.callback_data, b.style) for r in lk21.inline_keyboard for b in r]
+    check("دکمه قفل بانک «سطح 20 می‌خواد» رو درست نشون میده",
+          any("سطح 20" in t and c == "noop:banklock" and st == "danger" for t, c, st in lk21f), str(lk21f))
+    ok21k = kb3.bank_kb(SimpleNamespace(bank_level=10, level=20))
+    check("تو سطح کافی دکمه ارتقای بانک به لول ۱۱ فعاله",
+          any(b.callback_data == "bank:up" for r in ok21k.inline_keyboard for b in r))
+
+    # نرف نصف تولید کارخونه (درخواست کارفرما: حدود نصف چیزی که بود)
+    check("per_tick کارخونه‌ها نصف قبلیه (چوب 2 | آهن 2.5)",
+          config.FACTORIES["lumber"]["per_tick"] == 2 and config.FACTORIES["ironmill"]["per_tick"] == 2.5)
+    check("انبار هر لول کارخونه با نصف شدن تولید نصف شده (144 | 180)",
+          comp_svc.factory_stock_cap("lumber", 1) == 144 and comp_svc.factory_stock_cap("ironmill", 1) == 180
+          and comp_svc.factory_stock_cap("lumber", 10) == 1440
+          and comp_svc.factory_stock_cap("ironmill", 10) == 1800)
+    check("مدت پر شدن انبار کارخونه همون ۱۲ ساعته",
+          config.FACTORY_FILL_TICKS * config.FACTORY_TICK_SECONDS == 12 * 3600)
+    check("ظرفیت انبار بازیکن هنوز خروجی ۱۲ ساعت مکس کارخونه‌ها رو جا میده",
+          config.RES_WOOD_CAP_TABLE[10] >= 1440 and config.RES_IRON_CAP_TABLE[10] >= 1800)
+    async with session_scope() as s:
+        f21, _ = await users.get_or_create(s, tg(217723, "fac21", "کم‌تولید"))
+        f21.level = 8
+        f21.lumber_level = 1
+        f21.ironmill_level = 1
+        f21.lumber_stock = f21.ironmill_stock = 0
+        f21.company_at = now_utc() - timedelta(seconds=config.FACTORY_TICK_SECONDS * 3)
+        got21 = await comp_svc.settle(s, f21)
+        check("سه تیک لول۱ بعد نرف: چوب ۶ (دقیق) و آهن ۷ (کفِ ۷/۵)",
+              got21["wood"] == 6 and got21["iron"] == 7
+              and f21.lumber_stock == 6 and f21.ironmill_stock == 7, str(got21))
+        await s.commit()
+    tx21 = comp_svc.company_text(SimpleNamespace(wood=0, iron=0, lumber_level=1, ironmill_level=1,
+                                                 lumber_stock=0, ironmill_stock=0, level=8))
+    check("سرعت ساعتی صفحه شرکت نصف‌شده رو نشون میده (۱۲ چوب | ۱۵ آهن)",
+          "⚙️ سرعت تولید: 12 چوب در ساعت" in tx21 and "⚙️ سرعت تولید: 15 آهن در ساعت" in tx21,
+          tx21.replace("\n", " | ")[:300])
 
     # ── تمیزکاری ته تست‌ها ──
     fj_svc._MEMBER_CACHE.clear()

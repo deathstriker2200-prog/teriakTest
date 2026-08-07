@@ -68,10 +68,12 @@ def weapon_power(item_keys, user_level: int, user: User | None = None) -> int:
     return _effective_bonus(base, user_level)
 
 
-def combat_boost_pcts(user: User, item_keys, dogs: list) -> tuple[float, float]:
+def combat_boost_pcts(user: User, item_keys, dogs: list,
+                      team_atk: float = 0.0, team_def: float = 0.0) -> tuple[float, float]:
     """
     (جمع درصدهای بوست حمله، دفاع) روی مقدار اولیه، additive (درخواست کارفرما):
-    نژاد سگ (کانگال/دوبرمن) + آرتیفکت (قلب اژدها/سنگ نگهبان) + مهارت (قدرت/دفاع)
+    نژاد سگ (کانگال/دوبرمن) + آرتیفکت (قلب اژدها/سنگ نگهبان) + مهارت (قدرت/دفاع) + باف ساختمان تیم
+    team_atk/team_def راند ۱۹: فقط جاهایی که به دیتابیس دسترسی دارن پاس میدن (پروفایل و قدرت کل پی‌وی)
     مثلاً آرتیفکت ۱۰% با مهارت ۱۰% دیگه ۲۱% نمیشه، تمیز و خوانا ۲۰% میشه
     پروفایل همین رو به‌صورت یه درصد واحد کنار حمله/دفاع نشون میده
     """
@@ -80,7 +82,7 @@ def combat_boost_pcts(user: User, item_keys, dogs: list) -> tuple[float, float]:
     atk_p = dog_svc.trait_atk_pct(dogs) + (users.artifact_atk_mult(artis) - 1) + skill_pct(user, "power")
     def_p = dog_svc.trait_def_pct(dogs) + (users.artifact_def_mult(artis) - 1) + skill_pct(user, "defense")
     atk_p += energy_svc.drink_atk_boost(user)  # بمب انرژی (راند ۱۳): بوست موقت فقط روی حمله، پس تو پی‌وی فقط مهاجم سود می‌بره
-    return atk_p, def_p
+    return atk_p + team_atk, def_p + team_def
 
 
 def combat_raw_stats(user: User, item_keys, dogs: list) -> tuple[int, int]:
@@ -141,8 +143,3 @@ def best_armor_name(item_keys: list[str]) -> str | None:
         return None
     best = max(owned, key=lambda k: config.ARMORS[k]["defense"])
     return config.ARMORS[best]["name"]
-
-
-def has_legend_armor(item_keys: list[str]) -> bool:
-    """آیا زره افسانه‌ای داره؟، سکه دزدیده‌شده ازش نصف میشه"""
-    return any(config.ARMORS.get(k, {}).get("legendary") for k in item_keys)

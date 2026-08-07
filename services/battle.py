@@ -146,14 +146,11 @@ async def battle_powers(session: AsyncSession, attacker: User, target: User) -> 
 def roll_damage(atk: int, dfn: int, victim_max_hp: int) -> tuple[int, bool]:
     """
     (دمیج نهایی یه ضربه, کریتیکال بود؟)
-    فرمول درخواستی کارفرما (راند ۹): (حمله - دفاع حریف) ÷ BATTLE_DMG_DIVISOR
+    فرمول درخواستی کارفرما (راند ۱۹): هر ۱ حمله = ۱ دمیج، هر ۱ دفاع = ۱ کاهش، تهش ÷2
     بعد واریانس رندوم که نبرد هیجانی و غیرقابل پیش‌بینی بمونه
-    دمیج صفر دو حالت داره: دفاع ≥ نسبت کانفیگ برابر حمله (زیادی قدرتمنده) یا دفاع حریف
-    به‌بزرگی حمله‌ست که ضربه اصلاً نمی‌نشینه (هر دو پیام زیادی قدرتمنده رو میدن)
+    دفاع حریف به‌بزرگی حمله یا مساوی‌اش باشه ضربه اصلاً نمی‌نشینه (پیام زیادی قدرتمنده)
     کریتیکال با شانس کم دمیج نهایی رو چند برابر می‌کنه
     """
-    if dfn >= atk * config.BATTLE_NO_DAMAGE_DEF_RATIO:
-        return 0, False
     base = (atk - dfn) / config.BATTLE_DMG_DIVISOR
     if base < 1:
         return 0, False
@@ -182,10 +179,10 @@ def steal_for_hit(
 ) -> tuple[int, dict]:
     """
     مبلغ غارت یه ضربه بر اساس دمیج نسبت به HP کامل حریف
-    دمیج بیشتر، غارت بیشتر | مادیفایر سگ‌ها و زره افسانه‌ای اعمال میشه | سقف سخت پله موجودی
+    دمیج بیشتر، غارت بیشتر | مادیفایر سگ‌ها و آرتیفکت اعمال میشه | سقف سخت پله موجودی
     خروجی: (مبلغ, اطلاعات مادیفایرها)
     """
-    meta = {"bonus": 0.0, "cut": 0.0, "halved": False}
+    meta = {"bonus": 0.0, "cut": 0.0}
     if victim_cash <= 0 or dmg <= 0:
         return 0, meta
 
@@ -198,10 +195,6 @@ def steal_for_hit(
     if bonus:
         amount *= 1 + bonus
         meta["bonus"] = bonus
-
-    if combat.has_legend_armor(victim_items) and amount > 0:
-        amount *= 0.5
-        meta["halved"] = True
 
     amount = min(amount, victim_cash * cap_pct)
     return max(0, int(amount)), meta
@@ -253,8 +246,24 @@ async def execute_hit(session: AsyncSession, attacker: User, target: User) -> di
     hp_max = max_hp(target.level)
 
     dmg, crit = roll_damage(atk, dfn, hp_max)
+    # ── قابلیت زره ویژه 🛡 (زره‌های بخش ویژه، با لول ارتقای زره رشد می‌کنن) ──
+    armor_lines: list[str] = []
+    t_levels19 = await user_svc.get_item_levels(session, target.id)
+    akey19 = combat.armor_choice(target, t_levels19)
+    aabil = ((config.ARMORS.get(akey19) or {}).get("ability") if akey19 else None)
+    aname19 = ((config.ARMORS.get(akey19) or {}).get("name", "") if akey19 else "")
+    agrowth19 = 1 + config.SPECIAL_ABILITY_GROWTH * max(0, (t_levels19.get(akey19, 1) or 1) - 1)
+    # 🌑 زره خلأ: حمله گاهی کامل بلعیده میشه
+    if dmg > 0 and aabil and aabil["kind"] == "void" and random.random() < config.VOID_CHANCE * agrowth19:
+        armor_lines.append(f"{aname19} حمله رو قورت داد، اثری ازش نیس")
+        dmg = 0
+    # ☄️ زره نواترون: دمیج ورودی همیشه کمتر (رشد با لول تا سقف 90%)
+    if dmg > 0 and aabil and aabil["kind"] == "reduce":
+        cut19 = min(0.9, config.NEUTRON_CUT * agrowth19)
+        dmg = max(0, round(dmg * (1 - cut19)))
+        armor_lines.append(f"{aname19} ضربه رو له کرد، {fa_num(int(round(cut19 * 100)))}% دمیج کمتر")
     if dmg <= 0:
-        return {"ok": True, "nodmg": True, "a_pow": atk, "d_pow": dfn, "info": info}
+        return {"ok": True, "nodmg": True, "a_pow": atk, "d_pow": dfn, "info": info, "armor_lines": armor_lines}
 
     # ── قابلیت سلاح ویژه 🌟 (سلاح‌های لول ۱۶ به بعد، با لول ارتقای سلاح رشد می‌کنن) ──
     abil_lines: list[str] = []
@@ -291,6 +300,18 @@ async def execute_hit(session: AsyncSession, attacker: User, target: User) -> di
         _aline("🌑", f"تو تاریکی شب {_pc(bonus)}% دمیج بیشتر زد")
 
     target.hp = max(0, (target.hp or 0) - dmg)
+
+    # 🛡️ زره پلاسمایی: بخشی از دمیج به خود مهاجم برمی‌گرده (کشنده نیس)
+    if aabil and aabil["kind"] == "reflect" and dmg > 0:
+        back19 = min(max(0, (attacker.hp or 1) - 1), max(0, round(dmg * config.PLASMA_REFLECT * agrowth19)))
+        if back19 > 0:
+            attacker.hp = (attacker.hp or 1) - back19
+            armor_lines.append(f"{aname19} داشت، {fa_num(back19)} دمیج به خودت برگشت")
+
+    # 👑 زره خدایان: شانس نجات از ضربه مرگبار و موندن با ۱ HP
+    if target.hp <= 0 and aabil and aabil["kind"] == "godshield" and random.random() < config.GODS_SAVE_CHANCE * agrowth19:
+        target.hp = 1
+        armor_lines.append(f"برکت {aname19} نجاتش داد و با 1 HP موند")
 
     # 💀 سم: برای ضربه‌های بعدی حریف ضعیف‌تر میشه
     if kind == "poison" and random.random() < config.POISON_CHANCE * growth:
@@ -352,7 +373,7 @@ async def execute_hit(session: AsyncSession, attacker: User, target: User) -> di
         "a_pow": atk,
         "d_pow": dfn,
         "info": info,
-        "abil_lines": abil_lines,
+        "abil_lines": [*armor_lines, *abil_lines],
         "poison_self": bool(info.get("poison_self")),
     }
 

@@ -4,12 +4,18 @@
 /upload_backup → فایل رو می‌گیره، اعتبارسنجی می‌کنه و جایگزین می‌کنه (روی ولوم ذخیره میشه)
 """
 
+import asyncio
+import gzip
+import logging
 import os
 import sqlite3
 import tempfile
+from datetime import datetime
 
 import config
 import database
+
+logger = logging.getLogger(__name__)
 
 _MAGIC = b"SQLite format 3\x00"
 _REQUIRED_TABLES = {"users"}
@@ -94,3 +100,45 @@ async def restore_bytes(data: bytes) -> tuple[bool, str]:
     finally:
         if tmp and os.path.exists(tmp):
             os.remove(tmp)
+
+
+def dump_supported() -> bool:
+    """از دیتابیس فعلی میشه فایل بک‌آپ ساخت؟ sqlite با اسنپ‌شات | postgres با pg_dump"""
+    return backup_supported() or config.DATABASE_URL.startswith("postgresql")
+
+
+async def make_upload_payload() -> tuple[bytes, str] | None:
+    """
+    فایل نهایی بک‌آپ برای ارسال تو تلگرام: (بایت‌ها، اسم فایل) یا None اگه نشد
+    sqlite اسنپ‌شات VACUUM INTO می‌شه | postgres خروجی pg_dump فشرده (راند ۱۷، بک‌آپ خودکار روزانه)
+    """
+    stamp = datetime.now().strftime("%Y%m%d-%H%M")
+    if backup_supported():
+        try:
+            snap = await create_snapshot()
+        except FileNotFoundError:
+            return None
+        with open(snap, "rb") as f:
+            data = f.read()
+        try:  # فایل موقت اسنپ‌شات رو پاک کن، دیسک پر نشه
+            os.remove(snap)
+        except OSError:
+            pass
+        return data, f"{config.BACKUP_NAME}-{stamp}.db"
+    if config.DATABASE_URL.startswith("postgresql"):
+        # pg_dump آدرس خام libpq می‌خواد، اسم درایور asyncpg توش نباشه
+        dsn = config.DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://", 1)
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "pg_dump", dsn,
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+            )
+            out, err = await asyncio.wait_for(proc.communicate(), timeout=120)
+        except (FileNotFoundError, asyncio.TimeoutError) as e:
+            logger.warning("pg_dump برای بک‌آپ روزانه در دسترس نیس یا تایم‌اوت خورد: %s", e)
+            return None
+        if proc.returncode != 0:
+            logger.warning("pg_dump شکست خورد: %s", err.decode(errors="ignore")[:300])
+            return None
+        return gzip.compress(out), f"{config.BACKUP_NAME}-{stamp}.sql.gz"
+    return None

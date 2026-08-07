@@ -16,6 +16,7 @@ from models import GroupActivity
 from services import combat, dogs as dog_svc, farming, users
 from services import smuggle as smg
 from services import world as world_svc
+from services import casino as casino_svc
 from utils import bar, esc, fa_dur, fa_num, money, money_tp, now_utc
 
 
@@ -364,7 +365,19 @@ async def shelter_up_execute(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 # ═════════ قمارخانه 🎰 ═════════
 
+def _casino_home_text(cash: int) -> str:
+    games = "\n".join(f"{g['name']} → {g['desc']}" for g in casino_svc.GAMES.values())
+    return (
+        "<b>🎰 قمارخانه</b>\n\n"
+        f"یه بازی هر {fa_num(config.CASINO_COOLDOWN_MINUTES)} دقیقه\n"
+        f"💵 نقدینگی: {money(cash)}\n\n"
+        f"{games}\n\n"
+        "روی یه بازی بزن 🎲"
+    )
+
+
 async def casino_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """منوی بازی‌های قمارخانه (راند ۱۹: پنج بازی + تایم نیم‌ساعت، درخواست کارفرما)"""
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
         level, cash = user.level, user.cash
@@ -374,72 +387,212 @@ async def casino_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     if level < config.CASINO_MIN_LEVEL:
         return await respond(update, f"🔒 قمارخانه از لول {fa_num(config.CASINO_MIN_LEVEL)} باز میشه")
     if left:
-        return await respond(update, f"⏳ هر {fa_num(config.CASINO_COOLDOWN_HOURS)} ساعت یه دست می‌تونی بازی کنی، {fa_dur(left)} مونده")
+        return await respond(update, f"⏳ هر {fa_num(config.CASINO_COOLDOWN_MINUTES)} دقیقه یه بازی می‌تونی، {fa_dur(left)} مونده")
 
-    text = (
-        "<b>🎰 قمارخانه</b>\n\n"
-        f"شانس برد {fa_num(int(config.CASINO_WIN_CHANCE * 100))}% | برد = {config.CASINO_WIN_MULT} برابر شرط\n"
-        f"یه دست هر {fa_num(config.CASINO_COOLDOWN_HOURS)} ساعت\n"
-        f"💵 نقدینگی: {money(cash)}\n\n"
-        "میزتو انتخاب کن 🎲"
+    await respond(update, _casino_home_text(cash), kb.casino_games_kb())
+
+
+def _casino_win_text(res: dict) -> str:
+    name = casino_svc.GAMES[res["game"]]["name"]
+    extra = ""
+    if res.get("roll") is not None:
+        extra = f"🎲 تاس {fa_num(res['roll'])} اومد\n"
+    if res.get("seg") is not None:
+        extra = f"🎡 گردونه روی ×{fa_num(res['seg'])} وایساد\n"
+    return (
+        f"<b>{name} | زدی تو خال</b>\n\n"
+        f"{extra}"
+        f"💰 {money(res['prize'])} برنده شدی (×{fa_num(res['mult'])})\n\n"
+        f"💵 موجودی فعلی\n{money(res['cash'])}\n\n"
+        f"⏳ بازی بعدی\n{fa_num(config.CASINO_COOLDOWN_MINUTES)} دقیقه دیگه"
     )
-    await respond(update, text, kb.casino_kb())
 
 
-async def casino_bet_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    bet = int(parts(update)[2])
-    async with session_scope() as s:
-        user, _ = await users.get_or_create(s, update.effective_user)
-        cash = user.cash
-        left = world_svc.casino_cooldown_left(user)
-        await s.commit()
-
-    if left:
-        return await respond(update, f"⏳ {fa_dur(left)} دیگه می‌تونی بازی کنی")
-    if cash < bet:
-        return await respond(update, "❌ پولت به این میز نمی‌رسه")
-
-    prize = int(bet * config.CASINO_WIN_MULT)
-    text = (
-        f"<b>🎰 میز {money(bet)}</b>\n\n"
-        f"بردی → {money(prize)} جیبت میشه\n"
-        f"باختی → {money(bet)} میره رو دیلر\n"
-        f"شانس برد {fa_num(int(config.CASINO_WIN_CHANCE * 100))}%\n\n"
-        "قماره ها، بازی کنیم؟"
+def _casino_lose_text(res: dict) -> str:
+    name = casino_svc.GAMES[res["game"]]["name"]
+    extra = ""
+    if res.get("roll") is not None:
+        extra = f"🎲 تاس {fa_num(res['roll'])} اومد\n"
+    if res.get("seg") is not None:
+        extra = "🎡 گردونه روی ۰ وایساد\n"
+    if res.get("nxt") is not None:
+        extra = f"🃏 کارت {casino_svc.card_name(res['nxt'])} اومد و حدست غلط بود\n"
+    if res.get("level") is not None and res["game"] == "mines":
+        extra = f"💣 لول {fa_num(res['level'])} بمب گرفتی\n"
+    return (
+        f"<b>{name} | این دست شانس باهات یار نبود</b>\n\n"
+        f"{extra}"
+        f"💸 {money(res['bet'])} رو باختی\n\n"
+        f"💵 موجودی فعلی\n{money(res['cash'])}\n\n"
+        f"⏳ بازی بعدی\n{fa_num(config.CASINO_COOLDOWN_MINUTES)} دقیقه دیگه"
     )
-    await respond(update, text, kb.confirm_kb(f"cascf:{bet}"))
 
 
-async def casino_execute(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    bet = int(parts(update)[1])
-    async with session_scope() as s:
-        user, _ = await users.get_or_create(s, update.effective_user)
-        res = await world_svc.casino_play(s, user, bet)
-        await s.commit()
+def _card_screen(res: dict, user_cash: int) -> tuple[str, object]:
+    """صفحه جاری بازی کارت؛ دکمه بالا/پایین فقط اگه ممکن باشه"""
+    card = res["card"]
+    can_hi, can_lo = card < 14, card > 2
+    mult = res["mult"]
+    text = (
+        "<b>🃏 کارت بالا/پایین</b>\n\n"
+        f"🂠 کارت فعلی: <b>{casino_svc.card_name(card)}</b>\n"
+        f"✖️ ضریب الان: ×{fa_num(mult)} → کش‌اوت = {money(int(res['bet'] * mult))}\n\n"
+        "کارت بعدی بزرگتر میاد یا کوچیک‌تر؟"
+    )
+    return text, kb.casino_card_kb(can_hi, can_lo)
 
-    st = res["status"]
-    if st == "cooldown":
-        return await respond(update, f"⏳ {fa_dur(res['left'])} دیگه می‌تونی بازی کنی")
-    if st == "poor":
-        return await respond(update, "❌ پولت به این میز نمی‌رسه")
-    if st == "locked":
-        return await respond(update, f"🔒 قمارخانه از لول {fa_num(config.CASINO_MIN_LEVEL)} باز میشه")
 
-    if st == "win":
+def _mines_screen(state: dict, user_cash: int) -> tuple[str, object]:
+    lvl = state["level"]
+    total = len(config.CASINO_MINES_LEVELS)
+    nxt_p = config.CASINO_MINES_LEVELS[lvl][0] if lvl < total else 0
+    mult = casino_svc.mines_cashout_mult(lvl)
+    lines = [
+        "<b>💣 مین</b>",
+        "",
+        f"🚩 لول {fa_num(lvl)} از {fa_num(total)}",
+    ]
+    if lvl:
+        lines.append(f"💰 کش‌اوت الان: ×{fa_num(mult)} یعنی {money(int(state['bet'] * mult))}")
+    lines += [
+        "",
+        f"هشدار لول بعد: شانس بمب {fa_num(int(nxt_p * 100))}%",
+        "یکی از خونه‌ها بمبه، بقیش جایزه؛ هرچی جلوتر ضریب بیشتر و ریسک بیشتر",
+    ]
+    return "\n".join(lines), kb.casino_mines_kb(lvl)
+
+
+async def casino_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """روتر همه دکمه‌های قمارخانه: csg:* و cf:csg:go / cl:csg:* (راند ۱۹)"""
+    query = update.callback_query
+    data = query.data
+    if data.startswith("cl:"):
+        data = "csg:home"
+    elif data.startswith("cf:"):
+        data = data[3:]
+    if not data.startswith("csg:"):
+        return
+    parts = data.split(":")[1:]
+    act = parts[0]
+
+    if act == "home":
+        async with session_scope() as s:
+            user, _ = await users.get_or_create(s, update.effective_user)
+            cash = user.cash
+            await s.commit()
+        return await respond(update, _casino_home_text(cash), kb.casino_games_kb())
+
+    if act == "b":
+        game = parts[1]
+        g = casino_svc.GAMES.get(game)
+        if not g:
+            return
         text = (
-            "<b>🎰 زدی تو خال</b>\n\n"
-            f"💰 {money(res['prize'])} برنده شدی\n\n"
-            f"💵 موجودی فعلی\n{money(res['cash'])}\n\n"
-            f"⏳ دست بعدی\n{fa_num(config.CASINO_COOLDOWN_HOURS)} ساعت دیگه"
+            f"<b>{g['name']}</b>\n\n"
+            f"{g['desc']}\n\n"
+            "میزتو انتخاب کن 🎲"
         )
-    else:
+        return await respond(update, text, kb.casino_bets_kb(game))
+
+    if act == "bet":
+        game, bet = parts[1], int(parts[2])
+        g = casino_svc.GAMES.get(game)
+        if not g:
+            return
+        outs = {
+            "simple": f"بردی → {money(int(bet * config.CASINO_WIN_MULT))} جیبت میشه",
+            "dice": f"بردی → {money(int(bet * config.CASINO_DICE_MULT))} جیبت میشه",
+            "wheel": "گردونه می‌چرخه و هر ضریبی وایسه همون میشه",
+            "card": f"هر حدس درست ضریبت بزرگ‌تر میشه، سقفش {fa_num(config.CASINO_CARD_MAX_STEPS)} حدسه",
+            "mines": f"{fa_num(len(config.CASINO_MINES_LEVELS))} لول داره، قبل بمب کش‌اوت کن",
+        }
         text = (
-            "<b>🎰 این دست شانس باهات یار نبود</b>\n\n"
-            f"💸 {money(res['bet'])} رو باختی\n\n"
-            f"💰 موجودی فعلی\n{money(res['cash'])}\n\n"
-            f"⏳ دست بعدی\n{fa_num(config.CASINO_COOLDOWN_HOURS)} ساعت دیگه"
+            f"<b>{g['name']} | میز {money(bet)}</b>\n\n"
+            f"{outs[game]}\n"
+            f"باختی → {money(bet)} میره رو دیلر\n\n"
+            "قماره ها، بازی کنیم؟"
         )
-    await respond(update, text, kb.home_kb())
+        return await respond(update, text, kb.confirm_kb(f"csg:go:{game}:{bet}"))
+
+    if act == "go":
+        game, bet = parts[1], int(parts[2])
+        async with session_scope() as s:
+            user, _ = await users.get_or_create(s, update.effective_user)
+            res = await casino_svc.start(s, user, game, bet)
+            cash = user.cash
+            await s.commit()
+        st = res["status"]
+        if st == "cooldown":
+            async with session_scope() as s2:
+                user2, _ = await users.get_or_create(s2, update.effective_user)
+                left = world_svc.casino_cooldown_left(user2)
+            return await respond(update, f"⏳ {fa_dur(left)} دیگه می‌تونی بازی کنی")
+        if st == "poor":
+            return await respond(update, "❌ پولت به این میز نمی‌رسه")
+        if st == "locked":
+            return await respond(update, f"🔒 قمارخانه از لول {fa_num(config.CASINO_MIN_LEVEL)} باز میشه")
+        if st in ("win", "lose"):
+            txt = _casino_win_text(res) if st == "win" else _casino_lose_text(res)
+            return await respond(update, txt, kb.home_kb())
+        if st == "started" and res.get("card") is not None:
+            txt, markup = _card_screen(res, cash)
+            return await respond(update, txt, markup)
+        if st == "started":
+            txt, markup = _mines_screen(res, cash)
+            return await respond(update, txt, markup)
+        return await respond(update, "❌ این بازی الان در دسترس نیس")
+
+    if act in ("hi", "lo"):
+        async with session_scope() as s:
+            user, _ = await users.get_or_create(s, update.effective_user)
+            res = await casino_svc.card_step(s, user, act)
+            cash = user.cash
+            await s.commit()
+        if res["status"] == "no_game":
+            return await query.answer("⌛ این بازی تموم شده، از قمارخانه یه بازی تازه بزن", show_alert=True)
+        if res["status"] in ("win", "lose"):
+            txt = _casino_win_text(res) if res["status"] == "win" else _casino_lose_text(res)
+            return await respond(update, txt, kb.home_kb())
+        txt, markup = _card_screen(res, cash)
+        return await respond(update, txt, markup)
+
+    if act == "cell":
+        async with session_scope() as s:
+            user, _ = await users.get_or_create(s, update.effective_user)
+            res = await casino_svc.mines_step(s, user)
+            cash = user.cash
+            await s.commit()
+        if res["status"] == "no_game":
+            return await query.answer("⌛ این بازی تموم شده، از قمارخانه یه بازی تازه بزن", show_alert=True)
+        if res["status"] in ("win", "lose"):
+            txt = _casino_win_text(res) if res["status"] == "win" else _casino_lose_text(res)
+            return await respond(update, txt, kb.home_kb())
+        txt, markup = _mines_screen(res, cash)
+        return await respond(update, txt, markup)
+
+    if act == "out":
+        async with session_scope() as s:
+            user, _ = await users.get_or_create(s, update.effective_user)
+            res = await casino_svc.cash_out(s, user)
+            await s.commit()
+        if res["status"] == "no_game":
+            return await query.answer("⌛ بازی فعالی نداری", show_alert=True)
+        if res["prize"] == res["bet"]:
+            txt = (
+                f"<b>{casino_svc.GAMES[res['game']]['name']} | کش‌اوت سر جا</b>\n\n"
+                f"هنوز جلو نرفته بودی، شرطت {money(res['bet'])} برگشت جیبت\n"
+                f"💵 موجودی: {money(res['cash'])}"
+            )
+        else:
+            auto_line = "خودکار تو آخرین مرحله | " if res.get("auto") else ""
+            txt = (
+                f"<b>{casino_svc.GAMES[res['game']]['name']} | 💰 کش‌اوت موفق</b>\n\n"
+                f"{auto_line}×{fa_num(res['mult'])} اومدی بیرون\n"
+                f"💰 {money(res['prize'])} جیبت شد\n\n"
+                f"💵 موجودی فعلی\n{money(res['cash'])}\n\n"
+                f"⏳ بازی بعدی\n{fa_num(config.CASINO_COOLDOWN_MINUTES)} دقیقه دیگه"
+            )
+        return await respond(update, txt, kb.home_kb())
 
 
 # ═════════ کاروان 🚛، دکمه حمله تو گروه ═════════

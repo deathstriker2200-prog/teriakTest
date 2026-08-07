@@ -30,6 +30,7 @@ noop:<context>              → دکمه‌های اطلاعاتی
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 import config
+from services import casino as casino_svc
 from models import Dog, Plot, User
 from services import economy
 from services.dogs import dog_xp_need
@@ -502,19 +503,35 @@ def shop_weap_kb(user: User, owned: set[str], sec: str = "cold") -> InlineKeyboa
     return InlineKeyboardMarkup(rows)
 
 
-def shop_arm_kb(user: User, owned: set[str]) -> InlineKeyboardMarkup:
+def shop_arm_sections_kb(user: User) -> InlineKeyboardMarkup:
+    """دو دسته زره معمولی | ویژه (راند ۱۹)، تا لول به زره‌های یه بخش نرسه قفل قرمزه"""
+    rows = []
+    for sec, sc in config.ARMOR_SECTIONS.items():
+        keys = [key for key, a in config.ARMORS.items() if a.get("sec", "normal") == sec]
+        if not keys:
+            continue
+        minlvl = min(config.ARMORS[key]["min_level"] for key in keys)
+        if user.level < minlvl:
+            rows.append([_btn(f"🔒 {sc['emoji']} {sc['name']} به لول {fa_num(minlvl)}", "noop:lock", DANGER)])
+        else:
+            rows.append([_btn(f"{sc['emoji']} {sc['name']}", f"shop:sec:a{sec}", SUCCESS)])
+    rows.append([_btn("⬆️ ارتقای زره", "shop:sec:aup", PRIMARY)])
+    rows.append([_btn("🔙 بخش‌های شاپ", "menu:shop", PRIMARY)])
+    return InlineKeyboardMarkup(rows)
+
+
+def shop_arm_kb(user: User, owned: set[str], sec: str = "normal") -> InlineKeyboardMarkup:
     rows = []
     for key, a in config.ARMORS.items():
+        if a.get("sec", "normal") != sec:
+            continue
         if key in owned:
             rows.append([_btn(f"✅ {a['name']}", "noop:own", None)])
         elif user.level < a["min_level"]:
             rows.append([_btn(f"🔒 {a['name']} به لول {fa_num(a['min_level'])}", "noop:lock", DANGER)])
         else:
-            rows.append([_btn(
-                f"🛡 {a['name']}",
-                f"shop:buy:arm:{key}", SUCCESS,
-            )])
-    rows.append([_btn("⬆️ ارتقای زره", "shop:sec:aup", PRIMARY)])
+            rows.append([_btn(f"{a['name']}", f"shop:buy:arm:{key}", SUCCESS)])
+    rows.append([_btn("🔙 زره‌ها", "shop:sec:arm", PRIMARY)])
     rows.append([_btn("🔙 بخش‌های شاپ", "menu:shop", PRIMARY)])
     return InlineKeyboardMarkup(rows)
 
@@ -726,6 +743,7 @@ def team_kb(is_owner: bool = False, is_manager: bool = False) -> InlineKeyboardM
          _btn("🏦 بانک تیم", "team:bank", PRIMARY)],
         [_btn("🏆 لیدربرد", "team:top", PRIMARY)],
     ]
+    rows.append([_btn("💬 چت تیم", "tc:page", PRIMARY)])  # راند ۲۰
     if is_manager:
         rows.append([_btn("👑 مدیریت تیم", "team:mng", PRIMARY)])
     if is_owner:
@@ -1075,11 +1093,43 @@ def buyres_confirm_kb(res: str, qty: int) -> InlineKeyboardMarkup:
 
 # ───────── قمارخانه 🎰 ─────────
 
-def casino_kb() -> InlineKeyboardMarkup:
+def casino_games_kb() -> InlineKeyboardMarkup:
+    """راند ۱۹: پنج بازی قمار، هرکدوم صفحه و قانون خودشون رو دارن"""
+    rows = []
+    for gkey, g in casino_svc.GAMES.items():
+        rows.append([_btn(g["name"], f"csg:b:{gkey}", SUCCESS)])
+    rows.append([_btn("🏠 منوی اصلی", "menu:home", PRIMARY)])
+    return InlineKeyboardMarkup(rows)
+
+
+def casino_bets_kb(game: str) -> InlineKeyboardMarkup:
     rows = []
     for bet in config.CASINO_BETS:
-        rows.append([_btn(f"🎲 میز {money_tp(bet)} | برد {money_tp(int(bet * config.CASINO_WIN_MULT))}", f"cas:bet:{bet}", SUCCESS)])
-    rows.append([_btn("🏠 منوی اصلی", "menu:home", PRIMARY)])
+        rows.append([_btn(f"🎲 میز {money_tp(bet)}", f"csg:bet:{game}:{bet}", SUCCESS)])
+    rows.append([_btn("🔙 بازی‌ها", "csg:home", PRIMARY)])
+    return InlineKeyboardMarkup(rows)
+
+
+def casino_card_kb(can_hi: bool, can_lo: bool) -> InlineKeyboardMarkup:
+    """کارت بالا/پایین: حدس بعدی یا کش‌اوت"""
+    row = []
+    if can_hi:
+        row.append(_btn("⬆️ بالاتر", "csg:hi", SUCCESS))
+    if can_lo:
+        row.append(_btn("⬇️ پایین‌تر", "csg:lo", DANGER))
+    return InlineKeyboardMarkup([
+        row,
+        [_btn("💰 کش‌اوت و برداشت", "csg:out", PRIMARY)],
+    ])
+
+
+def casino_mines_kb(level: int) -> InlineKeyboardMarkup:
+    """سه خونه هر لول + کش‌اوت؛ شماره خونه فقط برای حس انتخابه"""
+    cells = config.CASINO_MINES_CELLS
+    row = [_btn(f"🕳 خونه {fa_num(i + 1)}", f"csg:cell:{i}", PRIMARY) for i in range(cells)]
+    rows = [row]
+    if level > 0:
+        rows.append([_btn("💰 کش‌اوت و برداشت", "csg:out", SUCCESS)])
     return InlineKeyboardMarkup(rows)
 
 
@@ -1107,4 +1157,13 @@ def broadcast_mode_kb(scope: str, chat_id: str, msg_id: str) -> InlineKeyboardMa
         [_btn("📤 فوروارد", f"bcm:f:{scope}:{chat_id}:{msg_id}", PRIMARY)],
         [_btn("✉️ ارسال متن", f"bcm:t:{scope}:{chat_id}:{msg_id}", PRIMARY)],
         [_btn("❌ لغو", "bcc", DANGER)],
+    ])
+
+
+def team_chat_kb() -> InlineKeyboardMarkup:
+    """راند ۲۰: ارسال پیام به چت تیم + بروزرسانی + برگشت"""
+    return InlineKeyboardMarkup([
+        [_btn("✉️ ارسال پیام", "tc:send", SUCCESS)],
+        [_btn("🔄 بروزرسانی", "tc:ref", PRIMARY),
+         _btn("🔙 تیم من", "tc:back", PRIMARY)],
     ])

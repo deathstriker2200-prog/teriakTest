@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 import config
 from models import GameMeta, ProductStock, Shipment, User
-from utils import fa_dur, fa_num, money, now_utc
+from utils import esc, fa_dur, fa_num, money, now_utc
 
 
 # ═════════ انبار محصول 🌾 ═════════
@@ -183,6 +183,10 @@ async def process_due_shipments(session: AsyncSession) -> list[dict]:
         if not user:
             await session.delete(sh)
             continue
+        # منتشن لینک‌دار صاحب محموله (راند ۲۰، درخواست کارفرما)
+        from services import users as users_svc
+        men = f'<a href="tg://user?id={user.telegram_id}">{esc(users_svc.display_name(user))}</a>'
+
         sd = config.SEEDS.get(sh.crop, {})
         name = sd.get("name", sh.crop)
         emoji = sd.get("emoji", "📦")
@@ -209,6 +213,7 @@ async def process_due_shipments(session: AsyncSession) -> list[dict]:
         if sh.outcome == "police":
             text = (
                 "<b>🚔 پلیس بخشی از محموله رو توقیف کرد</b>\n\n"
+            f"👤 {men}\n"
                 f"{emoji} {name} ×{fa_num(sh.qty)}\n"
                 f"💰 فقط {fa_num(int(config.SHIPMENT_POLICE_PAY * 100))}% ارزش محموله پرداخت شد\n\n"
                 f"💵 {money(sh.pay)} گرفتی"
@@ -216,6 +221,7 @@ async def process_due_shipments(session: AsyncSession) -> list[dict]:
         elif sh.outcome == "delayed":
             text = (
                 "<b>✅ محموله با تأخیر رسید</b>\n\n"
+            f"👤 {men}\n"
                 f"🚛 راننده مسیر رو عوض کرده بود ولی تحویل داده شد\n"
                 f"{emoji} {name} ×{fa_num(sh.qty)} تحویل داده شد\n\n"
                 f"💵 {money(sh.pay)} گرفتی"
@@ -223,6 +229,7 @@ async def process_due_shipments(session: AsyncSession) -> list[dict]:
         else:
             text = (
                 "<b>✅ محموله سالم رسید</b>\n\n"
+            f"👤 {men}\n"
                 f"{emoji} {name} ×{fa_num(sh.qty)} تحویل داده شد\n\n"
                 f"💵 {money(sh.pay)} گرفتی"
             )

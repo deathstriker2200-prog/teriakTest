@@ -39,7 +39,7 @@ async def on_start(app: Application) -> None:
         BotCommand("profile", "🏠 پروفایلت"),
         BotCommand("help", "📖 آموزشات بازی"),
         BotCommand("heal", "❤️ درمان و برگردوندن سلامت"),
-        BotCommand("energy", "⚡ تی انرژی و بستن انرژی‌زا"),
+        BotCommand("energy", "⚡ انرژی‌زا و برگشت انرژی"),
         BotCommand("shop", "🛒 فروشگاه"),
         BotCommand("botoff", "🔌 خاموش کردن ربات تو گروه (ادمین گروه)"),
         BotCommand("boton", "🔌 روشن کردن ربات تو گروه (ادمین گروه)"),
@@ -56,10 +56,16 @@ def _safe_db() -> str:
 
 
 def main() -> None:
+    _dk = getattr(config, "DOTENV_KEYS", [])
+    if _dk:
+        print(f"⚙️ {len(_dk)} متغیر از فایل .env لود شد: {', '.join(sorted(_dk))}")
+    else:
+        print("ℹ️ فایل .env لود نشد (نیس یا خالی/همه‌ش قبلاً تو محیط بود) | فقط متغیرهای محیط")
+    print(f"🔑 منبع توکن: {config.TOKEN_SOURCE}")
     if not config.BOT_TOKEN:
         raise SystemExit(
             "❌ توکن ربات پیدا نشد\n"
-            "متغیر محیطی TERIAKY_TOKEN رو تنظیم کن — نمونه توی .env.example هست"
+            "متغیر TERIAKY_TOKEN رو توی فایل .env کنار پروژه پر کن (یا: python3 teriaky_set.py TERIAKY_TOKEN <توکن>)، خودش خودکار خونده میشه"
         )
 
     app = (

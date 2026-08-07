@@ -217,7 +217,10 @@ async def attack_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         return await respond(update, "😅 خودتو نزن رفیق")
 
     if result.get("nodmg"):
-        return await respond(update, nodmg_text(target_name))
+        extra = ""
+        for line in result.get("armor_lines") or []:
+            extra += f"\n{line}"
+        return await respond(update, nodmg_text(target_name) + extra)
 
     await respond(update, hit_text(result, target_name))
     # لول‌آپ به‌صورت پیام جدا میاد

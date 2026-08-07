@@ -9,7 +9,7 @@ import config
 from database import session_scope
 from handlers.common import strip_home
 from keyboards import keyboards as kb
-from models import User
+from models import Team, User
 from services import combat, dogs as dog_svc, economy, farming, users
 from utils import bar, esc, fa_num, jalali_str, money, short_name
 
@@ -23,10 +23,14 @@ async def _profile_caption(session, user) -> str:
     item_keys = await users.get_item_keys(session, user.id)
     lvls = await users.get_item_levels(session, user.id)
     user_dogs = await dog_svc.get_user_dogs(session, user.id)
-    atk, dfn = combat.combat_stats(user, item_keys, user_dogs)
-    # درصد بوستها همه additive یه‌جا (نژاد سگ + آرتیفکت + مهارت)، مثل 458(+20%)
+    from services import teams as team_svc
+    _tm = await team_svc.get_membership(session, user.id)
+    _tb_atk = team_svc.atk_bonus(await session.get(Team, _tm.team_id)) if _tm else 0.0
+    _tb_def = team_svc.def_bonus(await session.get(Team, _tm.team_id)) if _tm else 0.0
+    atk, dfn = combat.combat_stats(user, item_keys, user_dogs, _tb_atk, _tb_def)
+    # درصد بوستها همه additive یه‌جا (نژاد سگ + آرتیفکت + مهارت + ساختمان تیم)، مثل 458(+20%)
     # سلاح و زره عدد ثابتن و توی درصد نمیان که عدد باگ نده
-    atk_p, def_p = combat.combat_boost_pcts(user, item_keys, user_dogs)
+    atk_p, def_p = combat.combat_boost_pcts(user, item_keys, user_dogs, _tb_atk, _tb_def)
     atk_pct = round(atk_p * 100)
     dfn_pct = round(def_p * 100)
     atk_line = f"💪 حمله: {fa_num(atk)}" + (f"(+{fa_num(atk_pct)}%)" if atk_pct > 0 else "")
@@ -36,10 +40,9 @@ async def _profile_caption(session, user) -> str:
     growing = sum(1 for p in plots if p.current_status()[0] == "growing")
     ready = sum(1 for p in plots if p.current_status()[0] == "ready")
 
-    rank = (await session.execute(
-        select(func.count(User.id)).where(User.cash > user.cash)
-    )).scalar_one() + 1
-    total = (await session.execute(select(func.count(User.id)))).scalar_one()
+    # راند ۱۹ (باگ گزارش‌شده کارفرما): رتبه بر اساس مدال کلی درسته، نه پول نقد
+    rank = await users.medal_rank(session, user, "all")
+    total = (await session.execute(select(func.count(User.id)).where(User.lb_hidden == 0))).scalar_one()
 
     name = esc(short_name(users.display_name(user)))
     uname = f"@{esc(user.username)}" if user.username else "بدون یوزرنیم"
@@ -87,6 +90,7 @@ async def _profile_caption(session, user) -> str:
         f"<b>⚔️ آمار</b>\n"
         f"{atk_line}\n"
         f"{dfn_line}\n"
+        f"🏋 قدرت کل: {fa_num(atk + dfn)}\n"
         f"✅ برد: {fa_num(user.wins)} | ❌ باخت: {fa_num(user.losses)}"
     )
 

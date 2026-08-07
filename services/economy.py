@@ -149,3 +149,9 @@ def mine_roll() -> int:
     if random.random() < config.MINE_COMMON_WEIGHT:
         return random.randint(config.MINE_MIN, config.MINE_COMMON_MAX)
     return random.randint(config.MINE_COMMON_MAX + 1, config.MINE_MAX)
+
+
+def gear_ability_pct_now(ability: dict, level: int) -> float:
+    """درصد مؤثر قابلیت ویژه سلاح/زره در لول فعلی (با رشد SPECIAL_ABILITY_GROWTH)"""
+    base = ability.get("pct") or ability.get("chance") or ability.get("bonus") or ability.get("leech") or 0.0
+    return base * (1 + config.SPECIAL_ABILITY_GROWTH * max(0, (level or 1) - 1))

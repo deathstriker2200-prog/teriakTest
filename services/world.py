@@ -545,7 +545,7 @@ async def do_search(session: AsyncSession, user: User, luck: float = 1.0) -> dic
 def casino_cooldown_left(user: User) -> int:
     if not user.last_casino_at:
         return 0
-    cd = config.CASINO_COOLDOWN_HOURS * 3600
+    cd = config.CASINO_COOLDOWN_MINUTES * 60  # راند ۱۹: نیم‌ساعتی (درخواست کارفرما)
     left = cd - (now_utc() - user.last_casino_at).total_seconds()
     return max(0, int(left))
 

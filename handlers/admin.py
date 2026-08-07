@@ -885,6 +885,10 @@ async def _stats_text(bot=None) -> str:
         new_d = (await s.execute(
             select(func.count(User.id)).where(User.created_at >= day_ago)
         )).scalar() or 0
+        # راند ۱۹ (درخواست کارفرما): پلیرای جدید یک ساعت اخیر هم جدا
+        new_h = (await s.execute(
+            select(func.count(User.id)).where(User.created_at >= hour_ago)
+        )).scalar() or 0
         groups_active_h = (await s.execute(
             select(func.count(GroupActivity.chat_id)).where(GroupActivity.last_active_at >= hour_ago)
         )).scalar() or 0
@@ -1004,7 +1008,8 @@ async def _stats_text(bot=None) -> str:
         "<b>👥 بازیکنان</b>",
         f"⚡️ فعال ۱ ساعت اخیر: {fa_num(active_h)}",
         f"👤 فعال ۲۴ ساعت اخیر: {fa_num(active_d)}",
-        f"🆕 بازیکنان جدید: {fa_num(new_d)}",
+        f"🌱 جدید ۱ ساعت اخیر: {fa_num(new_h)}",
+        f"🆕 جدید ۲۴ ساعت اخیر: {fa_num(new_d)}",
         f"🌍 کل بازیکنان: {fa_num(users_n)}",
         f"📈 نرخ فعالیت: %{fa_num(rate)}",
         "",
@@ -1042,6 +1047,18 @@ async def _stats_text(bot=None) -> str:
                 f"پلیرای فعال: {fa_num(players_in.get(g.chat_id, 0))}"
                 f" | تعداد دستورات 1ساعت اخیر: {fa_num(g.msgs_hour or 0)}"
             )
+    # 🖥 مصرف سرور (راند ۱۷، درخواست کارفرما) | روی غیرلینوکس سکشن اصلاً نمیاد
+    from services import sysinfo as _sysinfo
+    usage = _sysinfo.server_usage()
+    if usage:
+        lines += [
+            "",
+            "<b>🖥 سرور</b>",
+            f"⚙️ CPU {fa_num(usage['cpu_pct'])}% | لود {usage['load1']:.2f} روی {fa_num(usage['cores'])} هسته",
+            f"🧠 رم {usage['mem_used_gb']} از {usage['mem_total_gb']} گیگ ({fa_num(usage['mem_pct'])}%)",
+            f"💽 دیسک {usage['disk_used_gb']} از {usage['disk_total_gb']} گیگ ({fa_num(usage['disk_pct'])}%)",
+            f"⏱ آپتایم: {usage['uptime_fa']}",
+        ]
     lines += [
         "",
         "⏱️ آمار زنده‌ست، با 🔃 به‌روزرسانی میشه",

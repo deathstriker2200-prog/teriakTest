@@ -128,7 +128,9 @@ _LEGACY_SEEDS = {"koka": "peyote", "ghat": "teriak"}
 
 
 def _ensure_columns(sync_conn) -> None:
-    """اگه دیتابیس قدیمی ستون جدید نداشت، با ALTER TABLE اضافه‌ش کن"""
+    """اگه دیتابیس قدیمی ستون جدید نداشت، با ALTER TABLE اضافه‌ش کن (فقط SQLite؛ تو Postgres اسکیما از create_all کامله)"""
+    if sync_conn.dialect.name != "sqlite":
+        return
     from sqlalchemy import text
 
     for table, cols in _NEW_COLUMNS.items():

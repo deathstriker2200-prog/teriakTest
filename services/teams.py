@@ -1072,3 +1072,62 @@ async def team_deposit(session: AsyncSession, user: User, amount: int) -> tuple[
     user.cash -= amount
     team.bank += amount
     return True, f"🏦 {money(amount)} به بانک تیم «{team.name}» واریز شد، دستت درد نکنه رفیق 🙏"
+
+
+# ═════════ چت داخلی تیم 💬 (راند ۲۰، درخواست کارفرما) ═════════
+
+_ROLE_EMOJI = {"owner": "👑", "admin": "⭐"}
+_ROLE_FA = {"owner": "رهبر", "admin": "ادمین"}
+
+
+async def chat_post(session: AsyncSession, user, text: str) -> tuple[bool, str]:
+    """فرستادن پیام به چت تیم | فقط اعضا، متن سقف ۳۰۰ کاراکتر، فقط آخرین N پیام نگه‌داشته میشه"""
+    from models import TeamChatMessage
+    from sqlalchemy import delete as sql_delete
+
+    m = await get_membership(session, user.id)
+    if not m:
+        return False, "🏴 اصلا تو تیمی نیستی که"
+    text = (text or "").strip()
+    if not text:
+        return False, "✉️ یه چیزی بنویس تا تو چت بفرستم"
+    text = text[:300]
+    from services import users as users_svc
+    session.add(TeamChatMessage(
+        team_id=m.team_id, user_tg=user.telegram_id,
+        name=users_svc.display_name(user)[:60], role=m.role or "member", text=text,
+    ))
+    await session.flush()
+    keep = list((await session.execute(
+        select(TeamChatMessage.id).where(TeamChatMessage.team_id == m.team_id)
+        .order_by(TeamChatMessage.id.desc()).limit(config.TEAM_CHAT_HISTORY)
+    )).scalars())
+    if keep:
+        await session.execute(
+            sql_delete(TeamChatMessage).where(
+                TeamChatMessage.team_id == m.team_id, TeamChatMessage.id.notin_(keep)
+            )
+        )
+    return True, "به چت تیم رفت"
+
+
+async def chat_page(session: AsyncSession, team) -> str:
+    """متن صفحه چت تیم: آخرین پیام‌ها با ایموجی نقش فرستنده (راند ۲۰)"""
+    from models import TeamChatMessage
+    from utils import esc
+
+    rows = list((await session.execute(
+        select(TeamChatMessage).where(TeamChatMessage.team_id == team.id)
+        .order_by(TeamChatMessage.id.desc()).limit(config.TEAM_CHAT_HISTORY)
+    )).scalars())
+    rows.reverse()  # از قدیمی به جدید مثل چت واقعی
+    lines = [f"<b>💬 چت تیم «{esc(team.name)}»</b>", ""]
+    if not rows:
+        lines.append("هنوز حرفی زده نشده، اولین نفر باش 🎤")
+    for r in rows:
+        role = r.role or "member"
+        em = _ROLE_EMOJI.get(role, "👤")
+        tag = f"({_ROLE_FA.get(role)})" if role in _ROLE_FA else ""
+        lines.append(f"{em}‌ {esc(r.name)}{tag}: {esc(r.text)}")
+    lines += ["", "✉️ برای فرستادن پیام دکمه «ارسال پیام» رو بزن"]
+    return "\n".join(lines)

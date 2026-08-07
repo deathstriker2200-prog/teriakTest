@@ -320,6 +320,47 @@ async def track_summary_job(context: ContextTypes.DEFAULT_TYPE) -> None:
             await s.commit()
 
 
+async def daily_backup_job(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    بک‌آپ خودکار روزانه (راند ۱۷، درخواست کارفرما): هر روز ۴ صبح به‌وقت ایران
+    فایل دیتابیس به چت ست‌شده با TERIAKY_DAILY_BACKUP_CHAT_ID میره، صفر یعنی خاموش
+    هیچ خطایی جاب رو نمی‌خوابونه و به چت خبر خطاش هم می‌ره
+    """
+    chat_id = int(config.DAILY_BACKUP_CHAT_ID or 0)
+    if not chat_id:
+        return
+    import io
+    from telegram import InputFile
+    from services import backup as backup_svc
+    from utils import fa_num, now_iran
+
+    try:
+        payload = await backup_svc.make_upload_payload()
+    except Exception as e:
+        logger.warning("ساخت بک‌آپ خودکار روزانه شکست خورد: %s", e)
+        payload = None
+
+    ir = now_iran()
+    stamp = f"{ir.year}/{ir.month:02d}/{ir.day:02d} ساعت {ir.hour:02d}:{ir.minute:02d}"
+    if not payload:
+        try:
+            await context.bot.send_message(
+                chat_id, f"❌ بک‌آپ خودکار روزانه نشد ({stamp} به‌وقت ایران)، لاگ سرور رو چک کن"
+            )
+        except Exception as e:
+            logger.debug("خبر خطای بک‌آپ روزانه به چت نرسید: %s", e)
+        return
+
+    data, fname = payload
+    caption = f"🗄 بک‌آپ خودکار روزانه تریاکی\n📅 {stamp} به‌وقت ایران"
+    try:
+        await context.bot.send_document(
+            chat_id, document=InputFile(io.BytesIO(data), filename=fname), caption=caption,
+        )
+    except Exception as e:
+        logger.warning("ارسال بک‌آپ خودکار روزانه شکست خورد: %s", e)
+
+
 def register_jobs(app) -> None:
     """ثبت جاب‌های دوره‌ای روی JobQueue، بدون دیپندنسی جاب پاکش میشه"""
     jq = getattr(app, "job_queue", None)
@@ -342,6 +383,13 @@ def register_jobs(app) -> None:
     if config.ADMIN_LOG_CHAT_ID:
         jq.run_repeating(track_summary_job, interval=config.TRACK_SUMMARY_SECONDS,
                          first=config.TRACK_SUMMARY_SECONDS, name="track-summary")
+    # بک‌آپ خودکار روزانه به چت ادمین، ساعت ۴ صبح به‌وقت ایران (راند ۱۷؛ chat id صفر یعنی خاموش)
+    if config.DAILY_BACKUP_CHAT_ID:
+        from datetime import time as _dt_time, timezone as _tz
+        _iran_tz = _tz(timedelta(hours=3, minutes=30))
+        jq.run_daily(daily_backup_job, time=_dt_time(
+            config.DAILY_BACKUP_HOUR_IRAN, config.DAILY_BACKUP_MINUTE_IRAN, tzinfo=_iran_tz
+        ), name="daily-backup")
     # ادیت خودکار آخرین پیام آمار ادمین، هر ۱ ساعت یه بار (سبک، فشار به سرور نمیاره)
     from handlers.admin import stats_autoedit_job
     jq.run_repeating(

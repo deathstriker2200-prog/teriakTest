@@ -16,13 +16,14 @@ from telegram import Update
 from telegram.constants import ParseMode
 from telegram.error import BadRequest
 from telegram.ext import ContextTypes
+from sqlalchemy import select
 
 import config
 from database import session_scope
 from handlers.common import chat_id_of, has_prefix, parts, respond, strip_bot_cmd, strip_home
 from keyboards import keyboards as kb
 from models import TeamMember, TeamRequest, User
-from services import teams, users
+from services import combat, dogs as dog_svc, teams, users
 from utils import bar, esc, fa_dur, fa_num, jalali_str, money, money_tp, parse_amount
 
 
@@ -202,6 +203,12 @@ async def team_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     if arg in ("من", "خودم"):
         return await render_my_team(update)
+
+    if arg in ("اعضا", "عضو", "members"):
+        return await team_members_text(update)
+
+    if arg in ("چت", "chat"):
+        return await team_chat_render(update)
 
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
@@ -914,7 +921,13 @@ async def render_requests(update: Update, alert: str | None = None) -> None:
     else:
         for i, (r, u) in enumerate(reqs, 1):
             uname = f" | @{u.username}" if u.username else ""
-            lines.append(f"{fa_num(i)}. 👤 {esc(users.display_name(u))}{uname} | ⭐ لول {fa_num(u.level)}")
+            lines.append(f"{fa_num(i)}. 👤 {esc(users.display_name(u))}{uname}")
+            items_i = await users.get_item_levels(s, u.id)
+            dogs_i = await dog_svc.get_user_dogs(s, u.id)
+            atk_i, dfn_i = combat.combat_stats(u, items_i, dogs_i)
+            lines.append(
+                f"⭐ لول {fa_num(u.level)} | 🎖 مدال {fa_num(u.medals)} | 💥 قدرت کل {fa_num(atk_i + dfn_i)}"
+            )
         lines += [
             "",
             "با دکمه‌ها قبول یا ردشون کن",
@@ -1236,3 +1249,66 @@ async def team_admin_text(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         )
     await _dm(context, target_tg, f"<b>👤 مدیریتت تو تیم «{tname}» گرفته شد</b>")
     await respond(update, f"<b>👤 «{name}» دیگه مدیر نیس</b>", kb.team_back_kb())
+
+
+# ═════════ 👥 اعضای تیم (راند ۲۰، درخواست کارفرما) ═════════
+
+async def team_members_text(update: Update) -> None:
+    """«تیم اعضا» لیست اعضا با نقش و آیدی عددی و یوزرنیم"""
+    async with session_scope() as s:
+        user, _ = await users.get_or_create(s, update.effective_user)
+        m = await teams.get_membership(s, user.id)
+        team = await teams.get_team_of(s, user.id)
+        if not m or not team:
+            await s.commit()
+            return await respond(update, "🏴 اصلا تو تیمی نیستی که")
+        rows = (await s.execute(
+            select(TeamMember, User).join(User, User.id == TeamMember.user_id)
+            .where(TeamMember.team_id == team.id).order_by(TeamMember.joined_at)
+        )).all()
+        await s.commit()
+
+    lines = [f"<b>👥 اعضای «{esc(team.name)}» ({fa_num(len(rows))})</b>", ""]
+    for i, (mem, u) in enumerate(rows, 1):
+        em = "👑" if mem.role == "owner" else ("⭐" if mem.role == "admin" else "👤")
+        uname = f"@{esc(u.username)}" if u.username else "بدون یوزرنیم"
+        lines.append(f"{fa_num(i)}. {em} {esc(users.display_name(u))} | {uname} | آیدی: {u.telegram_id}")
+    lines += ["", "با «تیم چت» باهاشون حرف بزن 💬"]
+    await respond(update, "\n".join(lines), kb.team_back_kb())
+
+
+# ═════════ 💬 چت تیم (راند ۲۰، درخواست کارفرما) ═════════
+
+async def team_chat_render(update: Update, alert: str | None = None) -> None:
+    """صفحه چت تیم با دکمه ارسال پیام و بروزرسانی"""
+    async with session_scope() as s:
+        user, _ = await users.get_or_create(s, update.effective_user)
+        team = await teams.get_team_of(s, user.id)
+        if not team:
+            await s.commit()
+            return await respond(update, "🏴 اصلا تو تیمی نیستی که چتشو ببی بینی")
+        text = await teams.chat_page(s, team)
+        await s.commit()
+    await respond(update, text, kb.team_chat_kb(), alert=alert)
+
+
+async def team_chat_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """دکمه‌های چت تیم: صفحه | ارسال | رفرش | برگشت"""
+    act = parts(update)[1]
+    if act == "back":
+        return await render_my_team(update)
+    if act in ("page", "ref"):
+        return await team_chat_render(update)
+    if act == "send":
+        async with session_scope() as s:
+            user, _ = await users.get_or_create(s, update.effective_user)
+            team = await teams.get_team_of(s, user.id)
+            if not team:
+                await s.commit()
+                return await respond(update, "🏴 اصلا تو تیمی نیستی که")
+            users.set_pending(user, "teamchat", None, chat_id_of(update))
+            await s.commit()
+        return await respond(
+            update,
+            "✉️ پیامتو همینجا بنویس و بفرست، میره تو چت تیم\n«لغو» هم کنسلش می‌کنه",
+        )

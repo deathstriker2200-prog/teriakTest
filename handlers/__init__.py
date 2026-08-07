@@ -275,8 +275,9 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CallbackQueryHandler(world.resource_sell_cb, pattern=r"^shelter:sell$"))
     app.add_handler(CallbackQueryHandler(world.sellres_execute, pattern=r"^cf:sellres:(?:wood|iron):\d+$"))
     app.add_handler(CallbackQueryHandler(world.sellres_cancel, pattern=r"^cl:sellres$"))
-    app.add_handler(CallbackQueryHandler(world.casino_bet_confirm, pattern=r"^cas:bet:\d+$"))
-    app.add_handler(CallbackQueryHandler(world.casino_execute, pattern=r"^cascf:\d+$"))
+    app.add_handler(CallbackQueryHandler(world.casino_router, pattern=r"^csg:"))
+    app.add_handler(CallbackQueryHandler(team.team_chat_cb, pattern=r"^tc:(?:page|send|ref|back)$"))
+    app.add_handler(CallbackQueryHandler(world.casino_router, pattern=r"^(?:cf|cl):csg:"))
     app.add_handler(CallbackQueryHandler(world.caravan_hit_cb, pattern=r"^cv:hit$"))  # دکمه جمعی
 
     # ── بانک شخصی (دکمه‌ها) ──

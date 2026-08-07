@@ -112,6 +112,17 @@ async def capture(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
         action = user.pending_action
 
+        # ── چت تیم (راند ۲۰): پیام طرف میره تو چت داخلی تیمش ──
+        if action == "teamchat":
+            from services import teams as team_svc
+            ok, msg = await team_svc.chat_post(s, user, text)
+            users.set_pending(user, None)
+            team = await team_svc.get_team_of(s, user.id)
+            page = await team_svc.chat_page(s, team) if team else f"❌ {msg}"
+            await s.commit()
+            await update.message.reply_html(page, reply_markup=kb.team_chat_kb())
+            raise ApplicationHandlerStop()
+
         # ── لغو ──
         if norm == "لغو":
             msg = await dog_svc.cancel_pending(s, user)

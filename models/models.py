@@ -512,3 +512,16 @@ class TrackedUserStats(Base):
 
     search_count: Mapped[int] = mapped_column(Integer, default=0)
     search_tp: Mapped[int] = mapped_column(Integer, default=0)  # خالص، پول پیدا شده مثبت و دزدیده‌شده منفی
+
+
+class TeamChatMessage(Base):
+    """پیام چت داخلی تیم — هر تیم فقط آخرین N پیامش نگه‌داشته میشه (راند ۲۰)"""
+    __tablename__ = "team_chat_messages"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    team_id: Mapped[int] = mapped_column(ForeignKey("teams.id"), index=True)
+    user_tg: Mapped[int] = mapped_column(BigInteger)
+    name: Mapped[str] = mapped_column(String(64))
+    role: Mapped[str] = mapped_column(String(8), default="member")  # owner / admin / member
+    text: Mapped[str] = mapped_column(String(320))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)

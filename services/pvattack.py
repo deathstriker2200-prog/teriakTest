@@ -4,7 +4,7 @@
 راند ۱۲ درخواست کارفرما: «قدرت کل» (حمله + دفاع خام) دو طرف مقایسه میشه و درصدی نیس، مهاجم بیشتر بود برده وگرنه باخته
 بوست‌ها نقش‌محورن: مهاجم فقط بوست‌های حمله‌ای (نژاد سگ | آرتیفکت | مهارت قدرت | هوای تهاجمی) رو می‌گیره و هدف فقط بوست‌های دفاعی
 جاسوسی به‌جای شانس درصدی، استت‌ها و قدرت کل طرف رو نشون میده
-راند ۱۳: اختلاف قدرت تا PV_ATTACK_CLOSE_DIFF شانسی متناسب نسبت قدرت‌هاست، بیرونش قطعیه | هر هدف دیده‌شده تا ۲۰ نشون بعدی تکرار نمیشه
+راند ۱۳: اختلاف قدرت تا PV_ATTACK_CLOSE_DIFF شانسیه، بیرونش قطعیه | راند ۱۷: بازه ۵۰ با برتری قوی‌تر تا ۷۵ درصد لبه (درخواست کارفرما) | هر هدف دیده‌شده تا ۲۰ نشون بعدی تکرار نمیشه
 هدف‌ها اول حوالی لول خودتن (±۲ لول)، هر مرحله خالی بود یه لول بازتر تا ±۱۰، بعدش فالبک: اول بالاترها بعد پایین‌ترها
 بعد هر حمله قربانی ۶ ساعت مصونیت می‌گیره
 و از لیست حمله‌های پی‌وی خارج میشه
@@ -72,15 +72,21 @@ def is_close(a_total: int, t_total: int) -> bool:
 
 
 def close_win_chance(a_total: int, t_total: int) -> float:
-    """شانس برد مهاجم تو رنج نزدیک، متناسب سهمش از جمع قدرت‌ها (تساوی یعنی پنجاه‌پنجاه)"""
-    tot = max(1, a_total + t_total)
-    return a_total / tot
+    """
+    شانس برد مهاجم تو رنج نزدیک (راند ۱۷، درخواست کارفرما: قوی‌تر برتری محسوس داره)
+    خطی از ۵۰ درصد روی تساوی تا PV_ATTACK_CLOSE_EDGE_CHANCE روی لبه بازه (پیش‌فرض ۷۵ درصد)
+    طرف قوی‌تر همیشه بالای پنجاه‌پنجاهه و هرچی نزدیک لبه، برتریش بیشتر میشه
+    """
+    diff = config.PV_ATTACK_CLOSE_DIFF
+    edge = config.PV_ATTACK_CLOSE_EDGE_CHANCE
+    c = 0.5 + ((a_total - t_total) / max(1, diff)) * (edge - 0.5)
+    return max(0.0, min(1.0, c))
 
 
 def decide_win(a_total: int, t_total: int) -> bool:
     """
-    داور نهایی برد مهاجم (راند ۱۳، درخواست کارفرما):
-    اختلاف تا PV_ATTACK_CLOSE_DIFF شانسی متناسب نسبت قدرت‌هاست، بیرونش قطعیه و بیشتر بود برده، تساوی یا کمتر باخته
+    داور نهایی برد مهاجم (راند ۱۳، اصلاح راند ۱۷):
+    اختلاف تا بازه نزدیک شانسی با برتری قوی‌تره (تا لبه ۷۵ درصد)، بیرون بازه قوی‌تر قطعی می‌بره
     """
     if is_close(a_total, t_total):
         return random.random() < close_win_chance(a_total, t_total)
@@ -100,8 +106,15 @@ async def total_powers(session: AsyncSession, attacker: User, target: User) -> t
 
     a_atk0, a_def0 = combat.combat_raw_stats(attacker, a_items, a_dogs)
     t_atk0, t_def0 = combat.combat_raw_stats(target, t_items, t_dogs)
-    a_ap, _ = combat.combat_boost_pcts(attacker, a_items, a_dogs)
-    _, t_dp = combat.combat_boost_pcts(target, t_items, t_dogs)
+    # باف ساختمان تیم هم رو قدرت کل سوار میشه (راند ۱۹، درخواست کارفرما)
+    from services import teams as team_svc
+    from models import Team
+    a_m = await team_svc.get_membership(session, attacker.id)
+    t_m = await team_svc.get_membership(session, target.id)
+    a_tb = team_svc.atk_bonus(await session.get(Team, a_m.team_id)) if a_m else 0.0
+    t_tb = team_svc.def_bonus(await session.get(Team, t_m.team_id)) if t_m else 0.0
+    a_ap, _ = combat.combat_boost_pcts(attacker, a_items, a_dogs, a_tb, 0.0)
+    _, t_dp = combat.combat_boost_pcts(target, t_items, t_dogs, 0.0, t_tb)
 
     from services import world as world_svc
     wkey, wpct, _ = await world_svc.weather_state(session)
