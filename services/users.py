@@ -166,9 +166,9 @@ def display_name(user: User) -> str:
 
 def title_of(user: User) -> tuple[str, str]:
     """(ایموجی, اسم) لقب کاربر بر اساس لولش، بالاترین ردیافی که لول >= حداقلشه
-    لقب موقت «خایه‌مال» (لو دادن، راند ۲۲) تا وقتی فعاله جای لقب عادی رو می‌گیره"""
+    لقب موقت «چاپلوس» (لو دادن، راند ۲۲؛ راند ۳۵ رینیم از خایه‌مال) تا وقتی فعاله جای لقب عادی رو می‌گیره"""
     if getattr(user, "khaye_until", None) and user.khaye_until > now_utc():
-        return "🐀", "خایه‌مال"
+        return "🐀", "چاپلوس"
     emoji, name = "", ""
     for min_lv, e, n in config.TITLES:
         if (user.level or 1) >= min_lv:

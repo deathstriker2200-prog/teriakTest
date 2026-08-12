@@ -116,8 +116,9 @@ async def active_shipments(session: AsyncSession, user_id: int) -> list[Shipment
     return list((await session.execute(q)).scalars())
 
 
-def shipment_confirm_text(crop: str, qty: int, value: int) -> str:
-    """کارت تایید ارسال محموله (راند ۳۱: کاروان ساده شد، زمان ثابت ۲۰ دقیقه)"""
+def shipment_confirm_text(crop: str, qty: int, value: int, mult: float = 1.0) -> str:
+    """کارت تایید ارسال محموله (راند ۳۱: کاروان ساده شد، زمان ثابت ۲۰ دقیقه)
+    راند ۳۵: mult<1 یعنی لقب چاپلوس فعاله و درصدش از فروش کم میشه، اینجا هم خبرش میاد"""
     sd = config.SEEDS[crop]
     emoji = sd.get("emoji", "🌱")  # بذرهای افسانه‌ای ایموجی رشته‌ای ندارن، ایموجی تو اسمشونه
     return "\n".join([
@@ -127,6 +128,7 @@ def shipment_confirm_text(crop: str, qty: int, value: int) -> str:
         "",
         "💰 ارزش محموله",
         money(value),
+        *( [f"🏷 لقب چاپلوس: {fa_num(int(config.KHAYE_SELL_MALUS * 100))}% از فروشت کم میشه"] if mult < 1.0 else [] ),
         "",
         "⏱ زمان ارسال",
         fa_dur(shipment_seconds()),
@@ -158,6 +160,10 @@ async def send_shipment(session: AsyncSession, user: User, crop: str, qty: int,
     outcome = roll_outcome()
     seize = roll_seize_pct() if outcome == "police" else None
     pay = value if seize is None else value - round(value * seize / 100)
+    from services.snitch import sell_mult  # راند ۳۵: لقب چاپلوس، فروش کمتر دله میشه
+    _mult = sell_mult(user)
+    if _mult < 1.0:
+        pay = round(pay * _mult)
     sh = Shipment(
         user_id=user.id, crop=crop, qty=qty, value=value, pay=pay,
         outcome=outcome, hops=0, chat_id=chat_id, seize_pct=seize,
@@ -400,8 +406,8 @@ def caravan_gone_text(cv: dict) -> str:
     )
 
 
-def caravan_page_text(cv: dict | None, have: int, unit_price: int, cash: int) -> str:
-    """صفحه کاروان قاچاق تو انبار"""
+def caravan_page_text(cv: dict | None, have: int, unit_price: int, cash: int, mult: float = 1.0) -> str:
+    """صفحه کاروان قاچاق تو انبار (راند ۳۵: mult<1 یعنی چاپلوس، قیمت نمایشی و دریافتی کمتره)"""
     if not cv:
         return "\n".join([
             "<b>🚚 کاروان قاچاق</b>",
@@ -414,7 +420,7 @@ def caravan_page_text(cv: dict | None, have: int, unit_price: int, cash: int) ->
         ])
     sd = config.SEEDS[cv["crop"]]
     emoji = sd.get("emoji", "🌱")
-    price = round(unit_price * (1 + cv["bonus"] / 100)) if unit_price else 0
+    price = round(unit_price * (1 + cv["bonus"] / 100) * mult) if unit_price else 0
     lines = [
         "<b>🚚 کاروان قاچاق</b>",
         "",
@@ -427,6 +433,7 @@ def caravan_page_text(cv: dict | None, have: int, unit_price: int, cash: int) ->
         lines += [
             f"📦 تو انبارت {fa_num(have)} تا {sd['name']} داری",
             f"💰 قیمت کاروان برای هر دونه: {money(price)}",
+            *( [f"🏷 لقب چاپلوس: {fa_num(int(config.KHAYE_SELL_MALUS * 100))}% از فروشت کم میشه"] if mult < 1.0 else [] ),
             "",
             "چقدر بفروشیم؟",
         ]
@@ -474,14 +481,21 @@ async def sell_to_caravan(session: AsyncSession, user: User, qty: int) -> tuple[
     if value is None:
         return False, f"📦 {fa_num(qty)} تا {sd['name']} تو انبارت نداری", 0
     gain = round(value * (1 + cv["bonus"] / 100))
+    from services.snitch import sell_mult  # راند ۳۵: لقب چاپلوس، فروش کمتر دله میشه
+    _mult = sell_mult(user)
+    if _mult < 1.0:
+        gain = round(gain * _mult)
     user.cash += gain
     from services import tracklog as tl
     await tl.bump_sell(session, user.id, {cv["crop"]: (qty, gain)})  # لاگ ردیابی ادمین
     await world_svc.record_sale(session, cv["crop"], qty)  # عرضه واقعی بازار پویا
-    return True, (
+    msg = (
         f"💰 {money(gain)} از کاروان گرفتی\n"
         f"{sd['emoji']} {fa_num(qty)} تا {sd['name']} با بونس {fa_num(cv['bonus'])}% فروختی"
-    ), gain
+    )
+    if _mult < 1.0:
+        msg += f"\n🏷 لقب چاپلوس: {fa_num(int(config.KHAYE_SELL_MALUS * 100))}% از فروش کم شد"
+    return True, msg, gain
 
 
 async def caravan_unit_value(session: AsyncSession, user_id: int, crop: str) -> int:

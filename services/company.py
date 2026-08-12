@@ -85,8 +85,8 @@ async def settle(session: AsyncSession, user: User) -> dict:
         return {"wood": 0, "iron": 0, "ticks": 0}
 
     got = {"wood": 0, "iron": 0, "ticks": ticks}
-    # لقب خایه‌مال: کارگرا با بازده کمتر کار می‌کنن (راند ۲۲)
-    prod_mult = (1 - config.KHAYE_FACTORY_MALUS) if khaye_active(user) else 1.0
+    # لقب چاپلوس: سرعت تولید شرکت‌ها کمتره (راند ۳۵، متن قطعی اعلان)
+    prod_mult = (1 - config.KHAYE_COMPANY_SLOW) if khaye_active(user) else 1.0
     for key, cfg in config.FACTORIES.items():
         lv = factory_level(user, key)
         if lv <= 0:
@@ -185,10 +185,10 @@ def company_text(user: User, got: dict | None = None) -> str:
 
     res_name = {"lumber": "چوب", "ironmill": "آهن"}
     ticks_per_hour = 3600 // config.FACTORY_TICK_SECONDS
-    # لقب خایه‌مال: سرعت نمایشی هم با افت بازده نشون داده میشه (راند ۲۲)
-    prod_mult = (1 - config.KHAYE_FACTORY_MALUS) if khaye_active(user) else 1.0
+    # لقب چاپلوس: افت سرعت تو نمایش هم دیده میشه (راند ۳۵)
+    prod_mult = (1 - config.KHAYE_COMPANY_SLOW) if khaye_active(user) else 1.0
     if prod_mult < 1.0:
-        lines.append(f"🐀 لقب خایه‌مال: کارگرات با {fa_num(int(config.KHAYE_FACTORY_MALUS * 100))}% بازده کمتر کار می‌کنن")
+        lines.append(f"🏭 لقب چاپلوس: سرعت شرکت‌هات {fa_num(int(config.KHAYE_COMPANY_SLOW * 100))}% کمتره")
     for key, cfg in config.FACTORIES.items():
         lv = factory_level(user, key)
         lines.append("")

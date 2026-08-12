@@ -9,7 +9,11 @@
 فقط خودش می‌تونه بزنه، بقیه هیچ واکنشی نمی‌بینن (handlers/common.owner_guard)
 """
 
+import re
+
 from telegram.ext import Application, CallbackQueryHandler, ChatMemberHandler, CommandHandler, MessageHandler, filters
+
+import config
 
 from handlers import admin, attack, backup, bank, battle, boss, common, company, dogs, dquests, energy, farm, gate, gear, market, mine, mines, pending, power, profile, rank, seen, shop, skills, smuggle, snitch, start, team, textcmd, world  # راند ۳۱: raid حذف شد
 
@@ -49,6 +53,8 @@ TEXT_HANDLERS: list[tuple[str, str, object]] = [
     ("stats", rf"{TP}[اآ]مار!?$", textcmd.profile_text),  # «آمار» و «امار» تنها، پروفایل باز میشه که بلوک آمار داره
     ("skills_txt", rf"{TP}مهارت(?:{S}*ها)?!?$", skills.skills_cb),  # «مهارت» منوی مهارت رو باز می‌کنه
     ("dquests_txt", rf"{TP}(?:ماموریت|مأموریت)(?:{S}*های?)?(?:{S}+روزانه)?!?$", dquests.daily_quests_cb),  # «ماموریت» و «مأموریت» بخش مأموریت‌های روزانه
+    ("daily_alias", rf"{T}دیلی!?$", dquests.daily_quests_cb),  # راند ۳۵ (درخواست کارفرما): «تریاکی دیلی» صفحه ماموریت‌های روزانه
+    ("plot_buy", rf"{T}ساخت{S}+زمین!?$|{T}خرید{S}+زمین!?$", farm.buy_plot_text),  # راند ۳۵: «تریاکی ساخت زمین» کارت تایید خرید
     # ── کارتل ──
     ("team_bld", rf"{TP}" + TK + rf"{S}+ساختمان(?:{S}*ها)?!?$|{TP}" + TK + rf"{S}+ساخت!?$", team.buildings_text),
     ("team_profile", rf"{TP}" + TK + rf"{S}+پروفایل!?$", team.team_profile_text),
@@ -97,6 +103,41 @@ TEXT_HANDLERS: list[tuple[str, str, object]] = [
     ("caravan_spawn", rf"{T}اسپان{S}+کاروان!?$", world.caravan_spawn_cmd),  # فقط ادمین
     ("smuggler_spawn", rf"{T}اسپان{S}+کاروان{S}+(.+?)!?$", smuggle.admin_spawn_text),  # کاروان قاچاق، فقط ادمین
 ]
+
+
+# ── راند ۳۵ (درخواست کارفرما): ادمین ربات بدون پیشوند «تریاکی» هم می‌تونه دستور بده ──
+_QUICK_RX: list | None = None
+
+
+def _quick_pairs() -> list:
+    """پترن‌های کامپایل‌شده TEXT_HANDLERS، یه‌بار ساخته و کش میشن"""
+    global _QUICK_RX
+    if _QUICK_RX is None:
+        _QUICK_RX = [(re.compile(p), f) for _n, p, f in TEXT_HANDLERS]
+    return _QUICK_RX
+
+
+async def admin_quick(update, context) -> None:
+    """
+    ادمین ربات هر دستور متنی رو لازم نیس با «تریاکی» شروع کنه:
+    «قمار» «دیلی» «انرژی» «لو دادن @x» و هرچی تو TEXT_HANDLERS هس
+    برای کاربر عادی هیچ کاری نمی‌کنه؛ block=False ثبت میشه که جریان عادی خراب نشه
+    و اگه متن بدون پیشوند خودش با یه پترن عمومی بخوره، دست‌نخورده ول میشه که دوبار اجرا نشه
+    """
+    user = update.effective_user
+    msg = update.effective_message
+    if not user or user.id not in config.ADMIN_IDS or not getattr(msg, "text", None):
+        return
+    text = msg.text.strip()
+    pairs = _quick_pairs()
+    for pat, _f in pairs:
+        if pat.match(text):
+            return  # خودش یه دستور معتبر بدون‌پیشونده، هندلر اصلیش می‌گیرتش
+    prefixed = f"تریاکی {text}"
+    for pat, func in pairs:
+        if pat.match(prefixed):
+            await func(update, context)
+            return
 
 
 def register_handlers(app: Application) -> None:
@@ -162,6 +203,9 @@ def register_handlers(app: Application) -> None:
 
     # ── اد شدن ربات به گروه، خودش متن خوش‌آمد می‌فرسته ──
     app.add_handler(ChatMemberHandler(start.bot_added, ChatMemberHandler.MY_CHAT_MEMBER))
+
+    # ── راند ۳۵: شرت‌کات ادمین (بدون پیشوند)، قبل از دستورهای متنی و بدون بلاک ──
+    app.add_handler(MessageHandler(fa_text, admin_quick, block=False))
 
     # ── دستورهای متنی فارسی (PV و گروه)، همه با پیشوند «تریاکی » به‌جز کنده کاری ──
     # رَپر dedup: ۵۰ تا از یه دستور پشت سر هم بفرستی فقط اولیش اجرا میشه

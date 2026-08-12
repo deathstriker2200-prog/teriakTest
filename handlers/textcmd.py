@@ -107,11 +107,10 @@ async def buy_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                     cash = user.cash or 0
                     await s.commit()
                 total = unit * qty
-                disc = " 🐀 (تخفیف خایه‌مال)" if unit != item["price"] else ""
                 text = (
                     f"<b>🧾 فاکتور خرید {item.get('emoji', '🌱')} {esc(item['name'])}</b>\n\n"
                     f"🔢 تعداد: {fa_num(qty)} بذر\n"
-                    f"💸 قیمت هر بذر: {money(unit)}{disc}\n"
+                    f"💸 قیمت هر بذر: {money(unit)}\n"
                     f"💰 جمع فاکتور: {money(total)}\n"
                     f"💵 نقدینگیت: {money(cash)}\n\n"
                     "معامله‌ست؟"

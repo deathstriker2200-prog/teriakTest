@@ -49,6 +49,12 @@ async def on_start(app: Application) -> None:
     logger.info("یوزرنیم ربات: @%s | دکمه افزودن به گروه فعاله", keyboards.BOT_USERNAME)
 
 
+async def on_error(update: object, context) -> None:
+    """ته‌توری خطاها (راند ۳۵، درخواست کارفرما): اگه با وجود سینک اسکیما بازم کوئری ترکید
+    (مثل OperationalError: no such column) اینجا با تریس‌بک کامل تو لاگ سرویس میفته، قابل دیدنه"""
+    logger.exception("خطا تو پردازش آپدیت/جاب", exc_info=context.error)
+
+
 def _safe_db() -> str:
     """مسیر دی‌بی برای لاگ — بدون لو دادن پسورد"""
     url = config.DATABASE_URL
@@ -75,6 +81,7 @@ def main() -> None:
         .build()
     )
     register_handlers(app)
+    app.add_error_handler(on_error)   # راند ۳۵: خطاهای هندلر/جاب با تریس‌بک تو لاگ
 
     # زمان پردازش هر آپدیت (پیام/کالبک) ثبت میشه، برای آمار فنی پنل ادمین
     from handlers.common import proc_wrapper
@@ -84,7 +91,8 @@ def main() -> None:
     jobs.register_jobs(app)
 
     logger.info("ربات تریاکی اومد بالا 🤖")
-    app.run_polling(allowed_updates=Update.ALL_TYPES)
+    # راند ۳۵ (درخواست کارفرما): پیام‌هایی که موقع خاموشی انباشتن پاسخ داده نمیشن، نه فشار استارت نه پاسخ انبوه /start
+    app.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
 
 
 if __name__ == "__main__":

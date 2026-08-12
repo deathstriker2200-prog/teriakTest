@@ -57,14 +57,8 @@ async def purchase_resource(
 
 
 def seed_unit_price(user: User, key: str) -> int:
-    """قیمت دونه بذر با تخفیف خایه‌مال (راند ۲۲): وقتی لقبش فعاله از KHAYE_SEED_DISCOUNT کم میشه"""
-    base = int(config.SEEDS.get(key, {}).get("price") or 0)
-    if base <= 0:
-        return base
-    from services.snitch import khaye_active
-    if khaye_active(user):
-        return max(1, base - round(base * config.KHAYE_SEED_DISCOUNT))
-    return base
+    """قیمت دونه بذر (راند ۳۵: تخفیف لقب حذف شد؛ جریمه‌های چاپلوس جدید فروش و سرعت شرکت‌ان)"""
+    return int(config.SEEDS.get(key, {}).get("price") or 0)
 
 
 async def purchase_seed(

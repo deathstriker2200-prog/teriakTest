@@ -328,11 +328,10 @@ async def capture(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             unit = shop_svc2.seed_unit_price(user, seed_key)
             total = unit * qty
             await s.commit()
-            disc = " 🐀 (تخفیف خایه‌مال)" if unit != info["price"] else ""
             await update.message.reply_html(
                 f"<b>🧾 فاکتور خرید {info.get('emoji', '🌱')} {esc(info['name'])}</b>\n\n"
                 f"🔢 تعداد: {fa_num(qty)} بذر\n"
-                f"💸 قیمت هر بذر: {money_tp(unit)}{disc}\n"
+                f"💸 قیمت هر بذر: {money_tp(unit)}\n"
                 f"💰 جمع فاکتور: {money(total)}\n"
                 f"⏱ رشد هرکدوم {fa_num(info['grow_min'])} دقیقه | فروش هرساقه {money_tp(info['sell'])}\n\n"
                 "معامله‌ست؟",

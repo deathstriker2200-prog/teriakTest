@@ -380,12 +380,11 @@ async def buy_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             unit = shop_svc.seed_unit_price(user, key)
             users.set_pending(user, "seedbuy", key, chat_id_of(update))
             await s.commit()
-        disc = " 🐀 (تخفیف خایه‌مال)" if unit != info["price"] else ""
         text = (
             f"<b>🛒 خرید {info.get('emoji', '🌱')} {esc(info['name'])}</b>\n\n"
             f"چندتا بذر {esc(info['name'])} میخوای بخری؟\n"
             "عددشو همینجا بنویس و بفرست، مثلا: 5\n"
-            f"💸 قیمت هر بذر {money_tp(unit)}{disc}\n\n"
+            f"💸 قیمت هر بذر {money_tp(unit)}\n\n"
             "❌ اگر هم پشیمون شدی بنویس «لغو»"
         )
         return await respond(update, text)

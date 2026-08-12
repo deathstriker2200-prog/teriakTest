@@ -3,6 +3,7 @@
 
 شکل‌ها: ریپلای روی پیام طرف + «لو دادن» | «لو دادن @یوزرنیم» | «لو دادن ۱۲۳۴۵۶»
 هدف مثل حمله پیدا میشه و منطقش تو services/snitch.py عه
+راند ۳۵ (متن‌های قطعی کارفرما): کارت یورش پلیس + پی‌وی دستگیری + اعلان لقب «چاپلوس» تو همون گروه
 """
 
 from telegram import Update
@@ -124,62 +125,55 @@ async def snitch_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         tgt_tg, tgt_name = target.telegram_id, users.display_name(target)
         await s.commit()
 
+
+    items = "، ".join(res["names"])
     src_men = f'<a href="tg://user?id={src_tg}">{esc(src_name)}</a>'
     tgt_men = f'<a href="tg://user?id={tgt_tg}">{esc(tgt_name)}</a>'
 
     if res["status"] == "empty":
-        return await respond(
+        await respond(
             update,
             f"🚔 پلیس رفت سراغ انبار {tgt_men} ولی محصولی پیدا نکرد، دست خالی برگشت\n\n"
-            f"لو دادنت سوخت، {fa_dur(config.SNITCH_COOLDOWN_SECONDS)} دیگه می‌تونی یکی دیگه رو لو بدی",
+            f"لو دادنت سوخت، {fa_dur(config.SNITCH_COOLDOWN_SECONDS)} دیگه می‌تونی یکی دیگه رو لو بدی\n"
+            "ولی همین تلاشم تو شمارش هفتگی لقب چاپلوس حسابه",
+        )
+    else:
+        # کارت یورش پلیس (راند ۳۵، متن قطعی کارفرما)
+        await respond(
+            update,
+            f"""🚨 {src_men} یکی رو لو داد
+
+🚔 پلیس به انبار {tgt_men} یورش برد و تمام محصولاتش توقیف شد
+
+🌾 اقلام توقیفی: {esc(items)}
+
+💰 پاداش لو‌دهنده: {money(res["share"])}
+🎁 پاداش ثابت: {money(res["bonus"])}
+
+⛓ متاسفانه {tgt_men} به مدت {fa_num(config.SNITCH_JAIL_MINUTES)} دقیقه زندانی شد و تا پایان این زمان قادر به انجام هیچ کاری نیست""",
         )
 
-    items = "، ".join(res["names"])
-    text = (
-        f"<b>🚨 {src_men} لو داد!</b>\n\n"
-        f"🚔 پلیس ریخت تو انبار {tgt_men} و همه محصولاتش توقیف شد\n"
-        f"🌾 توقیفی: {esc(items)}\n"
-        f"💰 سهم لو‌دهنده: {money(res['share'])} | پاداش ثابت: {money(res['bonus'])}\n\n"
-        f"⛓ {tgt_men} به مدت {fa_num(config.SNITCH_JAIL_MINUTES)} دقیقه زندانیه و هیچ کاری از دستش برنمیاد"
-    )
+        # پی‌وی به دستگیرشده (راند ۳۵، متن قطعی کارفرما)
+        dm = f"""🚔 دستگیر شدی
+
+📢 گزارشی از طرف {src_men} به پلیس رسید و نیروها به مخفیگاهت یورش بردند
+
+📦 بخشی از محصولاتت توقیف شد و تو به مدت {fa_num(config.SNITCH_JAIL_MINUTES)} دقیقه زندانی شدی
+
+⛓ تا پایان این زمان هیچ فعالیتی نمی‌توانی انجام دهی
+
+💸 اگر عجله داری، با دستور «رشوه دادن» می‌توانی با پرداخت رشوه زودتر آزاد شوی"""
+        await _dm(context, tgt_tg, dm)
+
+    # راند ۳۵ (درخواست کارفرما): اعلام لقب چاپلوس فقط تو همون گروهی که لو دادنش رو کرده (آخرین فعالیتش)
     if res["khaye"]:
-        text += (
-            f"\n\n🐀 {src_men} تو این هفته {fa_num(config.SNITCH_WEEK_LIMIT)} نفر رو لو داده و لقب «خایه‌مال» رو گرفت\n"
-            f"🕐 بعد {fa_num(config.KHAYE_TITLE_HOURS)} ساعت لقبش خودکار برمی‌گرده به حالت عادی"
-        )
-    await respond(update, text)
+        announce = f"""📢 اهالی محله، {src_men} تو این هفته {fa_num(config.SNITCH_WEEK_LIMIT)} نفر رو لو داده
 
-    # پی‌وی به دستگیرشده (راند ۲۸، درخواست کارفرما): کی لو داد + توقیفی‌ها + مدت + راهنمای رشوه
-    dm = (
-        "<b>🚨 دستگیر شدی!</b>\n\n"
-        f"👮 {src_men} لوت داد و پلیس محصولات انبارت رو دید\n"
-        f"🌾 توقیفی: {esc(items)}\n"
-        f"⛓ {fa_num(config.SNITCH_JAIL_MINUTES)} دقیقه انداختت زندان، تا آزاد شی هیچ کاری نمی‌تونی بکنی\n\n"
-        f"💰 ولی می‌تونی با رشوه خودت رو آزاد کنی\n"
-        f"کافیه دستور «رشوه دادن» رو بزنی و {money(config.BRIBE_COST)} پرداخت کنی"
-    )
-    await _dm(context, tgt_tg, dm)
+🏷 لقب «چاپلوس» براش {fa_num(config.KHAYE_TITLE_HOURS)} ساعت فعال شد
 
-    if res["khaye"]:
-        # اعلام سراسری لقب خایه‌مال به همه گروه‌ها (راند ۲۷، درخواست کارفرما)
-        from models import GroupActivity as _GA
-        from sqlalchemy import select as _sel
-        async with session_scope() as s:
-            gids = list((await s.execute(_sel(_GA.chat_id))).scalars())
-            await s.commit()
-        bcast = (
-            "<b>🐀 یه خایه‌مال جدید توی محله!</b>\n\n"
-            f"{src_men} تو یه هفته {fa_num(config.SNITCH_WEEK_LIMIT)} نفر رو لو داد و لقب <b>🐀 خایه‌مال</b> رو برمی‌داره\n"
-            f"تا {fa_num(config.KHAYE_TITLE_HOURS)} ساعت آینده به‌جای لقب اصلیش همین می‌شینه، بعد لقبش برمی‌گرده سر جاش"
-        )
-        cur_chat = update.effective_chat.id if update.effective_chat else None
-        for gid in gids:
-            if gid == cur_chat:
-                continue  # توی همین گروه که لو داد خودش اعلام شد
-            try:
-                await context.bot.send_message(gid, bcast, parse_mode="HTML")
-            except Exception:
-                pass
+📉 فروش: {fa_num(int(config.KHAYE_SELL_MALUS * 100))}% کمتر
+🏭 سرعت شرکت‌ها: {fa_num(int(config.KHAYE_COMPANY_SLOW * 100))}% کمتر"""
+        await respond(update, announce)
 
 
 async def bribe_text_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -230,9 +224,10 @@ async def bribe_confirm_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     await q.answer()
     await respond(
         update,
-        "<b>💰 رشوه خورد!</b>\n\n"
-        f"پلیس {money(res['cost'])} گرفت و دستتو ول کرد\n"
-        "آزادی، ولی مراقب باش دوباره لو ندی",
+        f"""<b>💰 رشوه رو گرفت</b>
+
+پلیس {money(res["cost"])} گرفت و دستتو ول کرد
+آزادی، ولی مراقب باش دوباره لوت ندن""",
     )
 
 

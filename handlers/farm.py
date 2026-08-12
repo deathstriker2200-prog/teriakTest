@@ -103,6 +103,11 @@ async def buy_plot_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     await respond(update, text, kb.confirm_kb("cf:farm:buy"))
 
 
+async def buy_plot_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """«تریاکی ساخت زمین» و «تریاکی خرید زمین» (راند ۳۵، درخواست کارفرما): همون کارت تایید خرید زمین با متن"""
+    await buy_plot_confirm(update, context)
+
+
 async def buy_plot_execute(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     notes = []
     async with session_scope() as s:

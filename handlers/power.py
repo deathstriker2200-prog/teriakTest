@@ -36,14 +36,13 @@ async def _is_group_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 async def jail_gate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """
     زندانی لو دادن تا آخر زندانش هیچ دستور و دکمه‌ای نمی‌تونه بزنه
-    ادمین‌های ربات معافن که ساپورت ول معطل نمونه
+    (راند ۳۵: معافیت ادمین برداشته شد، درخواست کارفرما «همه راه‌ها بسته»)
     سبکه، هر چک کوئری نمیزنه و وضعیت با کش چندثانیه‌ای خونده میشه
     """
     user = update.effective_user
     if user is None:
         return
-    if user.id in config.ADMIN_IDS:
-        return
+    # راند ۳۵ (درخواست کارفرما): معافیت ادمین برداشته شد، زندانی زندانیه، فقط «رشوه دادن» رد میشه
     msg = update.effective_message
     if msg and getattr(msg, "text", None):
         # تنها دستوری که زندانی می‌تونه بزنه «رشوه دادن» عه، وگرنه هیچ راه آزادی نمی‌مونه (راند ۲۸)
@@ -61,8 +60,8 @@ async def jail_gate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if left <= 0:
         return
     text = (
-        f"⛓ تو زندانی هستی، {fa_dur(left)} دیگه آزاد میشی و هیچ کاری از دستت برنمیاد\n"
-        f"💰 یا با دستور «رشوه دادن» و پرداخت {money(config.BRIBE_COST)} همین الان آزاد شو"
+        f"⛓ زندانی هستی و تا {fa_dur(left)} دیگه نمی‌تونی این کارو انجام بدی\n"
+        f"💰 با دستور «رشوه دادن» و پرداخت {money(config.BRIBE_COST)} همین الان آزاد شو"
     )
     if update.callback_query:
         try:

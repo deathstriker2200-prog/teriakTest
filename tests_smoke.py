@@ -12875,12 +12875,13 @@ async def main() -> None:
           and abs(pv_svc.close_win_chance(150, 100) - 0.95) < 1e-9)
 
     # ── کانفیگ لو دادن ──
-    check("کانفیگ لو دادن: کولدان ۱ ساعت، زندان ۳۰ دقیقه (راند ۲۸)، سهم ۲۵٪ + ۱۰هزار، هفته ۴ تا و ۲۴ ساعت خایه‌مال",
+    check("کانفیگ لو دادن: کولدان ۱ ساعت، زندان ۳۰ دقیقه، سهم ۲۵٪ + ۱۰هزار، هفته ۳ تا (راند ۳۵) و ۲۴ ساعت چاپلوس",
           config.SNITCH_COOLDOWN_SECONDS == 3600 and config.SNITCH_JAIL_MINUTES == 30
           and config.SNITCH_REWARD_PCT == 0.25 and config.SNITCH_BONUS == 10000
-          and config.SNITCH_WEEK_LIMIT == 4 and config.SNITCH_WEEK_WINDOW_DAYS == 7
-          and config.KHAYE_TITLE_HOURS == 24 and config.KHAYE_SEED_DISCOUNT == 0.20
-          and config.KHAYE_FACTORY_MALUS == 0.30)
+          and config.SNITCH_WEEK_LIMIT == 3 and config.SNITCH_WEEK_WINDOW_DAYS == 7
+          and config.KHAYE_TITLE_HOURS == 24 and config.KHAYE_SELL_MALUS == 0.20
+          and config.KHAYE_COMPANY_SLOW == 0.20
+          and not hasattr(config, "KHAYE_SEED_DISCOUNT") and not hasattr(config, "KHAYE_FACTORY_MALUS"))
     check("پترن دستور لو دادن هر سه شکل رو می‌گیره",
           pats22["snitch"].match("لو دادن") and pats22["snitch"].match("لو دادن @mmd")
           and pats22["snitch"].match("لو دادن 123456") and pats22["snitch"].match("تریاکی لو دادن @mmd")
@@ -12903,21 +12904,20 @@ async def main() -> None:
               prods22 == {} and sn22.jail_left(vic22) > 29 * 60, str(sn22.jail_left(vic22)))
         check("کولدان لو‌دهنده فعال شد", sn22.cooldown_left(rat22) > 3590)
         r2 = await sn22.snitch(s, rat22, vic22)
-        check("لو دادن دوم رو انبار خالی وضعیتش emptyعه (کولدان سوخت)",
-              r2["status"] == "empty" and rat22.cash == 1000 + 22500)
+        check("لو دادن دوم رو انبار خالی emptyعه ولی تو شمارش هفتگی حساب میشه (راند ۳۵: تلاش هم جزو ۳تاست)",
+              r2["status"] == "empty" and rat22.cash == 1000 + 22500 and rat22.snitch_count == 2,
+              str(rat22.snitch_count))
         await smg_svc.add_product(s, vic22.id, "gharch", 1, 1000, shelter_level=10)
-        rat22.snitch_count = 3
-        rat22.snitch_window_at = now_utc()
         r3 = await sn22.snitch(s, rat22, vic22)
-        check("چهارمین لو دادن موفق هفته لقب خایه‌مال میده و شمارنده ریست میشه",
+        check("سومین لو دادن هفته لقب چاپلوس میده و شمارنده ریست میشه (راند ۳۵)",
               r3["status"] == "ok" and r3["khaye"] and sn22.khaye_active(rat22) and rat22.snitch_count == 0,
               f"{rat22.snitch_count}")
         em22, nm22 = users.title_of(rat22)
-        check("لقب خایه‌مال جای لقب عادی رو گرفت", (em22, nm22) == ("🐀", "خایه‌مال"), nm22)
+        check("لقب چاپلوس جای لقب عادی رو گرفت", (em22, nm22) == ("🐀", "چاپلوس"), nm22)
         rat22.khaye_until = now_utc() - timedelta(seconds=5)
         em22b, nm22b = users.title_of(rat22)
         check("بعد تموم شدن لقب برمی‌گرده به عادی",
-              nm22b != "خایه‌مال" and not sn22.khaye_active(rat22), nm22b)
+              nm22b != "چاپلوس" and not sn22.khaye_active(rat22), nm22b)
         await s.commit()
 
     # ── گیت زندان: هیچ دستوری قبول نمیشه ──
@@ -12928,8 +12928,8 @@ async def main() -> None:
     except ApplicationHandlerStop:
         raised22 = True
     jt22 = upd22j.message.calls[-1][1] if upd22j.message.calls else ""
-    check("زندانی با گیت بلاک میشه و زمان آزادی رو می‌بینه",
-          raised22 and "زندانی" in jt22 and "آزاد میشی" in jt22, jt22[:80])
+    check("زندانی با گیت بلاک میشه و متن قطعی «نمی‌تونی این کارو انجام بدی» رو می‌بینه (راند ۳۵)",
+          raised22 and "زندانی هستی" in jt22 and "نمی‌تونی این کارو انجام بدی" in jt22 and "رشوه دادن" in jt22, jt22[:100])
     async with session_scope() as s:
         v22 = await users.get_by_tg(s, 227711)
         v22.jailed_until = now_utc() - timedelta(seconds=1)
@@ -12959,7 +12959,8 @@ async def main() -> None:
         h22c = (await users.get_by_tg(s, 227712)).cash
         w22j = sn22.jail_left(await users.get_by_tg(s, 227713))
     check("دستور لو دادن با یوزرنیم: توقیف و زندان و جایزه و منشن لینکی",
-          "لو داد!" in st22 and "توقیف" in st22 and "زندانیه" in st22
+          "یکی رو لو داد" in st22 and "یورش برد و تمام محصولاتش توقیف شد" in st22 and "زندانی شد" in st22
+          and "پاداش لو‌دهنده:" in st22 and "پاداش ثابت: 10,000 تی‌پوینت" in st22
           and "tg://user?id=227713" in st22 and "tg://user?id=227712" in st22
           and h22c == 2000 + 10000 and w22j > 19 * 60, st22[:150])
     upd22s2 = _text_update("لو دادن @wic22", uid=227712, uname="hdn22", fname="لو‌ده۳۳")
@@ -12974,7 +12975,7 @@ async def main() -> None:
     check("لو دادن به خودی رد میشه",
           "خودت" in st22c or "تازه یه نفر رو لو دادی" in st22c, st22c[:90])
 
-    # ── افت بازده کارخونه و تخفیف بذر برای خایه‌مال ──
+    # ── افت سرعت شرکت (چاپلوس) و حذف تخفیف بذر (راند ۳۵) ──
     async with session_scope() as s:
         kf22, _ = await users.get_or_create(s, tg(227714, "fac22", "کارخونه‌دار۲۲"))
         kf22.level = 8
@@ -12983,22 +12984,22 @@ async def main() -> None:
         kf22.khaye_until = now_utc() + timedelta(hours=1)
         kf22.company_at = now_utc() - timedelta(seconds=config.FACTORY_TICK_SECONDS * 10)
         g22f = await comp_svc.settle(s, kf22)
-        check("بازده کارخونه خایه‌مال ۳۰٪ کمتره: ده تیک لول۱ چوب میشه ۱۴ نه ۲۰",
-              g22f["wood"] == 14 and kf22.lumber_stock == 14, str(g22f))
-        check("تخفیف بذر خایه‌مال ۲۰٪ه (۹۰ میشه ۷۲)",
-              shop22.seed_unit_price(kf22, "marijuana") == 72
-              and shop22.seed_unit_price(kf22, "cocaine") == round(1800 * 0.8))
+        check("سرعت شرکت با لقب چاپلوس ۲۰٪ کمتره: ده تیک لول۱ چوب میشه ۱۶ نه ۲۰ (راند ۳۵)",
+              g22f["wood"] == 16 and kf22.lumber_stock == 16, str(g22f))
+        check("قیمت بذر دیگه با لقب تخفیف نمی‌خوره (تخفیف خایه‌مال راند ۳۵ حذف شد)",
+              shop22.seed_unit_price(kf22, "marijuana") == 90
+              and shop22.seed_unit_price(kf22, "cocaine") == 1800)
         kf22.khaye_until = None
         check("بدون لقب قیمت بذر همون اصلیه", shop22.seed_unit_price(kf22, "marijuana") == 90)
         kf22.cash = 10000
         kf22.level = 20
         ok22seed, m22seed = await shop_svc.purchase_seed(s, kf22, "marijuana", 2)
-        check("خرید بذر بدون تخفیف قیمت عادی رو کم می‌کنه",
+        check("خرید بذر بدون لقب قیمت عادی رو کم می‌کنه",
               ok22seed and kf22.cash == 10000 - 180, f"{kf22.cash}")
         kf22.khaye_until = now_utc() + timedelta(hours=1)
         ok22seed2, m22seed2 = await shop_svc.purchase_seed(s, kf22, "marijuana", 2)
-        check("خرید بذر با لقب، تخفیف‌خورده کم می‌کنه",
-              ok22seed2 and kf22.cash == 10000 - 180 - 144, f"{kf22.cash}")
+        check("خرید بذر با لقب چاپلوس هم تمام‌قیمته (تخفیف نیس، جریمه فروش و سرعت شرکته)",
+              ok22seed2 and kf22.cash == 10000 - 180 - 180, f"{kf22.cash}")
         await s.commit()
 
 
@@ -13806,12 +13807,12 @@ async def main() -> None:
     check("انصراف-اخراج قفل به مدیر شروع‌کننده‌ست: غریبه کاملاً ساکت",
           cb_tk27.callback_query.calls == [("answer", (), {})], str(cb_tk27.callback_query.calls))
 
-    # ── خایه‌مال: اعلام همگانی لقب به همه گروه‌ها (درخواست کارفرما) ──
+    # ── چاپلوس: اعلان لقب فقط تو همون گروهی که لو دادن آخرش توش بوده (راند ۳۵، متن قطعی) ──
     async with session_scope() as s:
         rat27, _ = await users.get_or_create(s, tg(660330, "rat27", "لو‌ده۲۷"))
         vic27, _ = await users.get_or_create(s, tg(660331, "vic27", "قربانی۲۷"))
         rat27.cash = 5000
-        rat27.snitch_count = 3  # چهارمین لو دادن موفق هفته → لقب خایه‌مال
+        rat27.snitch_count = 2  # سومین لو دادن هفته (راند ۳۵: تلاش هم حسابه) → لقب چاپلوس
         rat27.snitch_window_at = now_utc()
         await smg27.add_product(s, vic27.id, "marijuana", 2, 20000, shelter_level=10)
         sn27._jail_cache["map"].pop(660331, None)
@@ -13822,11 +13823,14 @@ async def main() -> None:
     await snitch_h27.snitch_cmd(upd_k27, SimpleNamespace(bot=spy_k27))
     async with session_scope() as s:
         rat27 = await users.get_by_tg(s, 660330)
-        check("گرفتن لقب خایه‌مال به همه گروه‌ها (جز گروه مبدا) برودکست میشه با خبر قالب درخواستی",
+        ann27 = next((c[1] for c in upd_k27.message.calls if "اهالی محله" in (c[1] or "")), "")
+        check("گرفتن لقب چاپلوس تو همون گروه لو‌دادن اعلام میشه با متن قطعی و به گروه دیگه برودکست نمیشه",
               sn27.khaye_active(rat27)
-              and any(c == -96002702 and "خایه‌مال جدید توی محله" in t for c, t in spy_k27.sent)
-              and all(c != -96002701 for c, _t in spy_k27.sent),
-              str([c for c, _t in spy_k27.sent][:5]))
+              and ann27 and "تو این هفته 3 نفر رو لو داده" in ann27
+              and "لقب «چاپلوس» براش 24 ساعت فعال شد" in ann27
+              and "📉 فروش: 20% کمتر" in ann27 and "🏭 سرعت شرکت‌ها: 20% کمتر" in ann27
+              and all(c != -96002702 for c, _t in spy_k27.sent),
+              ann27.replace("\n", " | ")[:150])
         await s.commit()
 
 
@@ -14089,8 +14093,9 @@ async def main() -> None:
     await snitch_h28.bribe_confirm_cb(cb_br28ok, None)
     async with session_scope() as s:
         bh28 = await users.get_by_tg(s, 770031)
-        check("تایید رشوه: ۵۰هزار کم میشه و آزادی فوری و رسید «رشوه خورد» میاد",
-              any(c[0] in ("edit", "reply") and "رشوه خورد" in c[1] for c in cb_br28ok.callback_query.calls)
+        check("تایید رشوه: ۵۰هزار کم میشه و آزادی فوری و رسید «رشوه رو گرفت» میاد (متن قطعی راند ۳۵)",
+              any(c[0] in ("edit", "reply") and "رشوه رو گرفت" in c[1] and "دستتو ول کرد" in c[1] and "لوت ندن" in c[1]
+                  for c in cb_br28ok.callback_query.calls)
               and bh28.cash == 10000 and sn28.jail_left(bh28) == 0,
               str(cb_br28ok.callback_query.calls)[:160])
         await s.commit()
@@ -14112,12 +14117,12 @@ async def main() -> None:
     spy28 = SimpleNamespace(bot=_CBotSpy())
     await snitch_h28.snitch_cmd(upd_sn28, spy28)
     dm28 = next((t for c, t in spy28.bot.sent if c == 770032), "")
-    check("دی‌ام دستگیری به قربانی: لو‌دهنده + محصولات انبار + ۳۰ دقیقه + راهنمای رشوه",
-          "دستگیر شدی" in dm28 and "لو‌ده" in dm28 and "30 دقیقه" in dm28
-          and "محصولات انبارت" in dm28 and "رشوه دادن" in dm28 and "50,000 تی‌پوینت" in dm28,
+    check("دی‌ام دستگیری به قربانی (متن قطعی راند ۳۵): گزارش + ۳۰ دقیقه زندان + راهنمای رشوه",
+          "دستگیر شدی" in dm28 and "گزارشی از طرف" in dm28 and "به مدت 30 دقیقه زندانی شدی" in dm28
+          and "هیچ فعالیتی نمی‌توانی انجام دهی" in dm28 and "رشوه دادن" in dm28 and "زودتر آزاد شوی" in dm28,
           dm28.replace("\n", " | ")[:180])
-    check("اعلام لو دادن تو گروه هم مثل قبل میره",
-          any("لو داد!" in c[1] for c in upd_sn28.message.calls), "-")
+    check("اعلام لو دادن تو گروه با قالب جدید میره",
+          any("یکی رو لو داد" in c[1] and "یورش برد" in c[1] for c in upd_sn28.message.calls), "-")
     async with session_scope() as s:
         vic28 = await users.get_by_tg(s, 770032)
         check("قربانی واقعاً ۳۰ دقیقه زندانی شد و انبارش خالی شد",
@@ -15204,6 +15209,223 @@ async def main() -> None:
         for p in (_old34, _old34b, *_safety_paths34):
             if p and os.path.exists(p):
                 os.remove(p)
+
+
+    # ═══════════════════ راند ۳۵: دراپ آپدیت‌های صف قبل استارت + کوئیک‌کامند ادمین + چاپلوس جامع (جریمه فروش/شرکت) + سینک خودکار اسکیما + گیت زندان بدون معافیت ═══════════════════
+    import database as _db35
+    import re as _re35
+    from handlers import farm as farm_h35, power as power_h35, snitch as snitch_h35
+    from services import smuggle as smg35, snitch as sn35
+
+    # ── دراپ آپدیت‌های قدیمی صف (درخواست کارفرما: «استارت‌ها جواب داده نشه وقتی ربات خاموش بوده») ──
+    _bot_src35 = open("bot.py", encoding="utf-8").read()
+    check("run_polling با drop_pending_updates=True اجرا میشه، آپدیت‌های قبل استارت نادیده گرفته میشن",
+          "drop_pending_updates=True" in _bot_src35, "-")
+    check("ارورهندلر سراسری ثبت شده تا کرش هندلر/جاب با تریس‌بک کامل تو لاگ بیفته",
+          "add_error_handler" in _bot_src35, "-")
+
+    # ── لیترال پیش‌فرض امن برای ستون NOT NULL تازه‌اضافه‌شده (سینک خودکار اسکیما) ──
+    _ut35 = User.__table__.c
+    check("دیفالت اسکالر مدل تو لیترال استفاده میشه (جم=0 و کامیون لگاسی=1)",
+          _db35._default_literal(_ut35.gems, True) == "0" and _db35._default_literal(_ut35.trucks, True) == "1",
+          f"{_db35._default_literal(_ut35.gems, True)}/{_db35._default_literal(_ut35.trucks, True)}")
+    check("DateTime با دیفالت کال‌بل (now_utc) تو DDL نمیاد و به نقطه صفر امن برمی‌گرده",
+          _db35._default_literal(_ut35.energy_updated_at, True) == "'1970-01-01 00:00:00'",
+          _db35._default_literal(_ut35.energy_updated_at, True))
+    check("رشته بدون دیفالت کوتیشن خالی می‌گیره",
+          _db35._default_literal(_ut35.equipped_weapon, True) == "''",
+          _db35._default_literal(_ut35.equipped_weapon, True))
+    from sqlalchemy import Boolean as _Bool35, Column as _Col35
+    _bcol35 = _Col35("x35", _Bool35, nullable=False)
+    check("Boolean روی sqlite صفر و روی Postgres FALSE میشه",
+          _db35._default_literal(_bcol35, True) == "0" and _db35._default_literal(_bcol35, False) == "FALSE", "-")
+
+    # ── سینک خودکار روی دیتابیس واقعی با اسکیمای قدیمی (باگ لاگ: OperationalError no such column users.trucks) ──
+    import sqlite3 as _sql335
+    from sqlalchemy import text as _text35
+    from sqlalchemy.ext.asyncio import create_async_engine as _cae35
+    _old_path35 = "/tmp/teriaky-oldschema35.db"
+    if os.path.exists(_old_path35):
+        os.remove(_old_path35)
+    _c35 = _sql335.connect(_old_path35)
+    _c35.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, telegram_id INTEGER, first_name VARCHAR(64), level INTEGER, cash INTEGER)")
+    _c35.execute("INSERT INTO users (id, telegram_id, first_name, level, cash) VALUES (1, 555035, 'قدیمی', 3, 700)")
+    _c35.commit()
+    _c35.close()
+    _eng35 = _cae35(f"sqlite+aiosqlite:///{_old_path35}")
+    async with _eng35.begin() as _conn35:
+        await _conn35.run_sync(_db35._sync_model_columns)
+        await _conn35.run_sync(_db35._sync_model_columns)  # دور دوم: idempotent، نه خطا نه ستون تکراری
+    async with _eng35.connect() as _conn35b:
+        _cols35 = {r[1] for r in (await _conn35b.execute(_text35('PRAGMA table_info("users")'))).fetchall()}
+        _row35 = (await _conn35b.execute(
+            _text35("SELECT gems, skill_stamina, energy, trucks FROM users WHERE id=1"))).fetchone()
+    await _eng35.dispose()
+    os.remove(_old_path35)
+    check("همه ستون‌های گمشده مدل (از جمله trucks/truck_level لاگ باگ قدیمی) خودکار ALTER میشن",
+          {"gems", "skill_stamina", "energy", "energy_updated_at", "trucks", "truck_level"} <= _cols35,
+          str(sorted(_cols35))[:90])
+    check("سطر قدیمی با دیفالت امن مدل بک‌فیل میشه (جم=0، استقامت=0، انرژی=ماکس، کامیون=1)",
+          tuple(_row35) == (0, 0, config.MAX_ENERGY, 1), str(_row35))
+    check("گیت اسکیما بعد init_db بازه و سشن‌ها بلاک نمی‌مونن", _db35._schema_ready.is_set(), "-")
+
+    # ── الیاس‌های متنی راند ۳۵ تو TEXT_HANDLERS ──
+    _pats35 = {n: _re35.compile(p) for n, p, _f in handlers.TEXT_HANDLERS}
+    _funcs35 = {n: f for n, _p, f in handlers.TEXT_HANDLERS}
+    check("«تریاکی دیلی» و «تریاکی ساخت/خرید زمین» وصلن به هندلرای درست و «دیلی» تنها (بدون پیشوند) پترن نمی‌خوره",
+          _pats35["daily_alias"].match("تریاکی دیلی") and _pats35["daily_alias"].match("تی دیلی!")
+          and not _pats35["daily_alias"].match("دیلی")
+          and _pats35["plot_buy"].match("تریاکی ساخت زمین") and _pats35["plot_buy"].match("تریاکی خرید زمین")
+          and _funcs35["daily_alias"] is handlers.dquests.daily_quests_cb
+          and _funcs35["plot_buy"] is farm_h35.buy_plot_text, "-")
+
+    # ── کوئیک‌کامند ادمین (درخواست کارفرما): ادمین بدون «تریاکی» دستور بزنه ──
+    upd_q35 = _text_update("دیلی", uid=1001, uname="ali", fname="علی")
+    await handlers.admin_quick(upd_q35, None)
+    check("ادمین با «دیلی» خالی صفحه ماموریت‌های روزانه رو می‌گیره",
+          any("مأموریت‌های روزانه" in (c[1] or "") for c in upd_q35.message.calls),
+          str([c[1][:40] for c in upd_q35.message.calls])[:130])
+    upd_q35b = _text_update("دیلی", uid=424244, uname="gsm35", fname="غریبه۳۵")
+    await handlers.admin_quick(upd_q35b, None)
+    check("«دیلی» خالی برای کاربر عادی کاملاً بی‌اثره (فقط فیچر ادمینه)", not upd_q35b.message.calls)
+    upd_q35c = _text_update("برداشت", uid=1001, uname="ali", fname="علی")
+    await handlers.admin_quick(upd_q35c, None)
+    check("متنی که خودش دستور معتبره (مثل «برداشت») توسط کوئیک‌کامند دوباره اجرا نمیشه",
+          not upd_q35c.message.calls, str(upd_q35c.message.calls)[:70])
+
+    # ── «تریاکی ساخت زمین»: کارت تایید خرید زمین با متن ──
+    async with session_scope() as s:
+        bp35, _ = await users.get_or_create(s, tg(660350, "plot35", "زمین‌ساز"))
+        bp35.level = 20
+        bp35.cash = 9_000_000
+        await s.commit()
+    upd_pb35 = _text_update("تریاکی ساخت زمین", uid=660350, uname="plot35", fname="زمین‌ساز")
+    await farm_h35.buy_plot_text(upd_pb35, None)
+    pbt35 = upd_pb35.message.calls[-1][1] if upd_pb35.message.calls else ""
+    check("«تریاکی ساخت زمین» کارت تایید خرید زمین شماره ۱ رو با سوال «می‌خری؟» میاره",
+          "خرید زمین شماره 1" in pbt35 and "می‌خری؟" in pbt35, pbt35.replace("\n", " | ")[:130])
+
+    # ── گیت زندان بدون معافیت ادمین (راند ۳۵، درخواست کارفرما: «همه راه‌ها بسته») ──
+    async with session_scope() as s:
+        adm35 = await users.get_by_tg(s, 1001)
+        _save_jail35 = adm35.jailed_until
+        adm35.jailed_until = now_utc() + timedelta(minutes=30)
+        sn35.jail_invalidate()
+        await s.commit()
+    upd_jg35 = _text_update("حمله", uid=1001, uname="ali", fname="علی")
+    raised35 = False
+    try:
+        await power_h35.jail_gate(upd_jg35, None)
+    except ApplicationHandlerStop:
+        raised35 = True
+    jg35 = upd_jg35.message.calls[-1][1] if upd_jg35.message.calls else ""
+    check("ادمین زندانی هم بلاک میشه (معافیت برداشته شد) و متن قطعی «نمی‌تونی این کارو انجام بدی» + راهنمای رشوه رو می‌بینه",
+          raised35 and "زندانی هستی" in jg35 and "نمی‌تونی این کارو انجام بدی" in jg35 and "رشوه دادن" in jg35,
+          jg35.replace("\n", " | ")[:130])
+    upd_jg35b = _text_update("رشوه دادن", uid=1001, uname="ali", fname="علی")
+    raised35b = False
+    try:
+        await power_h35.jail_gate(upd_jg35b, None)
+    except ApplicationHandlerStop:
+        raised35b = True
+    check("تنها راه باز زندان «رشوه دادن» عه که از گیت بی‌صدا رد میشه",
+          not raised35b and not upd_jg35b.message.calls, str(upd_jg35b.message.calls)[:60])
+    async with session_scope() as s:
+        adm35b = await users.get_by_tg(s, 1001)
+        adm35b.jailed_until = _save_jail35
+        sn35.jail_invalidate()
+        await s.commit()
+
+    # ── فلوی کامل لو دادن با نمونه قطعی کارفرما: Cosholat لو میده، انبار Rapit با تریاک ×5 (ارزش 31,200) توقیف میشه ──
+    async with session_scope() as s:
+        cs35, _ = await users.get_or_create(s, tg(660340, "Cosholat", "Cosholat"))
+        rp35, _ = await users.get_or_create(s, tg(660341, "Rapit", "Rapit"))
+        cs35.cash = 0
+        cs35.snitch_count = 2  # این لو دادن سومین تلاش هفتگیه (راند ۳۵: تلاش هم حسابه) → لقب چاپلوس
+        cs35.snitch_window_at = now_utc()
+        await smg35.add_product(s, rp35.id, "teriak", 5, 31200, shelter_level=10)
+        sn35._jail_cache["map"].pop(660341, None)
+        await s.commit()
+    spy35 = _CBotSpy()
+    upd35s = _g27("لو دادن", 660340, "Cosholat", "Cosholat", -96003501, reply_uid=660341)
+    await snitch_h35.snitch_cmd(upd35s, SimpleNamespace(bot=spy35))
+    raid35 = next((c[1] for c in upd35s.message.calls if "یورش برد و تمام محصولاتش توقیف شد" in (c[1] or "")), "")
+    check("کارت یورش با متن قطعی کارفرما: «اقلام توقیفی: تریاک ×5» و سهم دقیق ۲۵٪ یعنی 7,800 تی‌پوینت + پاداش ثابت",
+          "یکی رو لو داد" in raid35 and "اقلام توقیفی: تریاک ×5" in raid35
+          and "پاداش لو‌دهنده: 7,800 تی‌پوینت" in raid35 and "پاداش ثابت: 10,000 تی‌پوینت" in raid35
+          and "به مدت 30 دقیقه زندانی شد" in raid35
+          and "tg://user?id=660341" in raid35 and "tg://user?id=660340" in raid35,
+          raid35.replace("\n", " | ")[:220])
+    dm35 = next((t for c, t in spy35.sent if c == 660341), "")
+    check("دی‌ام دستگیری نمونه قطعی به قربانی میره (گزارش لو‌دهنده + ۳۰ دقیقه زندان + راهنمای رشوه)",
+          "دستگیر شدی" in dm35 and "گزارشی از طرف" in dm35 and "30 دقیقه زندانی شدی" in dm35
+          and "زودتر آزاد شوی" in dm35, dm35.replace("\n", " | ")[:130])
+    ann35 = next((c[1] for c in upd35s.message.calls if "اهالی محله" in (c[1] or "")), "")
+    check("اعلان لقب چاپلوس با متن قطعی تو همون گروه (هفته‌ای 3 نفر، 24 ساعت، فروش و شرکت 20% کمتر)",
+          "تو این هفته 3 نفر رو لو داده" in ann35 and "لقب «چاپلوس» براش 24 ساعت فعال شد" in ann35
+          and "📉 فروش: 20% کمتر" in ann35 and "🏭 سرعت شرکت‌ها: 20% کمتر" in ann35,
+          ann35.replace("\n", " | ")[:170])
+    async with session_scope() as s:
+        cs35b = await users.get_by_tg(s, 660340)
+        rp35b = await users.get_by_tg(s, 660341)
+        check("حساب نمونه قطعی: لو‌دهنده 7,800+10,000 گرفت، لقب چاپلوس فعال شد، قربانی ۳۰ دقیقه زندانیه",
+              cs35b.cash == 7800 + 10000 and sn35.khaye_active(cs35b) and sn35.jail_left(rp35b) > 29 * 60,
+              f"cash={cs35b.cash}")
+        await s.commit()
+
+    # ── چاپلوس: فروش ۲۰٪ کمتر روی محموله و کاروان قاچاق (راند ۳۵) ──
+    async with session_scope() as s:
+        sm35, _ = await users.get_or_create(s, tg(660342, "smguy35", "قاچاقچی۳۵"))
+        sm35.cash = 0
+        sm35.khaye_until = now_utc() + timedelta(hours=1)
+        check("ضریب فروش با لقب چاپلوس 0.8 و بدون لقب 1.0 عه",
+              abs(sn35.sell_mult(sm35) - 0.8) < 1e-9
+              and sn35.sell_mult(SimpleNamespace(khaye_until=None)) == 1.0, "-")
+        await smg35.add_product(s, sm35.id, "teriak", 2, 10000, shelter_level=10)
+        _roll35 = smg35.roll_outcome
+        smg35.roll_outcome = lambda: "ok"
+        try:
+            ok35, _m35, sh35 = await smg35.send_shipment(s, sm35, "teriak", 2)
+        finally:
+            smg35.roll_outcome = _roll35
+        check("محموله چاپلوس: از ارزش 10,000 فقط 8,000 دله میشه (۲۰٪ جریمه چاپلوس موقع فروش)",
+              ok35 and sh35 is not None and sh35.value == 10000 and sh35.pay == 8000,
+              f"{sh35.pay if sh35 else None}")
+        if sh35:
+            await s.flush()  # محموله pending ـه، اول سینک بشه بعد پاک
+            await s.delete(sh35)
+        await s.commit()
+    ctxt35 = smg35.shipment_confirm_text("teriak", 2, 10000, mult=0.8)
+    check("کارت تایید محموله برای چاپلوس یادداشت «20% از فروشت کم میشه» رو نشون میده",
+          "لقب چاپلوس" in ctxt35 and "20%" in ctxt35, ctxt35.replace("\n", " | ")[:120])
+    ctxt35b = smg35.shipment_confirm_text("teriak", 2, 10000)
+    check("بدون لقب، کارت تایید محموله یادداشت چاپلوس نداره", "لقب چاپلوس" not in ctxt35b, "-")
+    _cv35 = {"crop": "teriak", "bonus": 40, "until": (now_utc() + timedelta(hours=1)).isoformat()}
+    cpg35 = smg35.caravan_page_text(_cv35, 5, 1000, 0, mult=0.8)
+    check("صفحه کاروان برای چاپلوس: قیمت هر دونه با ضریب 0.8 (1,120 تی‌پوینت) + یادداشت جریمه",
+          money(1120) in cpg35 and "لقب چاپلوس" in cpg35, cpg35.replace("\n", " | ")[:160])
+    cpg35b = smg35.caravan_page_text(_cv35, 5, 1000, 0)
+    check("صفحه کاروان بدون لقب: قیمت کامل (1,400 تی‌پوینت) و بدون یادداشت",
+          money(1400) in cpg35b and "لقب چاپلوس" not in cpg35b, cpg35b.replace("\n", " | ")[:160])
+    async with session_scope() as s:
+        sm35c = await users.get_by_tg(s, 660342)
+        await smg35._meta_set(s, "smuggler", "")
+        await smg35.spawn_caravan(s, crop="marijuana", bonus=50)
+        await smg35.add_product(s, sm35c.id, "marijuana", 2, 4000, shelter_level=10)
+        okc35, mc35, g35 = await smg35.sell_to_caravan(s, sm35c, 2)
+        check("فروش به کاروان با لقب چاپلوس: سود 6,000 با جریمه میشه 4,800 و پیامش جریمه رو اعلام می‌کنه",
+              okc35 and g35 == 4800 and "لقب چاپلوس" in mc35 and "از فروش کم شد" in mc35, f"{g35}")
+        await smg35._meta_set(s, "smuggler", "")
+        await s.commit()
+
+    # ── پاکسازی کاربرای راند ۳۵ ──
+    sn35.jail_invalidate()
+    async with session_scope() as s:
+        for _uid35 in (660340, 660341, 660342, 660350):
+            _u35 = await users.get_by_tg(s, _uid35)
+            if _u35:
+                await s.delete(_u35)
+        await s.commit()
 
     # ── تمیزکاری ته تست‌ها ──
     fj_svc._MEMBER_CACHE.clear()

@@ -109,7 +109,8 @@ async def ship_confirm_page(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         await s.commit()
     if not ok:
         return await respond(update, f"📦 {fa_num(qty)} تا {sd['name']} تو انبارت نداری")
-    await respond(update, smg.shipment_confirm_text(crop, qty, value), kb.ship_confirm_kb(crop, qty))
+    from services.snitch import sell_mult
+    await respond(update, smg.shipment_confirm_text(crop, qty, value, sell_mult(user)), kb.ship_confirm_kb(crop, qty))
 
 
 async def ship_ask_qty_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -184,7 +185,8 @@ async def caravan_page(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             row = (await smg.get_products(s, user.id)).get(cv["crop"])
             have = row.qty if row else 0
             unit = await smg.caravan_unit_value(s, user.id, cv["crop"])
-        text = smg.caravan_page_text(cv, have, unit, user.cash)
+        from services.snitch import sell_mult as _sm
+        text = smg.caravan_page_text(cv, have, unit, user.cash, _sm(user))
         markup = kb.smcaravan_kb(have if cv else 0)
         await s.commit()
     await respond(update, text, markup)
@@ -200,7 +202,8 @@ async def caravan_confirm_page(update: Update, context: ContextTypes.DEFAULT_TYP
         have = row.qty if row else 0
         qty = have if n == "all" else int(n)
         ok = cv is not None and row is not None and 0 < qty <= have
-        gain = round(int(row.value * qty / row.qty) * (1 + cv["bonus"] / 100)) if ok else 0
+        from services.snitch import sell_mult as _smlx
+        gain = round(int(row.value * qty / row.qty) * (1 + cv["bonus"] / 100) * _smlx(user)) if ok else 0
         await s.commit()
     if not cv:
         return await respond(update, "🚚 کاروان جمع کرد و رفت")
@@ -249,7 +252,8 @@ async def caravan_execute(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             row = (await smg.get_products(s, user.id)).get(cv["crop"])
             have = row.qty if row else 0
             unit = await smg.caravan_unit_value(s, user.id, cv["crop"])
-        text = smg.caravan_page_text(cv, have, unit, user.cash)
+        from services.snitch import sell_mult as _sm
+        text = smg.caravan_page_text(cv, have, unit, user.cash, _sm(user))
         markup = kb.smcaravan_kb(have if cv else 0)
         await s.commit()
     await respond(update, text, markup, alert=f"💰 {money(gain)} گرفتی" if ok else alert)
