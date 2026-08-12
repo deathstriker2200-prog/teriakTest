@@ -15427,6 +15427,136 @@ async def main() -> None:
                 await s.delete(_u35)
         await s.commit()
 
+
+    # ═══════════════════ راند ۳۶: ریگرشن سیم‌کشی واقعی PTB — باگ «دستورهای متنی مرده» ═══════════════════
+    # PTB تو هر گروه فقط اولین هندلر مچ‌شده رو اجرا می‌کنه (break بعد از اولین مچ؛ block=False فقط تسک/اوت رو کنترل می‌کنه)
+    # این تست‌ها از process_update واقعی عبور می‌کنن تا دیگه هیچ بلع‌شدنی تو گروه‌ها بی‌صدا رد نشه
+    from datetime import datetime as _dt36
+    from telegram import CallbackQuery as _CQ36, Chat as _Chat36, Message as _TMsg36, Update as _Upd36, User as _TU36
+    from telegram.ext import Application as _App36, CallbackQueryHandler as _CQH36, MessageHandler as _MH36
+
+    _app36 = _App36.builder().token("123:test").build()
+    handlers.register_handlers(_app36)
+    object.__setattr__(_app36.bot, "_bot_user", _TU36(id=999, is_bot=True, first_name="تریاکی", username="teriaky_bot"))
+    _app36._initialized = True  # بدون شبکه، فقط برای رد شدن از گارد initialize
+
+    # ── نگاشت استاتیک: گیت زندان تو گروه -6 قبل از گیت خاموشی، admin_quick ته صف متن ──
+    _g6_36 = [getattr(getattr(h, "callback", None), "__qualname__", "") for h in _app36.handlers[-6]]
+    _g5_36 = [getattr(getattr(h, "callback", None), "__qualname__", "") for h in _app36.handlers[-5]]
+    check("گیت زندان گروه مستقل -6 رو داره (هر دو نوع پیام و دکمه) و قبل از گیت خاموشی (-5) میاد",
+          _g6_36 == ["jail_gate", "jail_gate"] and _g5_36 == ["power_gate", "power_gate"], str(_g6_36))
+    _g0_36 = list(_app36.handlers[0])
+    _txt36 = [i for i, h in enumerate(_g0_36) if isinstance(h, _MH36)
+              and getattr(getattr(h, "callback", None), "__qualname__", "").startswith("text_dedup")]
+    _quick36 = next(i for i, h in enumerate(_g0_36)
+                    if getattr(getattr(h, "callback", None), "__qualname__", "").startswith("admin_quick"))
+    check("admin_quick بعد از همه هندلرهای متنی ثبت شده تا هیچ دستور واقعی رو نبلعه",
+          _txt36 and _quick36 > max(_txt36), f"quick={_quick36} last_txt={max(_txt36)}")
+
+    # ── جاسوس‌ها: هندلرهای متنی گروه 0 فقط ثبت می‌کنن (کال‌ثرو نشه که شبکه/DB درگیر نشه) ──
+    _fired36 = []
+
+    def _rec36(tag):
+        async def _r(update, context):
+            _fired36.append(tag)
+        return _r
+
+    _base36 = _txt36[0]
+    _names36 = [n for n, _p, _f in handlers.TEXT_HANDLERS]
+    check("هندلرهای متنی گروه 0 دقیقاً هم‌تراز و به ترتیب TEXT_HANDLERS رجیستر شدن (پایه نگاشت تست)",
+          len(_txt36) == len(_names36), f"{len(_txt36)}/{len(_names36)}")
+    for _i in _txt36:
+        _g0_36[_i].callback = _rec36(f"txt:{_names36[_i - _base36]}")
+
+    async def _gate36(update, context, cb, tag):
+        _fired36.append(tag)
+        return await cb(update, context)   # گیت زندان واقعی اجرا بشه، فقط ردش رو می‌گیریم
+
+    for _h in _app36.handlers[-6]:
+        _cb36, _tg36 = _h.callback, ("jailM" if isinstance(_h, _MH36) else "jailCQ")
+
+        async def _wrap36(update, context, _cb=_cb36, _tg=_tg36):
+            return await _gate36(update, context, _cb, _tg)
+        _h.callback = _wrap36
+    _menu_h36 = next(h for h in _g0_36 if isinstance(h, _CQH36)
+                     and getattr(getattr(h, "callback", None), "__qualname__", "") == "menu_cb")
+    _menu_h36.callback = _rec36("menu:home")
+
+    def _mk36(text, uid=7770036):
+        return _Upd36(update_id=1, message=_TMsg36(
+            message_id=5, date=_dt36.now(), chat=_Chat36(id=-100, type="group"),
+            from_user=_TU36(id=uid, is_bot=False, first_name="تستی"), text=text))
+
+    async def _proc36(upd):
+        _fired36.clear()
+        await _app36.process_update(upd)
+        await asyncio.sleep(0.3)  # تسک‌های نان‌بلاکینگ هم کارشون تموم شه
+        return list(_fired36)
+
+    # ── ۱) دستورهای متنی واقعا به هندلرشون میرسن (باگ راند ۳۵: admin_quick همه رو می‌بلعید) ──
+    f36a = await _proc36(_mk36("تریاکی کاشت تریاک"))
+    check("e2e: «تریاکی کاشت تریاک» به هندلر کاشت میرسه (نه بیشتر، نه کمتر)",
+          f36a == ["jailM", "txt:plant"], str(f36a))
+    f36b = await _proc36(_mk36("تریاکی برداشت"))
+    check("e2e: «تریاکی برداشت» به هندلر برداشت میرسه", f36b == ["jailM", "txt:harvest"], str(f36b))
+    f36c = await _proc36(_mk36("تی پروفایل"))
+    check("e2e: «تی پروفایل» به هندلر پروفایل میرسه", f36c == ["jailM", "txt:profile"], str(f36c))
+    f36d = await _proc36(_mk36("تریاکی دیلی"))
+    check("e2e: «تریاکی دیلی» الیاس دیلی رو فایر می‌کنه", f36d == ["jailM", "txt:daily_alias"], str(f36d))
+    f36e = await _proc36(_mk36("سلام بچه‌ها"))
+    check("e2e: متن معمولی هیچ دستوری رو فایر نمی‌کنه (فقط گیت‌ها رد میشن)",
+          f36e == ["jailM"], str(f36e))
+
+    # ── ۲) شرت‌کات ادمین از مسیر واقعی: «دیلی» خالی برای ادمین کار می‌کنه، برای غریبه نه ──
+    async with session_scope() as s:  # ورودی معلق احتمالی تست‌های قبلی رو می‌بندیم که capture وسط راه نبلعه
+        _adm36u = await users.get_by_tg(s, 1001)
+        if _adm36u is not None:
+            _adm36u.pending_action = None
+            _adm36u.pending_value = None
+        await s.commit()
+    from handlers import dquests as _dq36
+    _render_calls36 = []
+    _orig_render36 = _dq36.render_dquests
+
+    async def _render_spy36(update, alert=None):
+        _render_calls36.append(getattr(update.effective_user, "id", None))
+
+    _dq36.render_dquests = _render_spy36
+    try:
+        await _proc36(_mk36("دیلی", uid=1001))
+        check("e2e: ادمین با «دیلی» خالی صفحه ماموریت رو می‌گیره (admin_quick از ته صف می‌گیرتش)",
+              _render_calls36 == [1001], str(_render_calls36))
+        _render_calls36.clear()
+        await _proc36(_mk36("دیلی", uid=7770036))
+        check("e2e: «دیلی» خالی برای کاربر عادی هیچ واکنشی نداره", _render_calls36 == [])
+    finally:
+        _dq36.render_dquests = _orig_render36
+
+    # ── ۳) گیت زندان حالا واقعاً سر راهه (باگ راند ۳۵: پشت power_gate قفل بود و هیچ‌وقت اجرا نمی‌شد) ──
+    async with session_scope() as s:
+        _ju36, _ = await users.get_or_create(s, tg(7770036, "wir36", "زندانی‌سیم"))
+        _ju36.jailed_until = now_utc() + timedelta(minutes=25)
+        sn35.jail_invalidate()
+        await s.commit()
+    f36j = await _proc36(_mk36("تریاکی کاشت تریاک"))
+    check("e2e: زندانی «تریاکی کاشت» بزنه گیت زندان جلویش رو می‌گیره و هیچ هندلری اجرا نمیشه",
+          f36j == ["jailM"], str(f36j))
+    f36k = await _proc36(_mk36("رشوه دادن"))
+    check("e2e: «رشوه دادن» از گیت زندان رد میشه و به هندلر رشوه میرسه",
+          f36k == ["jailM", "txt:bribe"], str(f36k))
+    _cq36 = _Upd36(update_id=2, callback_query=_CQ36(
+        id="q36", from_user=_TU36(id=7770036, is_bot=False, first_name="تستی"),
+        chat_instance="ci36", data="menu:home"))
+    f36m = await _proc36(_cq36)
+    check("e2e: دکمه منوی زندانی هم از گیت زندان رد نمیشه و منوی اصلی باز نمیشه",
+          f36m == ["jailCQ"] and "menu:home" not in f36m, str(f36m))
+    async with session_scope() as s:
+        _ju36b = await users.get_by_tg(s, 7770036)
+        if _ju36b:
+            await s.delete(_ju36b)
+        sn35.jail_invalidate()
+        await s.commit()
+
     # ── تمیزکاری ته تست‌ها ──
     fj_svc._MEMBER_CACHE.clear()
     async with session_scope() as s:

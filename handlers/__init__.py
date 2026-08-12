@@ -143,13 +143,16 @@ async def admin_quick(update, context) -> None:
 def register_handlers(app: Application) -> None:
     fa_text = filters.TEXT & ~filters.COMMAND
 
+    # ── گیت زندان لو دادن (راند ۲۲): زندانی هیچ دستور/دکمه‌ای نداره تا آزاد بشه ──
+    # راند ۳۶ (باگ پروداکشن): PTB تو هر گروه فقط اولین هندلر مچ‌شده رو اجرا می‌کنه؛
+    # گیت زندان تو گروه مشترک با power_gate همیشه پشت سرش قفل می‌شد و هیچ‌وقت اجرا نمی‌شد.
+    # گروه مستقل -6 یعنی قبل از همه گیت‌های دیگه
+    app.add_handler(MessageHandler(filters.ALL, power.jail_gate), group=-6)
+    app.add_handler(CallbackQueryHandler(power.jail_gate), group=-6)
+
     # ── گیت خاموشی (/botdown کلی و /botoff گروهی)، قبل از همه چیز ──
     app.add_handler(MessageHandler(filters.ALL, power.power_gate), group=-5)
     app.add_handler(CallbackQueryHandler(power.power_gate), group=-5)
-
-    # گیت زندان لو دادن (راند ۲۲): زندانی هیچ دستور/دکمه‌ای نداره تا آزاد بشه
-    app.add_handler(MessageHandler(filters.ALL, power.jail_gate), group=-5)
-    app.add_handler(CallbackQueryHandler(power.jail_gate), group=-5)
 
     # ── ثبت کاربران دیده‌شده (برای حمله با @یوزرنیم به غریبه‌ها)، بی‌صدا و قبل از همه ──
     app.add_handler(MessageHandler(filters.ALL, seen.track), group=-4)
@@ -204,13 +207,16 @@ def register_handlers(app: Application) -> None:
     # ── اد شدن ربات به گروه، خودش متن خوش‌آمد می‌فرسته ──
     app.add_handler(ChatMemberHandler(start.bot_added, ChatMemberHandler.MY_CHAT_MEMBER))
 
-    # ── راند ۳۵: شرت‌کات ادمین (بدون پیشوند)، قبل از دستورهای متنی و بدون بلاک ──
-    app.add_handler(MessageHandler(fa_text, admin_quick, block=False))
-
     # ── دستورهای متنی فارسی (PV و گروه)، همه با پیشوند «تریاکی » به‌جز کنده کاری ──
     # رَپر dedup: ۵۰ تا از یه دستور پشت سر هم بفرستی فقط اولیش اجرا میشه
     for _name, pattern, func in TEXT_HANDLERS:
         app.add_handler(MessageHandler(fa_text & filters.Regex(pattern), common.text_dedup(func)))
+
+    # ── راند ۳۵/۳۶: شرت‌کات ادمین (بدون پیشوند)، حتماً بعد از دستورهای متنی ثبت میشه ──
+    # PTB تو هر گروه فقط اولین هندلر مچ‌شده رو اجرا می‌کنه؛ قبل از لوپ بودن یعنی بلع همه دستورها
+    # (باگ پروداکشن راند ۳۶: «تریاکی کاشت» و رفقاش جواب نمی‌دادن). اینجوری فقط متن‌هایی که
+    # هیچ دستوری نگرفتنشون به admin_quick میرسه و خودش هم متن معتبر رو دوباره اجرا نمی‌کنه
+    app.add_handler(MessageHandler(fa_text, admin_quick, block=False))
 
     # ── فایل بک‌آپ (فقط بعد از /upload_backup و فقط ادمین) ──
     app.add_handler(MessageHandler(filters.ATTACHMENT & ~filters.COMMAND, backup.backup_doc))
