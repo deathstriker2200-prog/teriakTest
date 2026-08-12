@@ -14998,6 +14998,213 @@ async def main() -> None:
           "backup.backup_supported()" not in _hsrc33 and _hsrc33.count("backup.dump_supported()") >= 4
           and ".sql.gz" in _hsrc33, "-")
 
+    # ═══ راند ۳۴ (قطعی کارفرما): ادغام بک‌آپ قدیمی SQLite با دیتابیس زنده Postgres ═══
+    from handlers import backup as backup_h34
+    import sqlite3 as _sq34
+    from datetime import datetime as _dt34
+    import re as _re34
+
+    # فایل بک‌آپ قدیمی شبیه‌سازی‌شده: فقط دو جدول با ستون‌های کم (شمای دوران قبل از فیچرهای جدید)
+    def _mk_old34(path, users_rows, plots_rows):
+        if os.path.exists(path):
+            os.remove(path)
+        c = _sq34.connect(path)
+        try:
+            c.executescript(
+                "CREATE TABLE users (id INTEGER PRIMARY KEY, telegram_id BIGINT, first_name TEXT, "
+                "level INTEGER, cash INTEGER, created_at TEXT);"
+                "CREATE TABLE plots (id INTEGER PRIMARY KEY, user_id BIGINT, status TEXT, crop TEXT, created_at TEXT);"
+            )
+            c.executemany("INSERT INTO users VALUES (?,?,?,?,?,?)", users_rows)
+            c.executemany("INSERT INTO plots VALUES (?,?,?,?,?)", plots_rows)
+            c.commit()
+        finally:
+            c.close()
+        with open(path, "rb") as f:
+            return f.read()
+
+    _old34 = "/tmp/teriaky-old34.db"
+    _old34b = "/tmp/teriaky-old34b.db"
+    _safety_paths34 = []
+
+    def _find_safety34(msg):
+        m = _re34.search(r"/tmp/teriaky-preimport-\S+\.sql", msg or "")
+        if m:
+            _safety_paths34.append(m.group(0))
+
+    _data34 = _mk_old34(_old34, [
+        (901000, 901000, "تکراری", 5, 1000, "2024-01-01 10:00:00.000000"),
+        (901001, 901001, "قدیمی تازه", 7, 2500, "2024-02-02 11:11:11.222222"),
+        (901002, 901002, "تازه دو", 9, 300, "2024-03-03 08:00:00.000000"),
+    ], [
+        (7701, 901000, "ready", "mari", "2024-01-02 10:00:00.000000"),
+        (7702, 901001, "growing", None, "2024-01-03 10:00:00.000000"),
+        (7703, 99999999, "ready", "mari", "2024-01-04 10:00:00.000000"),
+    ])
+
+    _url_save34 = config.DATABASE_URL
+    _orig_which34 = backup_svc.shutil.which
+    _orig_dump34 = backup_svc._pg_dump_bytes
+    _orig_merge34 = backup_svc.merge_sqlite_bytes
+    backup_svc.shutil.which = lambda name, *a, **k: "/usr/bin/x"
+
+    async def _fake_dump34(dsn):
+        return b"-- preimport safety dump\nCREATE TABLE public.users (id integer);\n"
+
+    backup_svc._pg_dump_bytes = _fake_dump34
+    msgs34 = []
+
+    async def _notify34(text):
+        msgs34.append(text)
+
+    config.DATABASE_URL = "postgresql+asyncpg://u:p@db/teriaky"
+    try:
+        # ── ۱) تشخیص ترکیب ──
+        config.DATABASE_URL = _url_save34
+        check("merge_needed روی دیتابیس زنده SQLite خاموشه", not backup_svc.merge_needed(_data34))
+        config.DATABASE_URL = "postgresql+asyncpg://u:p@db/teriaky"
+        check("merge_needed فقط برای ترکیب Postgres زنده و فایل با هدر SQLite روشنه",
+              backup_svc.merge_needed(_data34)
+              and not backup_svc.merge_needed(b"junk data, not a backup"))
+
+        # یه یوزن هم‌آیدی تو دیتابیس زنده می‌سازیم تا ردیف فایل «تکراری» رد بشه
+        async with session_scope() as s:
+            s.add(User(id=901000, telegram_id=901000, first_name="زنده"))
+            await s.commit()
+
+        # ── ۲) ادغام کامل (شبیه‌سازی Postgres: URL فیک + pg_dump فیک، موتور همان تست SQLite) ──
+        ok34, msg34 = await backup_svc.merge_sqlite_bytes(_data34, notify=_notify34)
+        _find_safety34(msg34)
+        check("ادغام کامل موفقه و خلاصه دقیقاً همونیه که به notify رفت",
+              ok34 and msgs34 and msgs34[-1] == msg34, msg34[:80])
+        check("خلاصه: هدر موفقیت، آمار users و plots، رد تکراری و یتیم، جدول‌های غایب و مسیر بک‌آپ احتیاطی",
+              all(t in msg34 for t in [
+                  "✅ ادغام فایل قدیمی SQLite با دیتابیس Postgres تموم شد",
+                  "users: 2 ردیف جدید", "1 تکراری رد شد",
+                  "plots: 2 ردیف جدید", "1 یتیم", "جدول تو فایل قدیمی نبودن",
+                  "teriaky-preimport-", "سینک"]),
+              msg34.replace("\n", " | ")[:140])
+        check("فایل دامپ احتیاطی قبل از ادغام واقعاً روی دیسک ساخته و مونده",
+              bool(_safety_paths34) and all(os.path.exists(p) for p in _safety_paths34))
+
+        async with session_scope() as s:
+            u1 = await s.get(User, 901001)
+            u0 = await s.get(User, 901000)
+            p1 = await s.get(Plot, 7701)
+            p2 = await s.get(Plot, 7702)
+            p3 = await s.get(Plot, 7703)
+        check("ردیف تازه با مقادیر فایل درج شد و تاریخ رشته‌ای SQLite به datetime پارس شد",
+              u1 is not None and u1.cash == 2500 and u1.level == 7 and u1.first_name == "قدیمی تازه"
+              and u1.created_at == _dt34(2024, 2, 2, 11, 11, 11, 222222),
+              repr(u1.created_at) if u1 else "no user")
+        check("ستون‌هایی که فایل قدیمی نداشت با default مدل یا صفر پر شدن، نه NULL",
+              u1 is not None and u1.gems == 0 and u1.skill_stamina == 0 and u1.energy == config.MAX_ENERGY,
+              f"gems={u1.gems} stamina={u1.skill_stamina} energy={u1.energy}" if u1 else "-")
+        check("ردیف تکراری دست نخورده (دیتابیس زنده ارجحه)",
+              u0 is not None and u0.first_name == "زنده" and u0.cash != 1000)
+        check("plotsوالد‌دار درج شدن، ردیف یتیم (user 99999999) رد شد",
+              p1 is not None and p1.user_id == 901000 and p1.status == "ready"
+              and p2 is not None and p3 is None)
+        check("ستون nullableای که تو فایل نیس NULL میمونه", p1 is not None and p1.built_at is None)
+        check("قفل تک‌اجرایی بعد از اتمام آزاد میشه", not backup_svc.merge_running())
+
+        # ── ۳) شکست یه جدول بقیه رو نمی‌کشه (کلش یونیک telegram_id) ──
+        _data34b = _mk_old34(_old34b, [
+            (901004, 901000, "کلش‌دار", 1, 1, "2024-01-01 10:00:00.000000"),
+        ], [
+            (7711, 901000, "ready", None, "2024-01-01 10:00:00.000000"),
+        ])
+        ok34b, msg34b = await backup_svc.merge_sqlite_bytes(_data34b)
+        _find_safety34(msg34b)
+        async with session_scope() as s:
+            pb = await s.get(Plot, 7711)
+            ub = await s.get(User, 901004)
+        check("خطای درج users خلاصه رو نیمه‌کامل اعلام می‌کنه ولی plots تراکنش خودش هنوز درج میشه",
+              not ok34b and "⚠️" in msg34b and "users: درج نشد" in msg34b
+              and "plots: 1 ردیف جدید" in msg34b and pb is not None and ub is None,
+              msg34b.replace("\n", " | ")[:140])
+
+        # ── ۴) backup_doc: تشخیص ترکیب، پیام شروع، تسک پس‌زمینه و پیام دوم ──
+        got34 = []
+        bot_sent34 = []
+
+        async def _fake_merge34(d, notify=None):
+            got34.append(bytes(d))
+            if notify:
+                await notify("📋 خلاصه تستی ادغام")
+            return True, "ok"
+
+        async def _send34(chat_id=None, text=None, parse_mode=None):
+            bot_sent34.append((chat_id, text))
+
+        def _mk_update34():
+            upd = _text_update("", uid=1001, uname="adm34", fname="ادمین بکاپ")
+            upd.effective_chat = SimpleNamespace(type="private", id=1001)
+
+            async def _dl():
+                return bytearray(_data34)
+
+            async def _gf():
+                return SimpleNamespace(download_as_bytearray=_dl)
+
+            upd.message.document = SimpleNamespace(file_size=len(_data34), get_file=_gf)
+            return upd
+
+        backup_svc.merge_sqlite_bytes = _fake_merge34
+        try:
+            upd34 = _mk_update34()
+            await backup_h34.backup_doc(upd34, SimpleNamespace(user_data={"await_backup": True},
+                                                               bot=SimpleNamespace(send_message=_send34)))
+            for _ in range(10):
+                if bot_sent34:
+                    break
+                await asyncio.sleep(0.01)
+            replies34 = [c for c in upd34.message.calls if c[0] == "reply"]
+            check("backup_doc ترکیب Postgres و SQLite رو به ادغام پس‌زمینه می‌سپره و پیام شروع میده",
+                  got34 and got34[0] == _data34
+                  and any("ادغام فایل قدیمی شروع شد" in (c[1] or "") and "خلاصه" in (c[1] or "") for c in replies34),
+                  str([c[1] for c in replies34])[:140])
+            check("پیام دوم (خلاصه) بعد از اتمام تسک از طریق notify به همون چت میره",
+                  bot_sent34 and bot_sent34[-1] == (1001, "📋 خلاصه تستی ادغام"), str(bot_sent34)[:100])
+        finally:
+            backup_svc.merge_sqlite_bytes = _orig_merge34
+
+        # قفل اجرای همزمان: ادغام دوم از سمت هندلر رد میشه
+        backup_svc._import_running = True
+        try:
+            upd34r = _mk_update34()
+            await backup_h34.backup_doc(upd34r, SimpleNamespace(user_data={"await_backup": True}, bot=None))
+            check("ادغام همزمان دوم با پیام واضح رد میشه",
+                  any("یه ادغام دیگه الان تو حال اجراست" in (c[1] or "")
+                      for c in upd34r.message.calls if c[0] == "reply"))
+        finally:
+            backup_svc._import_running = False
+
+        # غیرادمین همچنان سکوت محض
+        upd34n = _text_update("", uid=4242, uname="naf34", fname="غریبه")
+        upd34n.message.document = SimpleNamespace(file_size=10, get_file=None)
+        await backup_h34.backup_doc(upd34n, SimpleNamespace(user_data={"await_backup": True}, bot=None))
+        check("backup_doc برای غیرادمین هیچ واکنشی نداره", not upd34n.message.calls)
+    finally:
+        config.DATABASE_URL = _url_save34
+        backup_svc.shutil.which = _orig_which34
+        backup_svc._pg_dump_bytes = _orig_dump34
+        backup_svc.merge_sqlite_bytes = _orig_merge34
+        backup_svc._import_running = False
+        async with session_scope() as s:
+            for uid34 in (901000, 901001, 901002, 901004):
+                u34 = await s.get(User, uid34)
+                if u34:
+                    await s.delete(u34)
+            for pid34 in (7701, 7702, 7703, 7711):
+                p34 = await s.get(Plot, pid34)
+                if p34:
+                    await s.delete(p34)
+            await s.commit()
+        for p in (_old34, _old34b, *_safety_paths34):
+            if p and os.path.exists(p):
+                os.remove(p)
+
     # ── تمیزکاری ته تست‌ها ──
     fj_svc._MEMBER_CACHE.clear()
     async with session_scope() as s:

@@ -3,6 +3,7 @@
 /backup → اسنپ‌شات سالم فایل دی‌بی (SQLite) یا دامپ فشرده pg_dump (Postgres) رو می‌فرسته
 /upload_backup → فایل رو می‌گیره و از روی محتواش (نه اسمش) نوعش رو تشخیص میده:
 SQLite جایگزین فایلی میشه | دامپ Postgres بعد از بک‌آپ احتیاطی و خالی کردن اسکیمای public با psql ری‌لود میشه
+راند ۳۴: اگه دیتابیس زنده Postgres باشه و فایل آپلودی SQLite قدیمی، به‌جای رد شدن دیتاش با زنده ادغام میشه
 """
 
 import asyncio
@@ -13,6 +14,8 @@ import shutil
 import sqlite3
 import tempfile
 from datetime import datetime
+
+from sqlalchemy import Boolean, DateTime, Integer, select
 
 import config
 import database
@@ -289,3 +292,239 @@ async def make_upload_payload() -> tuple[bytes, str] | None:
             return None
         return gzip.compress(out), f"{config.BACKUP_NAME}-{stamp}.sql.gz"
     return None
+
+
+# ═════════ ادغام فایل قدیمی SQLite با دیتابیس زنده Postgres (راند ۳۴) ═════════
+# سناریو: دیتابیس زنده Postgres ـه ولی ادمین فایل ‎.db قدیمی آپلود می‌کنه
+# به‌جای رد کردن، دیتاش با دیتابیس فعلی ادغام میشه (افزایشی، چیزی پاک نمیشه)
+
+_IMPORT_CHUNK = 500   # اندازه هر بسته INSERT (مثل migrate_to_postgres)
+_import_running = False
+
+
+def merge_needed(data: bytes) -> bool:
+    """ترکیب خاص راند ۳۴: دیتابیس زنده Postgres ـه و فایل آپلودی SQLite (بک‌آپ دوران قبل از مهاجرت)"""
+    return config.DATABASE_URL.startswith("postgresql") and _detect_backup_kind(data)[0] == "sqlite"
+
+
+def merge_running() -> bool:
+    """همین الان یه ادغام تو حال اجراست؟ (دو ادغام همزمان شروع نمیشن)"""
+    return _import_running
+
+
+def _read_sqlite_snapshot(path: str, table_names: list) -> dict:
+    """
+    خواندن sync همه ردیف‌ها با sqlite3 استاندارد (از run_in_executor صدا زده میشه تا loop بلاک نشه)
+    جدولی که تو فایل نیس کلیدش تو خروجی نمیاد؛ بقیه به شکل لیست دیکت {ستون: مقدار} برمی‌گردن
+    """
+    conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    try:
+        src_tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        out = {}
+        for name in table_names:
+            if name not in src_tables:
+                continue
+            cols = [r[1] for r in conn.execute(f'PRAGMA table_info("{name}")')]
+            rows = conn.execute(f'SELECT * FROM "{name}"').fetchall()
+            out[name] = [dict(zip(cols, row)) for row in rows]
+        return out
+    finally:
+        conn.close()
+
+
+def _fallback_value(col):
+    """
+    ستونی که مدل فعلی داره ولی فایل قدیمی نداره با مقدار امن پر میشه (نه خطا)
+    اولویت: nullable هم NULL | default خود مدل (اسکالر یا callable) | بولین False | عدد 0 | رشته خالی
+    """
+    if col.nullable:
+        return None
+    d = getattr(col, "default", None)
+    if d is not None and d.arg is not None:
+        if not callable(d.arg):
+            return d.arg
+        try:
+            # SQLAlchemy کال‌بل‌های بدون آرگومان رو به wrap(ctx) می‌پیچونه، هر دو حالت پوشش داده میشه
+            return d.arg(None)
+        except TypeError:
+            return d.arg()
+    if isinstance(col.type, Boolean):
+        return False
+    if isinstance(col.type, Integer):
+        return 0
+    if isinstance(col.type, DateTime):
+        from utils import now_utc
+        return now_utc()
+    return ""
+
+
+def _coerce_value(col, v):
+    """
+    تطبیق مقدار خوانده‌شده با sqlite3 خام به نوع ستون برای Postgres
+    تو فایل SQLite تاریخ‌ها رشته‌ان و بولین‌ها 0/1 ان؛ asyncpg نوع دقیق می‌خواد
+    """
+    if v is None:
+        return None
+    if isinstance(col.type, Boolean) and not isinstance(v, bool):
+        return bool(v)
+    if isinstance(col.type, DateTime) and isinstance(v, str):
+        try:
+            return datetime.fromisoformat(v.replace("Z", "+00:00"))
+        except ValueError:
+            return _fallback_value(col)
+    return v
+
+
+def _import_row(table, row: dict) -> dict:
+    """ساخت ردیف آماده درج: فقط ستون‌های مدل فعلی، مفقودی‌ها با مقدار امن، ستون اضافی فایل حذف میشه"""
+    return {
+        col.name: (_coerce_value(col, row[col.name]) if col.name in row else _fallback_value(col))
+        for col in table.c
+    }
+
+
+async def _merge_sqlite_pg(data: bytes) -> tuple[bool, str]:
+    """
+    بدنه‌ی اصلی ادغام: دامپ احتیاطی pg_dump (روی دیسک می‌مونه و آدرسش اعلام میشه)،
+    خواندن فایل تو executor، درج جدول‌به‌جدول با تراکنش مجزا (موفقیت‌های قبلی از دست نمیره)
+    و آخرش سینک سکانس‌های Postgres با بیشترین id (تابع آماده‌ی migrate_to_postgres)
+    """
+    if not config.DATABASE_URL.startswith("postgresql"):
+        return False, "❌ ادغام بک‌آپ SQLite فقط وقتی دیتابیس زنده Postgres ـه انجام میشه"
+    if not shutil.which("pg_dump"):
+        return False, "❌ pg_dump رو سرور نصب نیس (تو PATH نیس)، بدون بک‌آپ احتیاطی ادغام شروع نمیشه"
+
+    dsn = config.DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://", 1)
+    safety = await _pg_dump_bytes(dsn)
+    if safety is None:
+        return False, "❌ بک‌آپ احتیاطی با pg_dump ساخته نشد، ادغام انجام نشد (دیتابیس دست نخورده)"
+
+    fd, safety_path = tempfile.mkstemp(prefix="teriaky-preimport-", suffix=".sql")
+    with os.fdopen(fd, "wb") as f:
+        f.write(safety)
+
+    fd, tmp = tempfile.mkstemp(prefix="teriaky-import-", suffix=".db")
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(data)
+
+        if not is_valid_backup_file(tmp):
+            return (False,
+                    "❌ این فایل بک‌آپ سالم تریاکی نیس (جدول users توش نیس)، چیزی دست نخورده\n"
+                    f"💾 بک‌آپ احتیاطی دیتابیس فعلی: {safety_path}")
+
+        from database import Base
+        from models import models as _models  # noqa: F401  (ثبت جدول‌ها روی metadata)
+
+        tables = Base.metadata.sorted_tables   # ترتیب وابستگی فارین‌کی: parent قبل از child
+        loop = asyncio.get_running_loop()
+        snapshot = await loop.run_in_executor(None, _read_sqlite_snapshot, tmp, [t.name for t in tables])
+
+        lines = []
+        missing = failed = total_new = 0
+        for table in tables:
+            rows = snapshot.get(table.name)
+            if rows is None:
+                missing += 1
+                logger.info("ادغام: جدول %s تو فایل قدیمی نبود، رد شد", table.name)
+                continue
+            pks = [c.name for c in table.primary_key.columns]
+            if not pks:
+                continue
+            fks = list(table.foreign_keys)
+            try:
+                async with database.engine.begin() as dc:   # هر جدول تراکنش خودش
+                    existing = {
+                        tuple(r) for r in
+                        (await dc.execute(select(*[table.c[p] for p in pks]))).all()
+                    }
+                    parent_cache = {}
+                    for fk in fks:   # کش pk والدها، ردیف یتیم (پدر ناموجود) کرش نده رد میشه
+                        pt = fk.column.table.name
+                        if pt not in parent_cache:
+                            parent_cache[pt] = {r[0] for r in (await dc.execute(select(fk.column))).all()}
+                    batch = []
+                    ins = dup = orph = 0
+                    for row in rows:
+                        if tuple(row.get(pp) for pp in pks) in existing:
+                            dup += 1
+                            continue
+                        if any(
+                            row.get(fk.parent.name) is not None
+                            and row.get(fk.parent.name) not in parent_cache[fk.column.table.name]
+                            for fk in fks
+                        ):
+                            orph += 1
+                            continue
+                        batch.append(_import_row(table, row))
+                        if len(batch) >= _IMPORT_CHUNK:
+                            await dc.execute(table.insert(), batch)
+                            ins += len(batch)
+                            batch = []
+                    if batch:
+                        await dc.execute(table.insert(), batch)
+                        ins += len(batch)
+            except Exception as e:
+                failed += 1
+                logger.exception("ادغام جدول %s شکست خورد", table.name)
+                lines.append(f"⚠️ {table.name}: درج نشد ({str(e)[:60]}) ولی تراکنش‌های قبلی سر جاشونن")
+                continue
+            if ins or dup or orph:
+                seg = f"📦 {table.name}: {ins} ردیف جدید"
+                if dup:
+                    seg += f"، {dup} تکراری رد شد"
+                if orph:
+                    seg += f"، {orph} یتیم (پدر تو دیتابیس نبود) رد شد"
+                lines.append(seg)
+            total_new += ins
+
+        from migrate_to_postgres import _sync_sequences as _sync_pg_sequences
+        await _sync_pg_sequences(database.engine, tables)
+
+        head = ("✅ ادغام فایل قدیمی SQLite با دیتابیس Postgres تموم شد" if not failed else
+                "⚠️ ادغام انجام شد ولی یه سری جدول خطا داشتن، جزئیاتش پایینه")
+        body = [head, "", *lines]
+        if missing:
+            body.append(f"⏭ {missing} جدول تو فایل قدیمی نبودن، رد شدن")
+        body += [
+            "",
+            f"🔢 جمعاً {total_new} ردیف تازه به دیتابیس زنده اضافه شد (چیزی پاک یا بازنویسی نشد)",
+            "🔧 سکانس‌های id با بیشترین مقدار هر جدول سینک شدن",
+            f"💾 بک‌آپ احتیاطی کامل قبل از ادغام: {safety_path}",
+        ]
+        return failed == 0, "\n".join(body)
+    except Exception as e:
+        logger.exception("ادغام sqlite به postgres وسط کار شکست خورد")
+        return (False,
+                f"❌ ادغام وسط کار خطا خورد: {str(e)[:120]}\n"
+                "جدول‌هایی که قبل از خطا موفق درج شده بودن سر جاشون موندن\n"
+                f"💾 بک‌آپ احتیاطی کامل قبل از ادغام اینجاست، باهاش می‌تونی دستی برگردونی: {safety_path}")
+    finally:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+
+
+async def merge_sqlite_bytes(data: bytes, notify=None) -> tuple[bool, str]:
+    """
+    ورودی عمومی ادغام راند ۳۴ با قفل تک‌اجرایی
+    متن نهایی رو به notify (کوروتین) هم میده تا هندلر بعد از تموم شدن کار جداگانه براش پیام بفرسته
+    خروجی: (موفقیت کامل بودن، متن خلاصه)
+    """
+    global _import_running
+    if _import_running:
+        return False, "❌ یه ادغام دیگه الان تو حال اجراست، اول اون تموم شه"
+    _import_running = True
+    try:
+        try:
+            ok, msg = await _merge_sqlite_pg(data)
+        except Exception as e:   # دفاع آخر: تسک پس‌زمینه هیچ‌وقت بی‌جواب نمونه
+            logger.exception("ادغام sqlite به postgres خطای غیرمنتظره داد")
+            ok, msg = False, f"❌ ادغام با خطای غیرمنتظره ول خورد: {str(e)[:120]}"
+    finally:
+        _import_running = False
+    if notify is not None:
+        try:
+            await notify(msg)
+        except Exception:
+            pass   # چت ادمین در دسترس نبود، خلاصه تو لاگ هس
+    return ok, msg
