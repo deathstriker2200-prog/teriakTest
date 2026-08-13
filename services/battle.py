@@ -151,6 +151,7 @@ def roll_damage(atk: int, dfn: int, victim_max_hp: int) -> tuple[int, bool]:
     بعد واریانس رندوم که نبرد هیجانی و غیرقابل پیش‌بینی بمونه
     دفاع حریف به‌بزرگی حمله یا مساوی‌اش باشه ضربه اصلاً نمی‌نشینه (پیام زیادی قدرتمنده)
     کریتیکال با شانس کم دمیج نهایی رو چند برابر می‌کنه
+    راند ۳۹ (درخواست کارفرما): سقف دمیج هر ضربه، شانسی بین BATTLE_DMG_MAX_LOW و BATTLE_DMG_MAX_HIGH رول میشه
     """
     base = (atk - dfn) / config.BATTLE_DMG_DIVISOR
     if base < 1:
@@ -160,6 +161,8 @@ def roll_damage(atk: int, dfn: int, victim_max_hp: int) -> tuple[int, bool]:
     crit = random.random() < config.BATTLE_CRIT_CHANCE
     if crit:
         dmg = max(1, round(dmg * config.BATTLE_CRIT_MULT))
+    dmg_cap = random.randint(config.BATTLE_DMG_MAX_LOW, config.BATTLE_DMG_MAX_HIGH)
+    dmg = min(dmg, dmg_cap)
     return dmg, crit
 
 

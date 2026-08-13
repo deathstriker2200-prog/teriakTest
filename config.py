@@ -161,7 +161,7 @@ PLOT_CATALOG = {
     3: {"price": 45000,  "build_sec": 900,        "min_level": 10},  # 15 دقیقه
     4: {"price": 160000, "build_sec": 3600,       "min_level": 15},  # 1 ساعت
     5: {"price": 320000, "build_sec": 43200,      "min_level": 20},   # 12 ساعت | راند ۲۹: برگشت به تی‌پوینتی (درخواست کارفرما)
-    6: {"price": 0,      "build_sec": 86400,      "min_level": 25, "gem_price": 1000},  # 24 ساعت | راند ۲۹: فقط با جم (درخواست کارفرما)
+    6: {"price": 0,      "build_sec": 86400,      "min_level": 20, "gem_price": 1000},  # 24 ساعت | راند ۲۹: فقط با جم (درخواست کارفرما)
 }
 # ───────── لول‌آپ زمین ─────────
 # هر لول آپ: ۲۵% درآمد بیشتر + ۴۰% سرعت رشد بیشتر، تا لول ۶ قابل آپگریده
@@ -334,6 +334,9 @@ BATTLE_DEAD_SECONDS = 1800    # بعد شکست ۳۰ دقیقه بیهوشه (ب
 # ضربه کریتیکال، فقط وقتی ضربه اصلا دمیج داره رول میشه و دمیج نهایی چند برابر میشه
 BATTLE_CRIT_CHANCE = 0.02     # شانس ۲ درصدی کریتیکال
 BATTLE_CRIT_MULT = 2.0        # دمیج نهایی ×۲
+# راند ۳۹ (درخواست کارفرما): سقف دمیج هر ضربه، شانسی بین این دو عدد رول میشه و بالاتر از رولش نمیره
+BATTLE_DMG_MAX_LOW = 240
+BATTLE_DMG_MAX_HIGH = 270
 
 # ───────── حمله پی‌وی کلاسیک ⚔️ ─────────
 # سیستم قدیمی بدون HP | راند ۱۲ درخواست کارفرما: قدرت کل (حمله + دفاع) دو طرف با بوست‌های نقش‌محور مقایسه میشه، درصدی نیس | مهاجم فقط بوست حمله‌ای و هدف فقط بوست دفاعی می‌گیره | بیشتر بود برده، مساوی یا کمتر باخته
@@ -535,26 +538,27 @@ ARMOR_SECTIONS = {
 }
 
 ARMORS = {
-    "jacket": {"name": "کت چرمی",        "price": 350,   "defense": 4,   "min_level": 1,  "desc": "سبک و شیک", "sec": "normal"},
-    "vest":   {"name": "جلیقه سنگین",    "price": 1500,  "defense": 14,  "min_level": 3,  "desc": "ضربه رو جذب می‌کنه", "sec": "normal"},
-    "kevlar": {"name": "جلیقه کِولار",   "price": 2800,  "defense": 24,  "min_level": 5,  "desc": "استاندارد پلیس‌ها", "sec": "normal"},
-    "steel":  {"name": "زره فولادی",     "price": 4500,  "defense": 34,  "min_level": 6,  "desc": "محکم مثل در بانک", "sec": "normal"},
-    "swat":   {"name": "جلیقه تاکتیکی",  "price": 9000,  "defense": 46,  "min_level": 8,  "desc": "مخصوص یگه‌های ویژه", "sec": "normal"},
-    "nano":   {"name": "زره نانو",       "price": 30000, "defense": 70,  "min_level": 10, "desc": "تکنولوژی فضایی", "sec": "normal"},
-    "titan":  {"name": "زره تیتانیومی",  "price": 60000, "defense": 90,  "min_level": 12, "desc": "سبک ولی شکست‌ناپذیر", "sec": "normal"},
+    # راند ۳۸ (درخواست کارفرما): دفاع همه زره‌ها ۳۰٪ قوی‌تر شد
+    "jacket": {"name": "کت چرمی",        "price": 350,   "defense": 5,   "min_level": 1,  "desc": "سبک و شیک", "sec": "normal"},
+    "vest":   {"name": "جلیقه سنگین",    "price": 1500,  "defense": 18,  "min_level": 3,  "desc": "ضربه رو جذب می‌کنه", "sec": "normal"},
+    "kevlar": {"name": "جلیقه کِولار",   "price": 2800,  "defense": 31,  "min_level": 5,  "desc": "استاندارد پلیس‌ها", "sec": "normal"},
+    "steel":  {"name": "زره فولادی",     "price": 4500,  "defense": 44,  "min_level": 6,  "desc": "محکم مثل در بانک", "sec": "normal"},
+    "swat":   {"name": "جلیقه تاکتیکی",  "price": 9000,  "defense": 60,  "min_level": 8,  "desc": "مخصوص یگه‌های ویژه", "sec": "normal"},
+    "nano":   {"name": "زره نانو",       "price": 30000, "defense": 91,  "min_level": 10, "desc": "تکنولوژی فضایی", "sec": "normal"},
+    "titan":  {"name": "زره تیتانیومی",  "price": 60000, "defense": 117, "min_level": 12, "desc": "سبک ولی شکست‌ناپذیر", "sec": "normal"},
     # راند ۱۹: زره افسانه‌ای قابلیتش (نیم کردن غارت) پاک شد و اسمش آدامانتیوم، فقط زره قوی معمولی
-    "legend": {"name": "زره آدامانتیوم 👑", "price": 100000, "defense": 110, "min_level": 14, "desc": "سخت‌ترین فلز روی زمین، لقبش آدمو پاره نمی‌کنه", "sec": "normal"},
+    "legend": {"name": "زره آدامانتیوم 👑", "price": 100000, "defense": 143, "min_level": 14, "desc": "سخت‌ترین فلز روی زمین، لقبش آدمو پاره نمی‌کنه", "sec": "normal"},
     # ── زره‌های ویژه لول ۱۶ به بعد، دفاع هر چهارتا برابره و هر کدوم یه قابلیت مخصوص دارن ──
-    "plasma":  {"name": "🛡️ زره پلاسمایی", "price": 160000, "defense": 130, "min_level": 16, "sec": "special",
+    "plasma":  {"name": "🛡️ زره پلاسمایی", "price": 160000, "defense": 169, "min_level": 16, "sec": "special",
                 "desc": "سطحش انرژی حمله رو به حمله‌کننده برمی‌گردونه",
                 "ability": {"kind": "reflect", "pct": 0.20}},
-    "void":    {"name": "🌑 زره خلأ",      "price": 185000, "defense": 130, "min_level": 17, "sec": "special",
+    "void":    {"name": "🌑 زره خلأ",      "price": 185000, "defense": 169, "min_level": 17, "sec": "special",
                 "desc": "گاهی حمله حریف رو قورت میده و هیچ‌وقت پیداش نمی‌کنه",
                 "ability": {"kind": "void", "chance": 0.12}},
-    "neutron": {"name": "☄️ زره نواترون",   "price": 210000, "defense": 130, "min_level": 18, "sec": "special",
+    "neutron": {"name": "☄️ زره نواترون",   "price": 210000, "defense": 169, "min_level": 18, "sec": "special",
                 "desc": "چگالی ستاره‌ای داره و ضربه‌ها رو له می‌کنه",
                 "ability": {"kind": "reduce", "pct": 0.25}},
-    "gods":    {"name": "👑 زره خدایان",  "price": 240000, "defense": 130, "min_level": 19, "sec": "special",
+    "gods":    {"name": "👑 زره خدایان",  "price": 240000, "defense": 169, "min_level": 19, "sec": "special",
                 "desc": "میری زیر خاک، برکتش نصف جونتو برمی‌گردونه",
                 "ability": {"kind": "godshield", "chance": 0.10}},
 }
