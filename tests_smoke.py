@@ -14410,11 +14410,10 @@ async def main() -> None:
         ga30.last_attack_at = None
         ga30.energy = config.MAX_ENERGY
         r30g2 = await battle_svc.execute_hit(s, ga30, gv30)
-        check("خشاب خالی: تفنگ از قدرت نبرد گروهی میفته بیرون و تیری هم سوزونده نمیشه",
-              atk_zero30 < atk_full30 and r30g2["ok"] and r30g2.get("wkey") != "colt"
-              and r30g2.get("ammo_left") is None
+        check("خشاب خالی (راند ۳۷، متن قطعی کارفرما): حمله گروهی کامل بلاک میشه و تیری سوزونده نمیشه",
+              atk_zero30 < atk_full30 and not r30g2["ok"] and r30g2.get("reason") == "no_ammo"
               and (await users.get_ammo(s, ga30.id, "colt")) == 0,
-              f"{atk_full30}->{atk_zero30} w={r30g2.get('wkey')}")
+              f"{atk_full30}->{atk_zero30} reason={r30g2.get('reason')}")
         await s.commit()
 
     # ── ۳) Oblivion قوی‌تر شد و Shadow براش فقط شب فعاله ──
@@ -15555,6 +15554,131 @@ async def main() -> None:
         if _ju36b:
             await s.delete(_ju36b)
         sn35.jail_invalidate()
+        await s.commit()
+
+
+    # ═══════════════════ راند ۳۷: خشاب خالی = بلاک کامل حمله (متن‌های قطعی کارفرما) ═══════════════════
+    from handlers import attack as atk_h37, battle as bt_h37
+
+    # ── گروه: خشاب خالی متن قطعی بلاک رو میده و هیچ هزینه‌ای نمی‌سوزونه ──
+    async with session_scope() as s:
+        sh37, _ = await users.get_or_create(s, tg(776037, "gun37", "تفنگدار۳۷"))
+        sh37.level, sh37.energy = 20, config.MAX_ENERGY
+        sh37.last_attack_at = None
+        sh37.hp = battle_svc.max_hp(sh37.level)
+        sh37.equipped_weapon = "colt"
+        s.add(InventoryItem(user_id=sh37.id, item_key="colt", level=1))
+        await users.set_ammo(s, sh37.id, "colt", 0)
+        vi37, _ = await users.get_or_create(s, tg(776038, "vic37", "هدف۳۷"))
+        vi37.level = 10
+        vi37.hp = battle_svc.max_hp(vi37.level)
+        await s.commit()
+    upd37a = _g27("شلیک", 776037, "gun37", "تفنگدار۳۷", -977037, reply_uid=776038)
+    upd37a.message.reply_to_message = SimpleNamespace(
+        from_user=SimpleNamespace(id=776038, username="vic37", first_name="هدف۳۷", is_bot=False))
+    await bt_h37.attack_cmd(upd37a, None)
+    rep37a = upd37a.message.calls[-1][1] if upd37a.message.calls else ""
+    check("گروه: متن قطعی «تیرات تموم شد / دیگه نمی‌تونی شلیک کنی / از دستور «ریلود» استفاده کن»",
+          "🔫 تیرات تموم شد" in rep37a and "دیگه نمی‌تونی شلیک کنی" in rep37a
+          and "از دستور «ریلود» استفاده کن" in rep37a, rep37a.replace("\n", " | ")[:170])
+    async with session_scope() as s:
+        sh37b = await users.get_by_tg(s, 776037)
+        vi37b = await users.get_by_tg(s, 776038)
+        check("گروه: حمله بلاک‌شده اصلاً انجام نشد — نه انرژی سوخت، نه کولدان افتاد، نه به قربانی دمیج خورد",
+              sh37b.energy == config.MAX_ENERGY and sh37b.last_attack_at is None
+              and vi37b.hp == battle_svc.max_hp(10), f"hp={vi37b.hp} en={sh37b.energy}")
+        # ترتیب گیت: حتی رو کولدان هم باز no_ammo رو می‌گیه (اولویت خبر خشاب خالی)
+        sh37b.last_attack_at = now_utc()
+        r37cd = await battle_svc.execute_hit(s, sh37b, vi37b)
+        check("گیت no_ammo قبل از کولدانه: تفنگ خالی + کولدان فعال بازم پیام خشاب رو می‌گیری",
+              not r37cd["ok"] and r37cd.get("reason") == "no_ammo", str(r37cd.get("reason")))
+        sh37b.last_attack_at = None
+        await s.commit()
+
+    # ── بازیگر بدون تفنگ (فقط چاقو) مثل همیشه می‌تونه بزنه ──
+    async with session_scope() as s:
+        kn37, _ = await users.get_or_create(s, tg(776039, "knife37", "چاقوکیش"))
+        kn37.level, kn37.energy = 12, config.MAX_ENERGY
+        kn37.last_attack_at = None
+        kn37.hp = battle_svc.max_hp(kn37.level)
+        kn37.equipped_weapon = "knife"
+        s.add(InventoryItem(user_id=kn37.id, item_key="knife", level=1))
+        vi37c = await users.get_by_tg(s, 776038)
+        vi37c.hp = battle_svc.max_hp(vi37c.level)
+        r37k = await battle_svc.execute_hit(s, kn37, vi37c)
+        check("سلاح سرد اصلاً مهمات نمی‌خواد: حمله با چاقو همیشه اوکیه",
+              r37k["ok"], str(r37k.get("reason")))
+        await s.commit()
+
+    # ── چاقو تجهیزشده + کلت خالی تو جیب: چون چاقو دستته، حمله با چاقو رد میشه ──
+    async with session_scope() as s:
+        kn37b = await users.get_by_tg(s, 776039)
+        s.add(InventoryItem(user_id=kn37b.id, item_key="colt", level=1))
+        await users.set_ammo(s, kn37b.id, "colt", 0)
+        kn37b.energy = config.MAX_ENERGY
+        kn37b.last_attack_at = None
+        vi37d = await users.get_by_tg(s, 776038)
+        vi37d.hp = battle_svc.max_hp(vi37d.level)
+        r37m = await battle_svc.execute_hit(s, kn37b, vi37d)
+        check("کلت خالی تو جیب ولی چاقو دستت: حمله با چاقو انجام میشه (بلاک فقط وقتی انتخابِ اصلی تفنگ خالیه)",
+              r37m["ok"] and r37m.get("wkey") == "knife", str(r37m.get("wkey") or r37m.get("reason")))
+        await s.commit()
+
+    # ── پی‌وی: پاپ‌آپ قطعی «تیر نداری» با show_alert ──
+    async with session_scope() as s:
+        pa37, _ = await users.get_or_create(s, tg(776040, "pv37", "پی‌وی‌باز۳۷"))
+        pa37.level, pa37.energy = 20, config.MAX_ENERGY
+        pa37.pv_attack_at = None
+        pa37.equipped_weapon = "colt"
+        s.add(InventoryItem(user_id=pa37.id, item_key="colt", level=1))
+        await users.set_ammo(s, pa37.id, "colt", 0)
+        pv37, _ = await users.get_or_create(s, tg(776041, "pvv37", "قربانی۳۷"))
+        pv37.cash = 5000
+        pv37.shield_until = None
+        pv37_dbid = pv37.id
+        await s.commit()
+    upd37p = _fake_update(f"patt:hit:{pv37_dbid}", uid=776040)
+    await atk_h37.target_hit_cb(upd37p, _fake_ctx)
+    ans37 = [c for c in upd37p.callback_query.calls if c[0] == "answer"]
+    check("پی‌وی: خشاب خالی پاپ‌آپ دقیقاً «تیر نداری» میگه (show_alert=True)",
+          bool(ans37) and ans37[-1][1] and ans37[-1][1][0] == "تیر نداری"
+          and ans37[-1][2].get("show_alert") is True, str(ans37[-1])[:100])
+    async with session_scope() as s:
+        pa37b = await users.get_by_tg(s, 776040)
+        pv37b = await users.get_by_tg(s, 776041)
+        check("پی‌وی بلاک‌شده هیچ هزینه‌ای نداشت: انرژی و پول دست‌نخورده، سپر قربانی فعال نشده",
+              pa37b.energy == config.MAX_ENERGY and pa37b.pv_attack_at is None
+              and pv37b.cash == 5000 and pv37b.shield_until is None,
+              f"en={pa37b.energy} cash={pv37b.cash}")
+
+    # ── پی‌وی سرویس: خشاب با یک تیر یعنی شلیک آخر اوکیه و خشاب صفر میشه ──
+    async with session_scope() as s:
+        pa37c = await users.get_by_tg(s, 776040)
+        pa37c.energy = config.MAX_ENERGY
+        pa37c.pv_attack_at = None
+        await users.set_ammo(s, pa37c.id, "colt", 1)
+        pv37c = await users.get_by_tg(s, 776041)
+        pv37c.shield_until = None
+        r37pv = await pv_svc.execute(s, pa37c, pv37c)
+        check("پی‌وی با یک تیر مونده: حمله انجام میشه و تیر آخر سوزونده میشه",
+              r37pv["ok"] and r37pv.get("weapon") == "colt" and r37pv.get("ammo_left") == 0
+              and (await users.get_ammo(s, pa37c.id, "colt")) == 0,
+              f"{r37pv.get('ammo_left')}")
+        # حمله بعدی با خشاب خالی روی سرویس مستقیم بلاکه
+        pa37c.energy = config.MAX_ENERGY
+        pa37c.pv_attack_at = None
+        pv37c.shield_until = None
+        r37pv2 = await pv_svc.execute(s, pa37c, pv37c)
+        check("پی‌وی سرویس: شلیک بعدی با خشاب خالی reason=no_ammo برمی‌گردونه",
+              not r37pv2["ok"] and r37pv2.get("reason") == "no_ammo", str(r37pv2.get("reason")))
+        await s.commit()
+
+    # ── پاکسازی کاربرای راند ۳۷ ──
+    async with session_scope() as s:
+        for _uid37 in (776037, 776038, 776039, 776040, 776041):
+            _u37 = await users.get_by_tg(s, _uid37)
+            if _u37:
+                await s.delete(_u37)
         await s.commit()
 
     # ── تمیزکاری ته تست‌ها ──

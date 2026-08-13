@@ -229,6 +229,8 @@ async def _run_attack(update: Update, context, target_id: int, break_shield: boo
         if not result["ok"]:
             await s.commit()
             reason = result["reason"]
+            if reason == "no_ammo":
+                return await pv_panel(update, alert="تیر نداری")  # راند ۳۷: پاپ‌آپ قطعی خشاب خالی
             if reason == "cooldown":
                 return await pv_panel(update, alert=f"⏳ {fa_num(result['left'])} ثانیه دیگه می‌تونی حمله کنی")
             if reason == "energy":

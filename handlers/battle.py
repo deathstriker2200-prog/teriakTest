@@ -34,6 +34,13 @@ NOT_FOUND_TEXT = (
     "روی پیامش ریپلای کن یا آیدی عددی‌ش رو بفرست"
 )
 
+# راند ۳۷ (متن قطعی کارفرما): بلاک حمله با خشاب خالی
+NO_AMMO_TEXT = (
+    "🔫 تیرات تموم شد\n\n"
+    "دیگه نمی‌تونی شلیک کنی 😵‍💫\n\n"
+    "برای پر کردن خشاب و ادامه نبرد، از دستور «ریلود» استفاده کن"
+)
+
 
 def hit_text(result: dict, target_name: str) -> str:
     """متن ضربه موفق، غارت و تجربه همون لحظه پرداخت شدن"""
@@ -212,6 +219,8 @@ async def attack_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             return await respond(update, dead_self_text(result["left"]))
         if reason == "dead_target":
             return await respond(update, dead_target_text(target_name, result["left"]))
+        if reason == "no_ammo":
+            return await respond(update, NO_AMMO_TEXT)  # راند ۳۷: متن قطعی خشاب خالی
         if reason == "cooldown":
             return await respond(
                 update, f"⏳ {fa_dur(result['left'])} دیگه می‌تونی حمله کنی"

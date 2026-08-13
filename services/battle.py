@@ -214,7 +214,7 @@ async def execute_hit(session: AsyncSession, attacker: User, target: User) -> di
     """
     همه چک‌ها + محاسبات + تغییرات دیتابیس برای یه ضربه (بدون کامیت)
     خروجی: اگه ok نباشه reason داره
-    reason: dead_self | dead_target | cooldown | energy | self
+    reason: dead_self | dead_target | no_ammo | cooldown | energy | self
     nodmg=True یعنی حمله انجام شد ولی زره حریف هیچ آسیبی نگه داشت
     """
     revive_if_due(attacker)
@@ -232,6 +232,14 @@ async def execute_hit(session: AsyncSession, attacker: User, target: User) -> di
     d_target = dead_left(target)
     if d_target:
         return {"ok": False, "reason": "dead_target", "left": d_target}
+
+    # راند ۳۷ (متن قطعی کارفرما): خشاب خالی یعنی بلاک کامل حمله؛ فالبک خودکار به سلاح سرد از بین رفت
+    # گیت قبل از کولدان و هزینه انرژیه، پس حمله بلاک‌شده نه انرژی می‌سوزونه نه کولدان فعال می‌کنه
+    _lv37 = await user_svc.get_item_levels(session, attacker.id)
+    _am37 = await user_svc.get_ammo_map(session, attacker.id)
+    _wg37 = combat.weapon_choice(attacker, _lv37, None)   # انتخاب بدون توجه به مهمات
+    if _wg37 and combat.is_gun(_wg37) and combat.ammo_left(_wg37, _lv37.get(_wg37, 1), _am37) <= 0:
+        return {"ok": False, "reason": "no_ammo"}
 
     cd = await cooldown_left(session, attacker)
     if cd:

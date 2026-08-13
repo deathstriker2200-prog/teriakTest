@@ -214,7 +214,7 @@ async def pick_random_target(session: AsyncSession, user: User, exclude_id: int 
 async def execute(session: AsyncSession, attacker: User, victim: User) -> dict:
     """
     همه چک‌ها + رول شانس + تغییرات دیتابیس یه حمله پی‌وی (بدون کامیت)
-    reason: self | shield | energy | cooldown
+    reason: self | shield | no_ammo | energy | cooldown
     هر حمله، برد یا باخت، قربانی رو ۶ ساعت مصون می‌کنه
     کولدان مهاجم ثبت میشه و به قربانی هم یه تجربه ناچیز میرسه
     """
@@ -224,6 +224,14 @@ async def execute(session: AsyncSession, attacker: User, victim: User) -> dict:
     sl = shield_left(victim)
     if sl:
         return {"ok": False, "reason": "shield", "left": sl}
+
+    # راند ۳۷ (متن قطعی کارفرما): تفنگ خالی یعنی حمله پی‌وی لغوه و پاپ‌آپ «تیر نداری» میاد
+    # قبل از چک انرژی و کولدانه که حمله بلاک‌شده هیچ هزینه‌ای نداشته باشه
+    _lv37 = await user_svc.get_item_levels(session, attacker.id)
+    _am37 = await user_svc.get_ammo_map(session, attacker.id)
+    _wg37 = combat.weapon_choice(attacker, _lv37, None)   # انتخاب بدون توجه به مهمات
+    if _wg37 and combat.is_gun(_wg37) and combat.ammo_left(_wg37, _lv37.get(_wg37, 1), _am37) <= 0:
+        return {"ok": False, "reason": "no_ammo"}
 
     if attacker.energy < config.PV_ATTACK_ENERGY_COST:
         return {"ok": False, "reason": "energy"}
