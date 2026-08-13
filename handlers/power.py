@@ -42,13 +42,20 @@ async def jail_gate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user = update.effective_user
     if user is None:
         return
-    # راند ۳۵ (درخواست کارفرما): معافیت ادمین برداشته شد، زندانی زندانیه، فقط «رشوه دادن» رد میشه
+    # راند ۳۷ (درخواست کارفرما): گیت زندان فقط به دستورهای واقعی بازی واکنش نشون بده،
+    # نه به هر پیام متنی معمولی تو گروه (چت عادی نباید الرت زندان بگیره)
     msg = update.effective_message
     if msg and getattr(msg, "text", None):
-        # تنها دستوری که زندانی می‌تونه بزنه «رشوه دادن» عه، وگرنه هیچ راه آزادی نمی‌مونه (راند ۲۸)
         from handlers.common import strip_bot_cmd
-        if strip_bot_cmd(msg.text).rstrip("!").strip() == "رشوه دادن":
+        stripped = strip_bot_cmd(msg.text).rstrip("!").strip()
+        # تنها دستوری که زندانی می‌تونه بزنه «رشوه دادن» عه، وگرنه هیچ راه آزادی نمی‌مونه (راند ۲۸)
+        if stripped == "رشوه دادن":
             return
+        if not msg.text.startswith("/"):
+            from handlers import _quick_pairs
+            text = msg.text.strip()
+            if not any(pat.match(text) for pat, _f in _quick_pairs()):
+                return
     if update.callback_query and update.callback_query.data:
         # راند ۲۹: دکمه‌های تایید و لغو رشوه هم باید از گیت زندان رد شن
         if update.callback_query.data.startswith(("brcf:", "brcl:")):
