@@ -333,8 +333,10 @@ async def execute_hit(session: AsyncSession, attacker: User, target: User) -> di
             armor_lines.append(f"{aname19} داشت، {fa_num(back19)} دمیج به خودت برگشت")
 
     # 👑 زره خدایان (راند ۲۳، درخواست کارفرما): ضربه‌ای که خون رو صفر می‌کنه، زره فعال میشه و نصف خون برمی‌گرده
-    if target.hp <= 0 and aabil and aabil["kind"] == "godshield":
+    # یه بار که فعال شد تا واقعاً نمیره دیگه دوباره فعال نمیشه، وگرنه با شانس هر ضربه عملاً بی‌مرگ میشه
+    if target.hp <= 0 and aabil and aabil["kind"] == "godshield" and not target.gods_shield_used:
         target.hp = max(1, round(config.GODS_REVIVE_PCT * hp_max))
+        target.gods_shield_used = True
         armor_lines.append(f"برکت {aname19} فعال شد و خونش به {fa_num(target.hp)} برگشت")
 
     # 💀 سم: برای ضربه‌های بعدی حریف ضعیف‌تر میشه
@@ -372,6 +374,7 @@ async def execute_hit(session: AsyncSession, attacker: User, target: User) -> di
     killed = target.hp <= 0
     if killed:
         target.dead_until = now_utc() + timedelta(seconds=config.BATTLE_DEAD_SECONDS)
+        target.gods_shield_used = False  # واقعاً مرد، دفعه بعد که زنده شد زره خدایان دوباره می‌تونه فعال بشه
         attacker.wins += 1
         target.losses += 1
         from services import teams as team_svc
@@ -417,19 +420,11 @@ def heal_preview(user: User, key: str) -> int:
     return min(item["heal"], max_hp(user.level) - user.hp)
 
 
-def heal_cooldown_left(user: User) -> int:
-    """ثانیه مونده تا درمان بعدی (راند ۳۰، درخواست کارفرما: هر درمان ۵ دقیقه دیلی)"""
-    lh = getattr(user, "last_heal_at", None)
-    if not lh:
-        return 0
-    return max(0, config.HEAL_COOLDOWN_SECONDS - int((now_utc() - lh).total_seconds()))
-
-
 def apply_heal(user: User, key: str) -> tuple[bool, str, int]:
     """
     خرید و استفاده همون لحظه آیتم درمان (بدون انبار)
     خروجی: (موفق, پیام, مقدار برگشتی)
-    دلیل ناموفق: dead | full | poor | badkey | cooldown
+    دلیل ناموفق: dead | full | poor | badkey
     """
     item = config.HEAL_ITEMS.get(key)
     if not item:
@@ -442,15 +437,11 @@ def apply_heal(user: User, key: str) -> tuple[bool, str, int]:
     ensure_hp(user)
     gain = heal_preview(user, key)
     if gain <= 0:
-        return False, "full", 0  # اول چک فول بودن، که درمانِ بی‌خاصیت دیلی نخوره
-
-    if heal_cooldown_left(user) > 0:
-        return False, "cooldown", 0
+        return False, "full", 0
 
     if user.cash < item["price"]:
         return False, "poor", 0
 
     user.cash -= item["price"]
     user.hp += gain
-    user.last_heal_at = now_utc()
     return True, "ok", gain

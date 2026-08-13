@@ -132,7 +132,7 @@ async def target_spy_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             await s.commit()
             return await respond(update, text, markup, alert="💸 پولت برای جاسوسی کمه")
         user.cash -= cost
-        _a, t_tot, _info = await pvattack.total_powers(s, user, cur)
+        _a, _t, _info30 = await pvattack.total_powers(s, user, cur)
         cash = cur.cash
         name = users.display_name(cur)
         text, markup = await _target_view(s, user, cur)
@@ -141,7 +141,7 @@ async def target_spy_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     alert = (
         f"🕵 گزارش جاسوسی از «{esc(name)}» به شرح زیر است\n\n"
         f"💰 پول: {money(cash)}\n"
-        f"💪 قدرت کلی: {fa_num(t_tot)}"
+        f"💪 قدرت کلی: {fa_num(_info30['t_display'])}"
     )
     await respond(update, text, markup, alert=alert)
 
@@ -167,7 +167,7 @@ def _victim_text(attacker_name: str, result: dict) -> str:
         "<b>🚨 بهت حمله شد</b>\n\n"
         f"{head}\n"
         f"{money_line}\n"
-        f"💪 قدرت کل تو {fa_num(result['d_pow'])} ✕ طرف {fa_num(result['a_pow'])}\n"
+        f"💪 قدرت کل تو {fa_num(result['d_pow_disp'])} ✕ طرف {fa_num(result['a_pow_disp'])}\n"
         f"✨ {fa_num(result['victim_xp'])} تجربه گرفتی\n\n"
         f"🛡 تا {fa_num(config.PV_ATTACK_SHIELD_SECONDS // 3600)} ساعت از حملات در امانی"
     )
@@ -254,7 +254,7 @@ async def _run_attack(update: Update, context, target_id: int, break_shield: boo
         text = (
             f"<b>⚔️ بردی!</b>\n\n"
             f"{loot_line}\n"
-            f"💪 قدرت کل تو {fa_num(result['a_pow'])} ✕ طرف {fa_num(result['d_pow'])}\n"
+            f"💪 قدرت کل تو {fa_num(result['a_pow_disp'])} ✕ طرف {fa_num(result['d_pow_disp'])}\n"
             f"✨ {fa_num(result['xp'])} تجربه گرفتی"
         )
     else:
@@ -265,7 +265,7 @@ async def _run_attack(update: Update, context, target_id: int, break_shield: boo
         text = (
             f"<b>🛡 حریف «{esc(name)}» تونست دفاع کنه، باختی</b>\n\n"
             f"{lose_line}\n"
-            f"💪 قدرت کل طرف {fa_num(result['d_pow'])} ✕ تو {fa_num(result['a_pow'])}\n"
+            f"💪 قدرت کل طرف {fa_num(result['d_pow_disp'])} ✕ تو {fa_num(result['a_pow_disp'])}\n"
             f"✨ {fa_num(result['xp'])} تجربه گرفتی"
         )
 

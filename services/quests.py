@@ -49,7 +49,7 @@ def reward_text(q: dict) -> str:
         return money(r["amount"])
     if r["type"] == "xp":
         return f"✨ {fa_num(r['amount'])} تجربه"
-    return f"🌱 بذر {config.SEEDS[r['seed']]['name']}"
+    return f"🌱 {fa_num(r['amount'])} تا بذر {config.SEEDS[r['seed']]['name']}"
 
 
 def remaining(quests: list[dict]) -> int:
@@ -86,9 +86,9 @@ def _roll_reward(kind: str, level: int) -> dict:
         return {"type": "seed", "seed": "mutant", "amount": 1}
     cut += config.DAILY_QUEST_MUTANT_CHANCE
     if level >= config.DAILY_QUEST_LEGEND_MIN_LEVEL and r < cut + config.DAILY_QUEST_LEGEND_CHANCE:
-        return {"type": "seed", "seed": random.choice(config.QUEST_LEGEND_SEEDS), "amount": 1}
+        return {"type": "seed", "seed": random.choice(config.QUEST_LEGEND_SEEDS), "amount": random.randint(1, config.DAILY_QUEST_SEED_MAX)}
     seeds = economy.allowed_normal_seeds(level)
-    return {"type": "seed", "seed": random.choice(seeds), "amount": 1}
+    return {"type": "seed", "seed": random.choice(seeds), "amount": random.randint(1, config.DAILY_QUEST_SEED_MAX)}
 
 
 async def ensure_quests(session: AsyncSession, user: User) -> list[dict]:

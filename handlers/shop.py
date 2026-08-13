@@ -67,7 +67,7 @@ def _weap_home_text(user) -> str:
 
 
 def _wsec_text(user, sec: str) -> str:
-    """باکس هر سلاح یه دسته: نام | دمیج | آهن | قیمت | وضعیت"""
+    """باکس هر سلاح یه دسته: نام | دمیج | آهن | قیمت | وضعیت (راند ۴۱: قالب زره ویژه هم همینه)"""
     sc = config.WEAPON_SECTIONS.get(sec) or config.WEAPON_SECTIONS["cold"]
     lines = [f"<b>{sc['emoji']} {sc['name']}</b>", _status_line(user), "", "برای خرید روی آیتم موردنظر بزن", ""]
     for key, w in config.WEAPONS.items():
@@ -76,9 +76,14 @@ def _wsec_text(user, sec: str) -> str:
         locked = user.level < w["min_level"]
         lines += [SEP, ""]
         lines.append(f"🔒 {w['name']} (قفل)" if locked else _item_head(sc["emoji"], w["name"]))
-        lines.append(f"💥 دمیج {fa_num(w['attack'])}")
+        lines.append("")
+        lines.append(f"💥 دمیج: {fa_num(w['attack'])}")
         if w.get("ability"):
             lines.append(f"🎯 قابلیت: {config.WEAPON_ABILITY_TEXT.get(w['ability']['kind'], '')}")
+            flavor = config.WEAPON_FLAVOR_TEXT.get(w["ability"]["kind"])
+            if flavor:
+                lines.append(f"▫️ {flavor}")
+        lines.append("")
         cost23 = f"🪙 هزینه: ⛏️ {fa_num(w['iron'])} آهن + 💰 {money(w['price'])}"
         parts23 = config.SPECIAL_WEAPON_PARTS.get(key, 0)
         if parts23:
@@ -113,7 +118,7 @@ def _arm_home_text(user) -> str:
 
 
 def _arm_text(user, sec: str) -> str:
-    """صفحه یه دسته زره: نام | دفاع | قابلیت ویژه | قیمت | وضعیت (راند ۱۹)"""
+    """صفحه یه دسته زره: نام | دفاع | قابلیت ویژه | قیمت | وضعیت (راند ۱۹، قالب راند ۴۱)"""
     sc = config.ARMOR_SECTIONS.get(sec) or config.ARMOR_SECTIONS["normal"]
     lines = [f"<b>{sc['emoji']} {sc['name']}</b>", _status_line(user), "", "برای خرید روی آیتم موردنظر بزن", ""]
     for key, a in config.ARMORS.items():
@@ -121,13 +126,18 @@ def _arm_text(user, sec: str) -> str:
             continue
         locked = user.level < a["min_level"]
         lines += [SEP, ""]
-        lines.append(f"🔒 {a['name']} (قفل)" if locked else f"🛡 {a['name']}")
-        lines.append(f"🛡 دفاع {fa_num(a['defense'])}")
+        lines.append(f"🔒 {a['name']} (قفل)" if locked else (a["name"] if _has_emoji(a["name"]) else f"🛡 {a['name']}"))
+        lines.append("")
+        lines.append(f"🛡 دفاع: {fa_num(a['defense'])}")
         if a.get("ability"):
             lines.append(f"🎯 قابلیت: {config.ARMOR_ABILITY_TEXT.get(a['ability']['kind'], '')}")
-        if a.get("desc"):
+            flavor = config.ARMOR_FLAVOR_TEXT.get(a["ability"]["kind"])
+            if flavor:
+                lines.append(f"▫️ {flavor}")
+        elif a.get("desc"):
             lines.append(f"▫️ {a['desc']}")
-        cost_arm = f"💰 {money(a['price'])}"
+        lines.append("")
+        cost_arm = f"💰 هزینه: {money(a['price'])}"
         parts_arm = config.SPECIAL_ARMOR_PARTS.get(key, 0)
         if parts_arm:
             have_arm = int(getattr(user, "legendary_parts", 0) or 0)

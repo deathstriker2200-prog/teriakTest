@@ -5506,9 +5506,9 @@ async def main() -> None:
     check("هر سلاح یه دسته معتبر داره و هر دسته حداقل یه سلاح",
           all(w.get("sec") in config.WEAPON_SECTIONS for w in config.WEAPONS.values())
           and {w["sec"] for w in config.WEAPONS.values()} == set(config.WEAPON_SECTIONS))
-    check("خرید دونه‌ای منابع گرون‌تر از فروششه (تولید می‌صرفه؛ راند ۳۰: خرید ۳۰۰/۶۰۰ و پایه فروش ۲۰/۴۰، قطعی کارفرما)",
+    check("خرید دونه‌ای منابع گرون‌تر از فروششه (تولید می‌صرفه؛ فروش پایه چوب ۱۰۰/آهن ۲۰۰)",
           config.RES_SHOP["wood"]["unit"] == 300 and config.RES_SHOP["iron"]["unit"] == 600
-          and config.RES_SELL_PRICES == {"wood": 20, "iron": 40}
+          and config.RES_SELL_PRICES == {"wood": 100, "iron": 200}
           and config.RES_MARKET_MIN_MULT == 0.50 and config.RES_MARKET_MAX_MULT == 1.50
           and all(config.RES_SHOP[k]["unit"] > config.RES_SELL_PRICES[k] for k in config.RES_SHOP),
           str(config.RES_SHOP))
@@ -13631,16 +13631,21 @@ async def main() -> None:
             "names": {c27a.id: "ضربه‌زن یک", c27b.id: "ضربه‌زن دو", c27c.id: "ضربه‌زن سه"},
         }
         _ri27 = world_svc.random.randint
+        _ch27 = world_svc.random.choice
+        _rn27 = world_svc.random.random
         try:
             world_svc.random.randint = lambda a, b: 7
+            world_svc.random.choice = lambda seq: seq[0]
+            world_svc.random.random = lambda: 0.99  # نفر دوم بذر شانسی نگیره، قطعی بمونه
             rows27 = await world_svc._caravan_settle(s, -98001, killed=True)
         finally:
             world_svc.random.randint = _ri27
-        check("جایزه کشتن کاروان رتبه‌بندی ثابته: نفر اول ۳ بذر جهنم، دوم ۲ ابلیس، سوم ۲ کوکائین (درخواست کارفرما)",
-              [len(r["seeds"]) for r in rows27] == [3, 2, 2]
-              and rows27[0]["seeds"] == [config.SEEDS["jahannam"]["name"]] * 3
-              and rows27[1]["seeds"] == [config.SEEDS["eblis"]["name"]] * 2
-              and rows27[2]["seeds"] == [config.SEEDS["cocaine"]["name"]] * 2,
+            world_svc.random.choice = _ch27
+            world_svc.random.random = _rn27
+        check("جایزه کشتن کاروان: فقط نفر اول ۱ بذر جهنم/ابلیس، نفر سوم ۱ کوکائین (بقیه حداکثر ۱ بذر)",
+              [len(r["seeds"]) for r in rows27] == [1, 0, 1]
+              and rows27[0]["seeds"] == [config.SEEDS["jahannam"]["name"]]
+              and rows27[2]["seeds"] == [config.SEEDS["cocaine"]["name"]],
               str([r["seeds"] for r in rows27]))
         check("همه ضربه‌زنهای کاروان جم می‌گیرن و تو موجودی‌شون نشینه",
               all(r["gems"] == 7 for r in rows27) and c27a.gems == 7 and c27c.gems == 7,
@@ -14466,45 +14471,36 @@ async def main() -> None:
             battle_svc.random.choice = _choice30
         await s.commit()
 
-    # ── ۴) درمان: قیمت‌های جدید + دیلی ۵ دقیقه‌ای ──
+    # ── ۴) درمان: کولدان حذف شد، هر چندبار پشت سر هم می‌تونه بخره ──
     async with session_scope() as s:
         hu30, _ = await users.get_or_create(s, tg(884104, "heal30", "درمانی"))
         hu30.level, hu30.cash = 6, 100000
         hu30.hp = battle_svc.max_hp(hu30.level) - 90
         await s.flush()
         ok_h, why_h, gain_h = battle_svc.apply_heal(hu30, "band")
-        check("درمان اول با قیمت جدید ۱۵۰۰ انجام شد و زمانش ثبت میشه",
-              ok_h and why_h == "ok" and gain_h == 75 and hu30.cash == 98500
-              and hu30.last_heal_at is not None,
+        check("درمان اول با قیمت جدید ۱۵۰۰ انجام شد",
+              ok_h and why_h == "ok" and gain_h == 75 and hu30.cash == 98500,
               f"{why_h}/{gain_h}/{hu30.cash}")
         cash_h = hu30.cash
+        hu30.hp = battle_svc.max_hp(hu30.level) - 90
         ok_h2, why_h2, _ = battle_svc.apply_heal(hu30, "band")
-        left_h = battle_svc.heal_cooldown_left(hu30)
-        check("درمان دوم زیر ۵ دقیقه رد میشه (cooldown) و پول نمی‌سوزه",
-              not ok_h2 and why_h2 == "cooldown" and hu30.cash == cash_h
-              and 0 < left_h <= config.HEAL_COOLDOWN_SECONDS,
-              f"{why_h2}/left={left_h}")
+        check("درمان دوم بلافاصله هم بدون کولدان انجام میشه",
+              ok_h2 and why_h2 == "ok" and hu30.cash == cash_h - 1500, f"{why_h2}/{hu30.cash}")
         hu30.hp = battle_svc.max_hp(hu30.level)
         ok_h3, why_h3, _ = battle_svc.apply_heal(hu30, "band")
-        check("خون فول اول رد میشه تا درمان بی‌خاصیت دیلی نسوزونه (ترتیب full قبل cooldown)",
-              not ok_h3 and why_h3 == "full" and hu30.cash == cash_h, why_h3)
-        hu30.hp = battle_svc.max_hp(hu30.level) - 90
-        hu30.last_heal_at = now_utc() - timedelta(seconds=config.HEAL_COOLDOWN_SECONDS + 1)
-        ok_h4, why_h4, _ = battle_svc.apply_heal(hu30, "kit")
-        check("بعد از گذشت دیلی، درمان با قیمت جدید ۲۵۰۰ دوباره کار می‌کنه",
-              ok_h4 and why_h4 == "ok" and hu30.cash == cash_h - 2500, f"{why_h4}/{hu30.cash}")
+        check("خون فول رد میشه", not ok_h3 and why_h3 == "full", why_h3)
         await s.commit()
 
-    # ── ۵) چوب و آهن تو بازار سیاه: قیمت متغیر ۲۰/۴۰ با بازه ±%50 و اثر فروش عمیق‌تر ──
-    check("راند ۳۰: خانه‌های بازار منابع و قیمت‌های قطعی کارفرما",
-          config.RES_SELL_PRICES == {"wood": 20, "iron": 40}
+    # ── ۵) چوب و آهن تو بازار سیاه: قیمت متغیر ۱۰۰/۲۰۰ با بازه ±%50 و اثر فروش عمیق‌تر ──
+    check("خانه‌های بازار منابع و قیمت‌های قطعی کارفرما",
+          config.RES_SELL_PRICES == {"wood": 100, "iron": 200}
           and config.RES_SHOP["wood"]["unit"] == 300 and config.RES_SHOP["iron"]["unit"] == 600
           and config.RES_MARKET_MIN_MULT == 0.50 and config.RES_MARKET_MAX_MULT == 1.50
           and config.RES_MARKET_SATURATION_MAX > config.MARKET_SELL_SATURATION_MAX, "-")
-    check("قیمت فروش منبع = پایه × ضریب بازار (آهن با ضریب ۱.۲۵ میشه ۵۰)",
-          res_svc30.sell_price_market({"iron": 1.25}, "iron") == 50
-          and res_svc30.sell_price_market({"wood": 0.5}, "wood") == 10
-          and res_svc30.sell_price_market({}, "wood") == 20, "-")
+    check("قیمت فروش منبع = پایه × ضریب بازار (آهن با ضریب ۱.۲۵ میشه ۲۵۰)",
+          res_svc30.sell_price_market({"iron": 1.25}, "iron") == 250
+          and res_svc30.sell_price_market({"wood": 0.5}, "wood") == 50
+          and res_svc30.sell_price_market({}, "wood") == 100, "-")
     _rand30.seed(424242)
     _drops_seed30 = [world_svc._next_market_mult(1.0, 5000, 1) for _ in range(400)]
     _rand30.seed(424242)

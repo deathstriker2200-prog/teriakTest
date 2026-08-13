@@ -259,7 +259,7 @@ async def shelter_cat_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 # ═════════ فروش منابع 💰 (بخش مخفیگاه) ═════════
 
 def _resource_sell_text(user, mults: dict | None = None) -> str:
-    # راند ۳۰ (درخواست کارفرما): قیمت فروش چوب و آهن از بازار سیاه میاد (پایه ۲۰/۴۰، بازه ±%50)
+    # راند جدید: قیمت چوب و آهن دیگه به فروش ربطی نداره، هر رول بازار یه عدد کاملاً شانسی تو بازه ثابت خودشه
     wood_price = res_svc.sell_price_market(mults or {}, "wood")
     iron_price = res_svc.sell_price_market(mults or {}, "iron")
     return "\n".join([
@@ -268,7 +268,7 @@ def _resource_sell_text(user, mults: dict | None = None) -> str:
         f"🪵 چوب {fa_num(user.wood)} تا داری: دونه‌ای {money(wood_price)}",
         f"⛏️ آهن {fa_num(user.iron)} تا داری: دونه‌ای {money(iron_price)}",
         "",
-        "قیمت‌ها از بازار سیاه میان و با فروش زیاد میریزن، با کمیابی میرن بالا (تا ±%50)",
+        "قیمت چوب و آهن هر بار که بازار عوض میشه کاملاً شانسی تعیین میشه، فروش خودت روش اثری نداره",
         "بنویس چی و چقدر می‌خوای بفروشی، مثلا «آهن 300» یا «چوب 200» (فقط چوب و آهن قابل فروش‌اند)",
         "بعدش مبلغشو می‌گیری و تایید می‌کنی",
         "",
@@ -298,9 +298,6 @@ async def sellres_execute(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         ok, err, total = res_svc.sell_resource(user, res, int(amount), res_svc.sell_price_market(mults30, res))
         cash = user.cash
         dq_done, dq_left, uname, tq = [], 0, "", None
-        if ok:
-            from services import world as world_svc2
-            await world_svc2.record_sale(s, res, int(amount))  # راند ۳۰: فروش منابع قیمت بازارشو پایین میاره
         if ok:  # (راند ۱۵) کوئست روزانه و کارتلی فروش منابع با تعداد واحد
             from services import quests as dq_svc
             from services import teams as team_svc

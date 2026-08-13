@@ -320,7 +320,7 @@ async def record_sale(session: AsyncSession, seed_key: str, qty: int = 1) -> Non
     ثبت یه فروش واقعی محصول برای حساب عرضه بازار، فقط ردیف اضافه می‌کنه (کامیت با صدا‌کننده‌ست)
     هر از چندگاهی ردیف‌های قدیمی پاک میشن تا جدول همیشه سبک بمونه
     """
-    if seed_key not in config.SEEDS and seed_key not in ("wood", "iron"):  # راند ۳۰: فروش منابع هم تو بازار اثر داره
+    if seed_key not in config.SEEDS:  # چوب/آهن دیگه ثبت نمیشن، قیمتشون دیگه به فروش ربطی نداره
         return
     session.add(SeedSale(seed_key=seed_key, qty=qty, at=now_utc()))
     if random.random() < config.ACTION_LOG_PRUNE_CHANCE:
@@ -395,11 +395,12 @@ async def ensure_market(session: AsyncSession, force: bool = False) -> bool:
     for key in config.SEEDS:  # همه محصولات از روز اول تو بازارن، حتی افسانه‌ای‌ها و قفل‌های لول
         mult = _next_market_mult(old.get(key, 1.0), sales.get(key, 0), demand)
         parts.append(f"{key}:{mult:.4f}")
-    # راند ۳۰ (درخواست کارفرما): چوب و آهن با بازه ±%50 و اثر فروش قوی‌تر
+    # راند جدید: چوب و آهن دیگه به فروش/عرضه‌وتقاضا کاری ندارن، هر رول قیمتشون کاملاً شانسیه تو بازه ثابت
     for key in ("wood", "iron"):
-        mult = _next_market_mult(old.get(key, 1.0), sales.get(key, 0), demand,
-                                 lo_mult=config.RES_MARKET_MIN_MULT, hi_mult=config.RES_MARKET_MAX_MULT,
-                                 sat_max=config.RES_MARKET_SATURATION_MAX)
+        lo, hi = config.RES_PRICE_RANGE[key]
+        price = random.randint(lo, hi)
+        base = config.RES_SELL_PRICES[key]
+        mult = price / base
         parts.append(f"{key}:{mult:.4f}")
     await _meta_set(session, "market", ",".join(parts))
     await _meta_set(session, "market_until", (now_utc() + timedelta(seconds=config.MARKET_ROLL_SECONDS)).isoformat())
@@ -481,17 +482,15 @@ def market_view_text(mults: dict[str, float], left: int) -> str:
             f"📦 قیمت پایه: {money(sd['sell'])}",
         ]))
 
-    # راند ۳۰/۳۱: چوب و آهن هم جای خودشون رو تو بازار سیاه دارن
-    res_lines = ["🪵⛏️ بازار منابع", "", "فروش منابع هم روی قیمت آن‌ها تأثیر می‌گذارد:", ""]
+    # راند جدید: چوب و آهن قیمتشون کاملاً شانسیه، هر رول یه عدد تصادفی تو بازه ثابت خودشون میگیرن
+    res_lines = ["🪵⛏️ بازار منابع", "", "قیمت چوب و آهن هر رول کاملاً شانسی جابه‌جا میشه:", ""]
     for key in ("wood", "iron"):
         mult = mults.get(key, 1.0)
-        pct = _pct(mult)
         cur = int(config.RES_SELL_PRICES[key] * mult)
-        trend = "📈" if pct > 0 else ("📉" if pct < 0 else "⚖️")
         nm = "چوب" if key == "wood" else "آهن"
         em = "🪵" if key == "wood" else "⛏️"
-        pct_line = f"{pct:+g}%" if pct != 0 else "نزدیک قیمت پایه"
-        res_lines.append(f'- {em} {nm}: "{fa_num(cur)} تی‌پوینت" {trend} {pct_line}')
+        lo, hi = config.RES_PRICE_RANGE[key]
+        res_lines.append(f'- {em} {nm}: "{fa_num(cur)} تی‌پوینت" 🎲 (بازه {fa_num(lo)} تا {fa_num(hi)})')
     sections.append("\n".join(res_lines))
     sections.append(f'⏳ حرکت بعدی بازار: "{fa_dur(left)} دیگر"')
     return "\n\n---\n\n".join(sections)
@@ -845,12 +844,12 @@ async def _caravan_settle(session: AsyncSession, chat_id: int, killed: bool) -> 
             continue
         is_top = idx == 0
 
-        # جایزه ویژه (بذر): غارت کامل رتبه‌بندی ثابت داره (راند ۲۷: نفر اول بهترین، درخواست کارفرما)
-        # نفر اول ۳ جهنم، نفر دوم ۲ ابلیس، نفر سوم ۲ کوکائین، نفر چهارم و پنجم همون شانسی قدیمی
+        # جایزه ویژه (بذر): غارت کامل رتبه‌بندی ثابت داره (درخواست کارفرما: فقط نفر اول جهنم/ابلیس، حداکثر ۱ بذر)
         if killed:
-            fixed = {0: ["jahannam"] * 3, 1: ["eblis"] * 2, 2: ["cocaine"] * 2}.get(idx)
-            if fixed is not None:
-                plan = fixed
+            if idx == 0:
+                plan = [random.choice(["jahannam", "eblis"])]
+            elif idx == 2:
+                plan = ["cocaine"]
             else:
                 plan = [caravan_loot_key()] if random.random() < 0.75 else []
         else:

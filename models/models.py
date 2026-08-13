@@ -94,6 +94,8 @@ class User(Base):
     hp: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # بعد شکست تا این زمان بیهوشه، بعدش خودکار با HP فول زنده میشه
     dead_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # 👑 زره خدایان: یه بار که فعال شد تا واقعاً نمیره دیگه دوباره فعال نمیشه (ضد چرخه بی‌نهایت زنده موندن)
+    gods_shield_used: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
 
     # کوئست‌های روزانه، تاریخ به‌وقت ایران + JSON پیشرفت و جایزه‌ها
     dq_date: Mapped[str | None] = mapped_column(String(10), nullable=True)

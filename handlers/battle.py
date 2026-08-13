@@ -309,8 +309,6 @@ async def heal_buy_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             return await render_heal(update, alert="💀 هنوز حالت جا نیومده")
         if why == "poor":
             return await render_heal(update, alert="💸 پولت برای این آیتم کمه")
-        if why == "cooldown":
-            return await render_heal(update, alert="⏳ هر ۵ دقیقه فقط یه درمان می‌تونی بزنی")
         return await render_heal(update, alert="🤷 همچین آیتمی نداریم")
 
     await render_heal(update, alert=f"❤️ نوش جون، {fa_num(gain)} HP برگشت")

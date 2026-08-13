@@ -114,8 +114,10 @@ async def total_powers(session: AsyncSession, attacker: User, target: User) -> t
     from models import Team
     a_m = await team_svc.get_membership(session, attacker.id)
     t_m = await team_svc.get_membership(session, target.id)
-    a_tb = team_svc.atk_bonus(await session.get(Team, a_m.team_id)) if a_m else 0.0
-    t_tb = team_svc.def_bonus(await session.get(Team, t_m.team_id)) if t_m else 0.0
+    a_team = await session.get(Team, a_m.team_id) if a_m else None
+    t_team = await session.get(Team, t_m.team_id) if t_m else None
+    a_tb = team_svc.atk_bonus(a_team) if a_m else 0.0
+    t_tb = team_svc.def_bonus(t_team) if t_m else 0.0
     a_ap, _ = combat.combat_boost_pcts(attacker, a_items, a_dogs, a_tb, 0.0)
     _, t_dp = combat.combat_boost_pcts(target, t_items, t_dogs, 0.0, t_tb)
 
@@ -129,9 +131,22 @@ async def total_powers(session: AsyncSession, attacker: User, target: User) -> t
     t_raw = (t_atk0 - a_def0) * (1 + t_dp + wdef)
     a_total = int(a_raw / 4)
     t_total = int(t_raw / 4)
+
+    # قدرت مطلق نمایشی (حمله+دفاع خودِ بازیکن)، دقیقاً فرمول پروفایل (باف کارتل هر دو طرف خودش، بدون اثر هوا)
+    # نتیجه برد/باخت همچنان با a_total/t_total نسبی بالا تعیین میشه، این فقط عدد نمایشیه که با پروفایل هم بخونه
+    a_tb_atk = team_svc.atk_bonus(a_team) if a_m else 0.0
+    a_tb_def = team_svc.def_bonus(a_team) if a_m else 0.0
+    t_tb_atk = team_svc.atk_bonus(t_team) if t_m else 0.0
+    t_tb_def = team_svc.def_bonus(t_team) if t_m else 0.0
+    a_atk_disp, a_def_disp = combat.combat_stats(attacker, a_items, a_dogs, a_tb_atk, a_tb_def, a_ammo)
+    t_atk_disp, t_def_disp = combat.combat_stats(target, t_items, t_dogs, t_tb_atk, t_tb_def, t_ammo)
+    a_display = a_atk_disp + a_def_disp
+    t_display = t_atk_disp + t_def_disp
+
     return a_total, t_total, {
         "a_atk0": a_atk0, "a_def0": a_def0,
         "t_atk0": t_atk0, "t_def0": t_def0, "weather": wkey,
+        "a_display": a_display, "t_display": t_display,
     }
 
 
@@ -320,6 +335,8 @@ async def execute(session: AsyncSession, attacker: User, victim: User) -> dict:
         "notes": notes,
         "a_pow": a_total,
         "d_pow": t_total,
+        "a_pow_disp": _info["a_display"],
+        "d_pow_disp": _info["t_display"],
         "weapon": weapon_key,
         "ammo_left": ammo_left,
         "wood_loot": wood_loot,

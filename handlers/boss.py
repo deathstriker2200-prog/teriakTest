@@ -154,13 +154,10 @@ def _bosses_list_text() -> str:
         boss = config.BOSS_BY_KEY[key]
         tier = config.BOSS_TIERS[boss["tier"]]
         mark = "✅" if has_img else "❌"
-        drop = config.BOSS_PART_DROP.get(boss["tier"], 0.0)
         line = (
             f"{mark} {emoji} <b>{esc(name)}</b> | {tier['emoji']} {tier['name']} | "
             f"💪 {fa_num(boss['hp'])} | 🎁 {money(boss['reward'])}"
         )
-        if drop:
-            line += f" | 🧩 {fa_num(int(drop * 100))}%"
         lines.append(line)
     lines.append("")
     lines.append("✅ یعنی عکس داره | ❌ یعنی هنوز عکس نذاشتی")

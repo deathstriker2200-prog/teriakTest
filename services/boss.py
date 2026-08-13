@@ -228,9 +228,10 @@ async def expire(session: AsyncSession, chat_id: int) -> dict | None:
 
 async def _settle(session: AsyncSession, chat_id: int, killer_id: int) -> dict:
     """
-    تسویه کشتن باس: جایزه رومیزی بین نفرهای برتر دمیج بر اساس سهمشون
-    قاتل بونس اضافه می‌گیره و تو درجه اپیک/لجندری شانس دراپ قطعه افسانه‌ای داره
-    خروجی: {rows: [{user_id, name, dmg, share, top, killer}], drop_part: bool, killer_name: str}
+    تسویه کشتن باس: جایزه رومیزی بین نفرهای برتر دمیج بر اساس رتبه (BOSS_RANK_PCT)
+    راند ۴۱ (درخواست کارفرما): جم فقط به ۳ نفر برتر دمیج میرسه | قطعه افسانه‌ای همیشه مال قاتله
+    قاتل جدا یه «جایزه ویژه» هم می‌گیره: یا فقط جم (بازه بزرگ‌تر) یا جم کمتر + همون قطعه افسانه‌ای
+    خروجی: {rows: [{user_id, name, dmg, share, top, killer, gems}], drop_part: bool, killer_gems: int, killer_only_gems: bool}
     """
     st = BOSSES.pop(chat_id, None)
     if not st:
@@ -240,23 +241,24 @@ async def _settle(session: AsyncSession, chat_id: int, killer_id: int) -> dict:
     if not damages:
         return {"rows": [], "drop_part": False}
 
-    # 💎 جم باس: همه ضربه‌زنا (حتی بیرون جدول) بین ۵ تا ۵۰ جم می‌گیرن (راند ۲۷، درخواست کارفرما)
+    ranked = sorted(damages.items(), key=lambda kv: -kv[1])[: config.BOSS_TOP_REWARDS]
+
+    # 💎 جم باس: فقط ۳ نفر برتر دمیج (راند ۴۱، درخواست کارفرما)
     gem_gains: dict[int, int] = {}
-    for uid in damages:
-        g = random.randint(config.GEM_DROP_MIN, config.GEM_DROP_MAX)
+    for uid, _d in ranked[: config.BOSS_GEM_TOP_N]:
+        g = random.randint(config.BOSS_GEM_MIN, config.BOSS_GEM_MAX)
         gu = await session.get(User, uid)
         if gu is not None:
             gu.gems = (gu.gems or 0) + g
             gem_gains[uid] = g
 
-    ranked = sorted(damages.items(), key=lambda kv: -kv[1])[: config.BOSS_TOP_REWARDS]
-    total = sum(d for _, d in ranked) or 1
     rows = []
     for idx, (uid, d) in enumerate(ranked):
         u = await session.get(User, uid)
         if not u:
             continue
-        share = max(1, round(boss["reward"] * d / total))
+        pct = config.BOSS_RANK_PCT[idx] if idx < len(config.BOSS_RANK_PCT) else config.BOSS_RANK_PCT[-1]
+        share = max(1, round(boss["reward"] * pct))
         if uid == killer_id:
             share += round(boss["reward"] * config.BOSS_KILLER_BONUS)
         u.cash += share
@@ -270,15 +272,28 @@ async def _settle(session: AsyncSession, chat_id: int, killer_id: int) -> dict:
             "gems": gem_gains.get(uid, 0),
         })
 
+    # 🧩 قطعه افسانه‌ای همیشه مال قاتل باس (راند ۴۱، درخواست کارفرما: پازل رو به قاتل بده)
     drop_part = False
-    drop_chance = config.BOSS_PART_DROP.get(boss["tier"], 0.0)
-    if drop_chance and random.random() < drop_chance:
-        killer = await session.get(User, killer_id)
-        if killer is not None:
-            killer.legendary_parts = (killer.legendary_parts or 0) + 1
-            drop_part = True
+    killer = await session.get(User, killer_id)
+    if killer is not None:
+        killer.legendary_parts = (killer.legendary_parts or 0) + 1
+        drop_part = True
 
-    return {"rows": rows, "drop_part": drop_part}
+    # 🎁 جایزه ویژه قاتل: یا فقط جم تو بازه بزرگ‌تر، یا جم کمتر (همون قطعه افسانه‌ای بالا رو داره)
+    killer_only_gems = random.random() >= config.BOSS_KILLER_PART_CHANCE
+    if killer is not None:
+        if killer_only_gems:
+            kg = random.randint(config.BOSS_KILLER_GEM_ONLY_MIN, config.BOSS_KILLER_GEM_ONLY_MAX)
+        else:
+            kg = config.BOSS_KILLER_GEM_WITH_PART
+        killer.gems = (killer.gems or 0) + kg
+        for r in rows:
+            if r["killer"]:
+                r["gems"] = r.get("gems", 0) + kg
+    else:
+        kg = 0
+
+    return {"rows": rows, "drop_part": drop_part, "killer_gems": kg, "killer_only_gems": killer_only_gems}
 
 
 # ───────── متن‌ها ─────────
@@ -308,11 +323,9 @@ def card_text(st: dict) -> str:
         f"📍 محل حضور: {boss['place']}",
         f"⚔️ قدرت: {fa_num(boss['dmg'])} (اول از دفاع زره‌ت کم میشه)",
         "",
-        f"🎁 جایزه شکست: {money(boss['reward'])} (به نسبت دمیج بین ۵ نفر برتر)",
+        f"🎁 جایزه شکست: {money(boss['reward'])} (پلکانی بین ۵ نفر برتر دمیج)",
+        "🧩 قطعه افسانه‌ای همیشه مال قاتل باسه",
     ]
-    drop = config.BOSS_PART_DROP.get(boss["tier"], 0.0)
-    if drop:
-        lines.append(f"🧩 شانس دراپ قطعه افسانه‌ای برای قاتل: {fa_num(int(drop * 100))}%")
     lines.append(f"⏳ تا {fa_num(boss['mins'])} دقیقه دیگه محله رو ترک می‌کنه")
     return "\n".join(lines)
 
@@ -338,24 +351,30 @@ def board_text(st: dict) -> str:
 
 
 def end_text(res: dict, key: str) -> str:
-    """پیام پایانی: کشتن با جدول جایزه یا فرار باس"""
+    """پیام پایانی: کشتن با جدول جایزه یا فرار باس (راند ۴۱: قالب تازه، جایزه ویژه قاتل جدا نمایش داده میشه)"""
     boss = config.BOSS_BY_KEY[key]
     rows = res.get("rows", [])
     if not rows:
         return f"🌫 {boss['emoji']} <b>{boss['name']}</b> رد شد و رفت، هیچ‌کس نتونست زمینش بذاره"
     lines = [
-        f"🏆 <b>{boss['emoji']} {boss['name']} زمین خورد!</b>",
+        f"🏆 {boss['emoji']} <b>{boss['name']} زمین خورد</b>",
         "",
     ]
+    killer_name = "؟"
     for r in rows:
         mark = "👑" if r["top"] else "▫️"
-        killer = " 🩸قاتلش" if r["killer"] else ""
         gem = f" + 💎×{fa_num(r['gems'])}" if r.get("gems") else ""
-        lines.append(f"{mark} {r['name']} ({fa_num(r['dmg'])} دمیج) → {money(r['share'])}{gem}{killer}")
-    if res.get("drop_part"):
-        kname = next((r["name"] for r in rows if r["killer"]), "قاتل")
-        lines.append("")
-        lines.append(f"🧩 یه «قطعه افسانه‌ای» هم افتاد دست {kname}، مبارکش ✨")
+        lines.append(f"{mark} {r['name']} ({fa_num(r['dmg'])} دمیج) → {money(r['share'])}{gem}")
+        if r["killer"]:
+            killer_name = r["name"]
+    lines.append("")
+    lines.append(f"قاتل: {killer_name}")
+    kg = res.get("killer_gems", 0)
+    if res.get("drop_part") and kg:
+        if res.get("killer_only_gems"):
+            lines.append(f"جایزه ویژه: 💎×{fa_num(kg)}")
+        else:
+            lines.append(f"جایزه ویژه: 💎×{fa_num(kg)} + 🧩 قطعه افسانه‌ای")
     return "\n".join(lines)
 
 
