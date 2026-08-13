@@ -206,6 +206,12 @@ async def market_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if st == "poor":
             return await query.answer(
                 f"❌ پولت به این آگهی نمی‌رسه ({money(info['row'].price)})", show_alert=True)
+        if st == "full":
+            it_name = config.MARKET_ITEMS[info["row"].item]["name"]
+            return await query.answer(
+                f"🎒 انبارت جا نداره، {it_name} با «انبار» ظرفیتت رو بیشتر کن\n"
+                f"({fa_num(info['have'])}/{fa_num(info['cap'])})",
+                show_alert=True)
         it = config.MARKET_ITEMS[info["item"]]
         name = esc(users.display_name(me))
         await query.answer("✅ معامله انجام شد", show_alert=True)

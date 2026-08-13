@@ -243,15 +243,20 @@ async def harvest_all(session: AsyncSession, user: User) -> tuple[bool, str, str
         base = economy.crop_yield(p.crop, p.level, user.level)
         mkt = world_svc.market_mult(mults, p.crop)
         gain = apply_legendary_cap(p.crop, int(base * sell_mult * mkt) * qty)
-        total_xp += economy.crop_xp(p.crop, tier["stars"])
-        n_harvests += 1
-        harv_seeds[p.crop] = harv_seeds.get(p.crop, 0) + qty
         # محصول بعد برداشت نقد نمیشه، تعدادی و با ارزش قفل‌شده همون لحظه میره تو انبار
         # فروش (محموله یا کاروان قاچاق) بعداً انجام میشه و عرضه بازار موقع فروش ثبت میشه
         # هر محصول ظرفیت انبار خودشو داره، سرریز از بین میره و به کاربر گزارش میشه
         added, added_val = await smg.add_product(session, user.id, p.crop, qty, gain, user.shelter_level)
         sd = config.SEEDS[p.crop]
         emoji = sd.get("emoji", "🌱")
+        # راند ۴۰ (درخواست کارفرما): انبار پر بود و هیچی جا نشد → زمین برداشت نمیشه، سرجاش می‌مونه
+        # تا وقتی جا باز بشه (دیگه برداشت خودکار پاک نمیشه که محصول الکی از بین نره)
+        if added == 0 and qty > 0:
+            lost_lines.append(f"⚠️ انبار {sd['name']} پره، این زمین برداشت نشد؛ اول انبارتو خالی کن")
+            continue
+        total_xp += economy.crop_xp(p.crop, tier["stars"])
+        n_harvests += 1
+        harv_seeds[p.crop] = harv_seeds.get(p.crop, 0) + qty
         total_gain += added_val
         total_units += added
         if added:
@@ -263,6 +268,9 @@ async def harvest_all(session: AsyncSession, user: User) -> tuple[bool, str, str
         p.planted_at = None
         p.ready_at = None
 
+    if n_harvests == 0 and not item_lines and not lost_lines:
+        return False, "▫️ چیزی آماده برداشت نیس", None, ([], 0), []
+
     user.last_harvest_at = now_utc()
     notes = users.add_xp(user, total_xp)
     from services import tracklog as tl
@@ -271,7 +279,7 @@ async def harvest_all(session: AsyncSession, user: User) -> tuple[bool, str, str
     # قلاب کوئست کارتل، برداشت هر عضو حساب میشه
     from services import teams as team_svc
     notes += await team_svc.add_team_xp(session, user, total_xp)
-    quest_msg = await team_svc.record_harvest(session, user, len(ready))
+    quest_msg = await team_svc.record_harvest(session, user, n_harvests)
 
     # قلاب کوئست روزانه، به تعداد زمین برداشت‌شده
     from services import quests as dq_svc
@@ -289,6 +297,8 @@ async def harvest_all(session: AsyncSession, user: User) -> tuple[bool, str, str
     if quest_msg:
         extra += "\n\n" + quest_msg
     # یادداشت‌های لول‌آپ جدا برمی‌گردن تا هندلر به‌صورت پیام مجزا بفرسته
+    if total_units == 0:
+        return True, "⚠️ انبارت پره، هیچی برداشت نشد", extra, dq, notes
     return True, f"🌾 {fa_num(total_units)} تا محصول برداشت کردی، رفت تو انبارت", extra, dq, notes
 
 

@@ -145,7 +145,8 @@ async def cancel_listing(session: AsyncSession, user: User, listing_id: int) -> 
 async def buy_listing(session: AsyncSession, buyer: User, listing_id: int) -> tuple[str, dict]:
     """
     خرید آگهی: پول از جیب خریدار به فروشنده میره و جنس مال خریدار
-    خروجی: (وضعیت، اطلاعات) → status: gone | own | poor | ok
+    خروجی: (وضعیت، اطلاعات) → status: gone | own | poor | full | ok
+    راند ۴۰ (درخواست کارفرما): چوب و آهن سقف انبار مخفیگاه دارن، جا نبود خرید انجام نمیشه
     """
     row = await session.get(MarketListing, listing_id)
     if row is None:
@@ -154,6 +155,12 @@ async def buy_listing(session: AsyncSession, buyer: User, listing_id: int) -> tu
         return "own", {"row": row}
     if buyer.cash < row.price:
         return "poor", {"row": row}
+    if row.item in ("wood", "iron"):
+        from services.resources import res_cap
+        cur = qty_of(buyer, row.item)
+        cap = res_cap(buyer, row.item)
+        if cur + row.qty > cap:
+            return "full", {"row": row, "cap": cap, "have": cur}
     buyer.cash -= row.price
     seller = await session.get(User, row.seller_id)
     if seller is not None:
