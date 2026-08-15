@@ -1133,7 +1133,7 @@ CARTEL_WAR_REQUEST_TIMEOUT_SECONDS = 300        # مهلت پاسخ رهبر ه�
 CARTEL_WAR_PREP_SECONDS = 300                   # فاصله بین پذیرش و فعال شدن وار: ۵ دقیقه (تست)
 CARTEL_WAR_DURATION_SECONDS = 300               # مدت جنگ فعال: ۵ دقیقه (تست)
 CARTEL_WAR_ATTACK_COOLDOWN_SECONDS = 300        # کولدان شخصی هر حمله وار: ۵ دقیقه
-CARTEL_WAR_MIN_MEMBERSHIP_HOURS = 24            # عضو باید حداقل این‌قدر تو کارتل بوده باشه تا بتونه بجنگه
+CARTEL_WAR_MIN_MEMBERSHIP_HOURS = 0             # عضو باید حداقل این‌قدر تو کارتل بوده باشه تا بتونه بجنگه — فعلاً غیرفعال (۰)، بعداً به درخواست کارفرما تنظیم میشه
 CARTEL_WAR_SWEEP_SECONDS = 60                   # جاب زمان‌بندی وار: هر ۱ دقیقه (انقضا | فعال‌سازی | پایان)
 CARTEL_WAR_DAILY_LIMIT = 10                     # هر کارتل روزی حداکثر چند جنگ بین‌کارتلی می‌تونه قبول/انجام بده
 
