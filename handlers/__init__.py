@@ -199,6 +199,7 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CommandHandler("detp", admin.detp_cmd))
     app.add_handler(CommandHandler("dexp", admin.dexp_cmd))
     app.add_handler(CommandHandler("clearacc", admin.clearacc_cmd))
+    app.add_handler(CommandHandler("warunlock", admin.warunlock_cmd))  # آزادکردن دستی قفل جنگ کارتل گیرکرده
     # ── سوئیچ خاموش/روشن ──
     app.add_handler(CommandHandler("botdown", power.botdown_cmd))
     app.add_handler(CommandHandler("botup", power.botup_cmd))

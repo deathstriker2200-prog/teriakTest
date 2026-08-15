@@ -244,9 +244,12 @@ async def _settle(session: AsyncSession, chat_id: int, killer_id: int) -> dict:
     ranked = sorted(damages.items(), key=lambda kv: -kv[1])[: config.BOSS_TOP_REWARDS]
 
     # 💎 جم باس: فقط ۳ نفر برتر دمیج (راند ۴۱، درخواست کارفرما)
+    # قاتل باس جم بدست‌آمده‌ش رو ۲ برابر می‌گیره (درخواست کارفرما)
     gem_gains: dict[int, int] = {}
     for uid, _d in ranked[: config.BOSS_GEM_TOP_N]:
         g = random.randint(config.BOSS_GEM_MIN, config.BOSS_GEM_MAX)
+        if uid == killer_id:
+            g *= 2
         gu = await session.get(User, uid)
         if gu is not None:
             gu.gems = (gu.gems or 0) + g
@@ -286,6 +289,7 @@ async def _settle(session: AsyncSession, chat_id: int, killer_id: int) -> dict:
             kg = random.randint(config.BOSS_KILLER_GEM_ONLY_MIN, config.BOSS_KILLER_GEM_ONLY_MAX)
         else:
             kg = config.BOSS_KILLER_GEM_WITH_PART
+        kg *= 2  # جم جایزه ویژه قاتل هم ۲ برابر (درخواست کارفرما)
         killer.gems = (killer.gems or 0) + kg
         for r in rows:
             if r["killer"]:

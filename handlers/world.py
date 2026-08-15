@@ -13,10 +13,17 @@ from database import session_scope
 from handlers.common import chat_id_of, parts, respond
 from keyboards import keyboards as kb
 from models import GroupActivity
+from services import battle as battle_svc
 from services import combat, dogs as dog_svc, farming, users
 from services import smuggle as smg
 from services import world as world_svc
 from utils import bar, esc, fa_dur, fa_num, money, money_tp, now_utc
+import math
+
+
+def _dead_alert_text(left: int) -> str:
+    mins = max(1, math.ceil(left / 60))
+    return f"💀 هنوز حالت جا نیومده، {fa_num(mins)} دقیقه دیگه دوباره می‌تونی بجنگی"
 
 
 # ═════════ جستجو 🔍 ═════════
@@ -393,6 +400,12 @@ async def caravan_hit_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
+        battle_svc.revive_if_due(user)
+        dleft = battle_svc.dead_left(user)
+        if dleft:
+            await s.commit()
+            await query.answer(_dead_alert_text(dleft), show_alert=True)
+            return
         items = await users.get_item_levels(s, user.id)
         ammo = await users.get_ammo_map(s, user.id)  # راند ۲۹: تفنگ بی‌تیر تو دمیج کاروان حساب نیس
         dogs = await dog_svc.get_user_dogs(s, user.id)

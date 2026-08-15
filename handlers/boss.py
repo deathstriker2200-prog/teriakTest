@@ -16,11 +16,18 @@ import config
 from database import session_scope
 from keyboards import keyboards as kb
 from models import User
+from services import battle as battle_svc
 from services import boss as boss_svc
 from services import combat
 from services import dogs as dog_svc
 from services import users
 from utils import esc, fa_num, money
+import math
+
+
+def _dead_alert_text(left: int) -> str:
+    mins = max(1, math.ceil(left / 60))
+    return f"💀 هنوز حالت جا نیومده، {fa_num(mins)} دقیقه دیگه دوباره می‌تونی بجنگی"
 
 logger = logging.getLogger("teriaky.boss")
 
@@ -94,6 +101,12 @@ async def boss_hit_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
+        battle_svc.revive_if_due(user)
+        dleft = battle_svc.dead_left(user)
+        if dleft:
+            await s.commit()
+            await query.answer(_dead_alert_text(dleft), show_alert=True)
+            return
         items = await users.get_item_levels(s, user.id)
         ammo = await users.get_ammo_map(s, user.id)  # راند ۲۹: تفنگ بی‌تیر تو دمیج باس حساب نیس
         dogs = await dog_svc.get_user_dogs(s, user.id)

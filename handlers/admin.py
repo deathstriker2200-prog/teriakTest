@@ -16,6 +16,7 @@ import config
 from database import session_scope
 from handlers.common import chat_id_of, parts, respond
 from keyboards import keyboards as kb
+from models import Team
 from services import economy, users
 from services import forcejoin as fj_svc
 from services import teams as team_svc
@@ -641,6 +642,55 @@ async def dexp_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         f"<b>✨ {fa_num(amount)} تجربه از {name} کم شد</b>\n\n"
         f"⭐ الان ✨ {fa_num(xp)} تجربه داره"
     )
+
+
+# ───────── /warunlock، آزادکردن دستی قفل جنگ کارتل (برای کارتل‌هایی که از قبل گیر کردن) ─────────
+
+async def warunlock_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not _is_admin(update):
+        return
+    from models import CartelWar
+
+    text = parts(update.message.text or "", 1)
+    if not text:
+        return await update.message.reply_html(
+            "❌ فرم درست: <code>/warunlock اسم_کارتل</code>\n"
+            "قفل pending_war_id کارتل رو آزاد می‌کنه و اگه وار فعال/در انتظاری داشت لغوش می‌کنه"
+        )
+
+    async with session_scope() as s:
+        team = await team_svc.get_team_by_name(s, text)
+        if team is None:
+            await s.commit()
+            return await update.message.reply_html("❌ کارتلی با این اسم پیدا نشد")
+
+        old_war_id = team.pending_war_id
+        cancelled_war = False
+        if old_war_id:
+            war = await s.get(CartelWar, old_war_id)
+            if war and war.status in ("pending", "scheduled", "active"):
+                war.status = "cancelled"
+                cancelled_war = True
+                # قفل هر دو طرف وار رو آزاد می‌کنیم، نه فقط کارتلی که ادمین اسمش رو داده
+                for team_id in (war.attacker_cartel_id, war.defender_cartel_id):
+                    other = await s.get(Team, team_id)
+                    if other and other.pending_war_id == old_war_id:
+                        other.pending_war_id = None
+            else:
+                team.pending_war_id = None
+        name = esc(team.name)
+        await s.commit()
+
+    if not old_war_id:
+        return await update.message.reply_html(f"ℹ️ کارتل <b>{name}</b> از قبل قفلی نداشت")
+    if cancelled_war:
+        await update.message.reply_html(
+            f"✅ قفل کارتل <b>{name}</b> باز شد و جنگ فعال/در انتظارش لغو شد"
+        )
+    else:
+        await update.message.reply_html(
+            f"✅ قفل قدیمی کارتل <b>{name}</b> پاک شد (وار مربوطه از قبل تموم‌شده بود)"
+        )
 
 
 # ───────── /clearacc، ریست کامل اکانت ─────────

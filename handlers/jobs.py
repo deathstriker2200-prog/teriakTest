@@ -350,19 +350,28 @@ async def cartel_war_sweep_job(context: ContextTypes.DEFAULT_TYPE) -> None:
     now = _now()
 
     # ۱) درخواست‌های pending منقضی‌شده
+    # نکته مهم: هر وار جدا try/except می‌شه و جدا commit می‌شه. اگه یه وار خراب/ناقص باشه
+    # (مثلاً تیم یا رهبرش حذف شده) نباید کل batch رو exception بندازه و رو هوا بمونه،
+    # چون اون وقت pending_war_id بقیه‌ی کارتل‌ها هم برای همیشه قفل می‌مونه (باگ اصلی گزارش‌شده).
     async with session_scope() as s:
         q = select(CartelWar).where(CartelWar.status == "pending", CartelWar.expires_at <= now)
         expired = list((await s.execute(q)).scalars())
         notify_expired: list[tuple[int, int]] = []  # (attacker_leader_tg, defender_leader_tg)
         for war in expired:
-            await cw_svc.expire_war(s, war)
-            a_leader = await s.get(User, war.attacker_leader_id)
-            d_leader = await s.get(User, war.defender_leader_id)
-            notify_expired.append((
-                a_leader.telegram_id if a_leader else None,
-                d_leader.telegram_id if d_leader else None,
-            ))
-        await s.commit()
+            try:
+                await cw_svc.expire_war(s, war)
+                a_leader = await s.get(User, war.attacker_leader_id)
+                d_leader = await s.get(User, war.defender_leader_id)
+                notify_expired.append((
+                    a_leader.telegram_id if a_leader else None,
+                    d_leader.telegram_id if d_leader else None,
+                ))
+                await s.commit()
+            except Exception:
+                logger.exception("خطا در expire_war برای وار id=%s؛ این وار رد شد ولی بقیه ادامه پیدا می‌کنن", war.id)
+                await s.rollback()
+                # حتی اگه expire_war شکست خورده باشه، تلاش می‌کنیم قفل pending_war_id هر دو کارتل رو دستی آزاد کنیم
+                await _force_clear_pending_war(s, war.id)
     for a_tg, d_tg in notify_expired:
         for tg in (a_tg, d_tg):
             if tg:
@@ -374,17 +383,24 @@ async def cartel_war_sweep_job(context: ContextTypes.DEFAULT_TYPE) -> None:
         due = list((await s.execute(q)).scalars())
         activations: list[tuple[list[int], str]] = []
         for war in due:
-            await cw_svc.activate_war(s, war)
-            a_team = await s.get(Team, war.attacker_cartel_id)
-            d_team = await s.get(Team, war.defender_cartel_id)
-            members = await team_svc.get_members(s, a_team.id) + await team_svc.get_members(s, d_team.id)
-            tg_ids = []
-            for m in members:
-                u = await s.get(User, m.user_id)
-                if u:
-                    tg_ids.append(u.telegram_id)
-            activations.append((tg_ids, _war_started_text(a_team.name, d_team.name)))
-        await s.commit()
+            try:
+                await cw_svc.activate_war(s, war)
+                a_team = await s.get(Team, war.attacker_cartel_id)
+                d_team = await s.get(Team, war.defender_cartel_id)
+                if not a_team or not d_team:
+                    raise ValueError(f"تیم مهاجم یا مدافع وار id={war.id} پیدا نشد")
+                members = await team_svc.get_members(s, a_team.id) + await team_svc.get_members(s, d_team.id)
+                tg_ids = []
+                for m in members:
+                    u = await s.get(User, m.user_id)
+                    if u:
+                        tg_ids.append(u.telegram_id)
+                activations.append((tg_ids, _war_started_text(a_team.name, d_team.name)))
+                await s.commit()
+            except Exception:
+                logger.exception("خطا در activate_war برای وار id=%s؛ این وار رد شد ولی بقیه ادامه پیدا می‌کنن", war.id)
+                await s.rollback()
+                await _force_clear_pending_war(s, war.id)
     for tg_ids, text in activations:
         for tg in tg_ids:
             await _send(context, tg, text)
@@ -395,19 +411,48 @@ async def cartel_war_sweep_job(context: ContextTypes.DEFAULT_TYPE) -> None:
         due_end = list((await s.execute(q)).scalars())
         finishes: list[tuple[list[int], str]] = []
         for war in due_end:
-            data = await cw_svc.finish_war(s, war)
-            a_team, d_team = data["attacker_team"], data["defender_team"]
-            members = await team_svc.get_members(s, a_team.id) + await team_svc.get_members(s, d_team.id)
-            tg_ids = []
-            for m in members:
-                u = await s.get(User, m.user_id)
-                if u:
-                    tg_ids.append(u.telegram_id)
-            finishes.append((tg_ids, _war_finished_text(data)))
-        await s.commit()
+            try:
+                data = await cw_svc.finish_war(s, war)
+                a_team, d_team = data["attacker_team"], data["defender_team"]
+                if not a_team or not d_team:
+                    raise ValueError(f"تیم مهاجم یا مدافع وار id={war.id} پیدا نشد")
+                members = await team_svc.get_members(s, a_team.id) + await team_svc.get_members(s, d_team.id)
+                tg_ids = []
+                for m in members:
+                    u = await s.get(User, m.user_id)
+                    if u:
+                        tg_ids.append(u.telegram_id)
+                finishes.append((tg_ids, _war_finished_text(data)))
+                await s.commit()
+            except Exception:
+                logger.exception("خطا در finish_war برای وار id=%s؛ این وار رد شد ولی بقیه ادامه پیدا می‌کنن", war.id)
+                await s.rollback()
+                await _force_clear_pending_war(s, war.id)
     for tg_ids, text in finishes:
         for tg in tg_ids:
             await _send(context, tg, text)
+
+
+async def _force_clear_pending_war(s, war_id: int) -> None:
+    """
+    مسیر امنِ آخر: وقتی پردازش عادیِ یه وار (expire/activate/finish) با خطا مواجه میشه،
+    این تابع بدون اتکا به منطق سرویس، مستقیم pending_war_id هر دو کارتلِ همون وار رو
+    آزاد می‌کنه و اگه وار هنوز pending/scheduled/active مونده بود status رو cancelled می‌کنه،
+    تا کارتل‌ها برای همیشه قفل نمونن. اگه این هم شکست بخوره فقط لاگ می‌کنیم و rollback می‌شه.
+    """
+    from models import CartelWar, Team
+    try:
+        war = await s.get(CartelWar, war_id)
+        if war and war.status in ("pending", "scheduled", "active"):
+            war.status = "cancelled"
+        for team_id in ((war.attacker_cartel_id, war.defender_cartel_id) if war else ()):
+            team = await s.get(Team, team_id)
+            if team and team.pending_war_id == war_id:
+                team.pending_war_id = None
+        await s.commit()
+    except Exception:
+        logger.exception("حتی force_clear_pending_war هم برای وار id=%s شکست خورد", war_id)
+        await s.rollback()
 
 
 # ───────── یورش پلیس 🚔 (فعلاً غیرفعال) ─────────
