@@ -340,7 +340,7 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CallbackQueryHandler(cartelwar.war_panel_cb, pattern=r"^cw:panel$"))
     app.add_handler(CallbackQueryHandler(cartelwar.war_stats_cb, pattern=r"^cw:stats$"))
     app.add_handler(CallbackQueryHandler(cartelwar.war_board_cb, pattern=r"^cw:board$"))
-    app.add_handler(CallbackQueryHandler(cartelwar.war_hit_cb, pattern=r"^cw:hit$"))
+    app.add_handler(CallbackQueryHandler(cartelwar.war_attack_go_cb, pattern=r"^cw:atkgo$"))
     app.add_handler(CallbackQueryHandler(cartelwar.war_targets_cb, pattern=r"^cw:targets$"))
     app.add_handler(CallbackQueryHandler(cartelwar.war_hit_target_cb, pattern=r"^cw:hitu:\d+$"))
 

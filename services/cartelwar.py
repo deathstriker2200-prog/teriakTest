@@ -1,8 +1,9 @@
 """
 جنگ کارتل‌ها ⚔️🏴 — جنگ کارتل به کارتل با حمله‌های پیاپی اعضا
 
-جریان: pending (رهبر هدف پاسخ میده، مهلت ۱ ساعت) → scheduled (پذیرفته، ۳۰ دقیقه آماده‌سازی)
-       → active (۶ ساعت، اعضا حمله می‌کنن) → finished (برنده با War XP بیشتر مشخص میشه)
+جریان: pending (رهبر هدف پاسخ میده، مهلت CARTEL_WAR_REQUEST_TIMEOUT_SECONDS) → scheduled (پذیرفته، CARTEL_WAR_PREP_SECONDS آماده‌سازی)
+       → active (CARTEL_WAR_DURATION_SECONDS، اعضا حمله می‌کنن) → finished (برنده با War XP بیشتر مشخص میشه)
+       (فعلاً هر سه رو ۵ دقیقه گذاشتیم برای تست، تو config.py قابل تغییره)
        رد یا بی‌پاسخی: rejected / expired
 
 قوانین کلیدی (درخواست کارفرما):
@@ -47,14 +48,14 @@ async def can_start_war(session: AsyncSession, attacker_team: Team) -> tuple[boo
             attacker_team.id, attacker_team.pending_war_id, bool(war), war.status if war else None,
         )
         if war and war.status in ("pending", "scheduled", "active"):
-            return False, "🚫 کارتلت الان یه جنگ فعال یا در انتظار داره، اول اونو تموم کن"
+            return False, "🚫 <b>یه جنگ دیگه در جریانه</b>\n\nکارتلت الان یه جنگ فعال یا در انتظار داره، اول اونو تموم کن"
         # وار قدیمی تموم شده ولی قفل پاک نشده، خودمون پاکش می‌کنیم
         attacker_team.pending_war_id = None
 
     today = iran_today()
     if attacker_team.war_day == today and (attacker_team.daily_war_count or 0) >= config.CARTEL_WAR_DAILY_LIMIT:
         return False, (
-            f"🚫 سهمیه امروز کارتلت تموم شده\n\n"
+            f"🚫 <b>سهمیه امروز تموم شده</b>\n\n"
             f"🏴 امروز {fa_num(config.CARTEL_WAR_DAILY_LIMIT)} جنگ بین‌کارتلی داشتید\n\n"
             f"⏳ فردا دوباره می‌تونید وارد جنگ بشید"
         )
@@ -65,7 +66,7 @@ async def start_war(session: AsyncSession, attacker_user: User, attacker_team: T
                      defender_team: Team) -> tuple[bool, str, CartelWar | None]:
     """ساخت درخواست وار جدید (وضعیت pending)، خروجی: (موفق, پیام خطا/موفقیت, شیء وار)"""
     if defender_team.id == attacker_team.id:
-        return False, "🚫 نمی‌تونی به کارتل خودت درخواست وار بدی", None
+        return False, "🚫 <b>اینجوری نمیشه</b>\n\nنمی‌تونی به کارتل خودت درخواست وار بدی", None
 
     ok, err = await can_start_war(session, attacker_team)
     if not ok:
@@ -74,7 +75,7 @@ async def start_war(session: AsyncSession, attacker_user: User, attacker_team: T
     if defender_team.pending_war_id:
         dwar = await session.get(CartelWar, defender_team.pending_war_id)
         if dwar and dwar.status in ("pending", "scheduled", "active"):
-            return False, "🚫 اون کارتل الان تو یه جنگ دیگه‌ست", None
+            return False, "🚫 <b>حریف درگیره</b>\n\nاون کارتل الان تو یه جنگ دیگه‌ست", None
 
     war = CartelWar(
         attacker_cartel_id=attacker_team.id,
@@ -107,7 +108,7 @@ async def expire_war(session: AsyncSession, war: CartelWar) -> None:
 
 
 async def accept_war(session: AsyncSession, war: CartelWar) -> None:
-    """پذیرش — سهمیه روزانه هر دو کارتل مصرف میشه، ۳۰ دقیقه دیگه شروع میشه"""
+    """پذیرش — سهمیه روزانه هر دو کارتل مصرف میشه، CARTEL_WAR_PREP_SECONDS دیگه شروع میشه"""
     now = now_utc()
     war.status = "scheduled"
     war.accepted_at = now
@@ -131,7 +132,7 @@ async def _clear_pending(session: AsyncSession, war: CartelWar) -> None:
 # ───────── فعال‌سازی و پایان ─────────
 
 async def activate_war(session: AsyncSession, war: CartelWar) -> None:
-    """scheduled → active، مدت ۶ ساعته شروع میشه"""
+    """scheduled → active، مدت CARTEL_WAR_DURATION_SECONDS شروع میشه"""
     now = now_utc()
     war.status = "active"
     war.ends_at = now + timedelta(seconds=config.CARTEL_WAR_DURATION_SECONDS)

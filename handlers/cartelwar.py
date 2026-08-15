@@ -2,13 +2,14 @@
 جنگ کارتل‌ها ⚔️🏴 — هندلر
 
 دستور متنی: «کارتل وار [نام کارتل هدف]» — فقط رهبر کارتل، تو پی‌وی یا گروه کار می‌کنه
-درخواست به پی‌وی رهبر هدف میره (✅ قبول / ❌ رد)، پذیرش → ۳۰ دقیقه بعد فعال میشه
+درخواست به پی‌وی رهبر هدف میره (✅ قبول / ❌ رد)، پذیرش → config.CARTEL_WAR_PREP_SECONDS بعد فعال میشه
 پنل وار از داخل «کارتل من» با دکمه ⚔️ وار در دسترسه (فقط وقتی وضعیت active باشه)
 """
 
 from telegram import Update
 from telegram.ext import ContextTypes
 
+import config
 from database import session_scope
 from handlers.common import parts, respond, strip_bot_cmd
 from keyboards import keyboards as kb
@@ -32,41 +33,46 @@ def _no_target_text() -> str:
 
 
 def _team_not_found_text(name: str) -> str:
-    return f"🤷 کارتلی به اسم «{esc(name)}» وجود نداره"
+    return f"🤷 <b>کارتلی پیدا نشد</b>\n\nکارتلی به اسم «{esc(name)}» وجود نداره"
 
 
 def _request_sent_text(defender_name: str) -> str:
+    timeout = fa_dur(config.CARTEL_WAR_REQUEST_TIMEOUT_SECONDS)
     return (
         f"🚨 <b>درخواست جنگ ارسال شد</b>\n\n"
         f"🏴 به کارتل «{esc(defender_name)}» فرستاده شد\n"
-        f"⏳ منتظر پاسخ رهبرشون باش، مهلت یک ساعت"
+        f"⏳ منتظر پاسخ رهبرشون باش، مهلت {timeout}"
     )
 
 
 def _request_received_text(attacker_name: str) -> str:
+    timeout = fa_dur(config.CARTEL_WAR_REQUEST_TIMEOUT_SECONDS)
+    prep = fa_dur(config.CARTEL_WAR_PREP_SECONDS)
     return (
         f"⚔️ <b>درخواست جنگ</b>\n\n"
         f"کارتل «{esc(attacker_name)}» شما را به جنگ دعوت کرده\n\n"
-        f"⏳ مهلت پاسخ: یک ساعت\n"
-        f"در صورت پذیرش، جنگ ۳۰ دقیقه بعد آغاز می‌شود"
+        f"⏳ مهلت پاسخ: {timeout}\n"
+        f"در صورت پذیرش، جنگ {prep} بعد آغاز می‌شود"
     )
 
 
 def _prep_text(a_name: str, d_name: str) -> str:
+    prep = fa_dur(config.CARTEL_WAR_PREP_SECONDS)
     return (
         f"⚔️ <b>نبرد در راه است</b>\n\n"
         f"🏴 {esc(a_name)} VS 🏴 {esc(d_name)}\n\n"
-        f"⏳ جنگ تا ۳۰ دقیقه دیگر آغاز می‌شود\n"
+        f"⏳ جنگ تا {prep} دیگر آغاز می‌شود\n"
         f"🔥 خودتان را برای نبرد آماده کنید"
     )
 
 
 def _war_started_text(a_name: str, d_name: str) -> str:
+    dur = fa_dur(config.CARTEL_WAR_DURATION_SECONDS)
     return (
         f"🔥 <b>جنگ آغاز شد</b>\n\n"
         f"🏴 {esc(a_name)} ⚔️ {esc(d_name)}\n\n"
         f"برای شرکت در نبرد وارد بخش «کارتل من» و سپس «جنگ کارتل‌ها» شوید\n"
-        f"⏱️ مدت نبرد: ۶ ساعت\n\n"
+        f"⏱️ مدت نبرد: {dur}\n\n"
         f"🔥 سرنوشت جنگ در دستان شماست"
     )
 
@@ -122,7 +128,7 @@ async def cartel_war_start_text(update: Update, context: ContextTypes.DEFAULT_TY
         membership = await team_svc.get_membership(s, user.id)
         if not membership or membership.role != "owner":
             await s.commit()
-            return await respond(update, "🚫 فقط رهبر کارتل می‌تونه جنگ راه بندازه")
+            return await respond(update, "🚫 <b>اجازه نداری</b>\n\nفقط رهبر کارتل می‌تونه جنگ راه بندازه")
 
         attacker_team = await team_svc.get_team_of(s, user.id)
         defender_team = await team_svc.get_team_by_name(s, target_name)
@@ -161,10 +167,10 @@ async def war_accept_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         war = await s.get(CartelWar, war_id)
         if not war or war.status != "pending":
             await s.commit()
-            return await respond(update, "⌛ این درخواست دیگه معتبر نیست")
+            return await respond(update, "⌛ <b>منقضی شده</b>\n\nاین درخواست دیگه معتبر نیست")
         if war.defender_leader_id != user.id:
             await s.commit()
-            return await respond(update, "🚫 این درخواست مال تو نیست")
+            return await respond(update, "🚫 <b>دسترسی نداری</b>\n\nاین درخواست مال تو نیست")
 
         await cw_svc.accept_war(s, war)
         a_team = await s.get(Team, war.attacker_cartel_id)
@@ -178,7 +184,8 @@ async def war_accept_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
                 notify_users.append(mu.telegram_id)
         await s.commit()
 
-    await respond(update, f"✅ پذیرفتی، جنگ با «{esc(a_team.name)}» تا ۳۰ دقیقه دیگه شروع میشه")
+    prep = fa_dur(config.CARTEL_WAR_PREP_SECONDS)
+    await respond(update, f"✅ <b>پذیرفتی</b>\n\nجنگ با «{esc(a_team.name)}» تا {prep} دیگه شروع میشه")
 
     prep_text = _prep_text(a_team.name, d_team.name)
     for tg_id in notify_users:
@@ -195,22 +202,23 @@ async def war_reject_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         war = await s.get(CartelWar, war_id)
         if not war or war.status != "pending":
             await s.commit()
-            return await respond(update, "⌛ این درخواست دیگه معتبر نیست")
+            return await respond(update, "⌛ <b>منقضی شده</b>\n\nاین درخواست دیگه معتبر نیست")
         if war.defender_leader_id != user.id:
             await s.commit()
-            return await respond(update, "🚫 این درخواست مال تو نیست")
+            return await respond(update, "🚫 <b>دسترسی نداری</b>\n\nاین درخواست مال تو نیست")
 
         await cw_svc.reject_war(s, war)
         a_team = await s.get(Team, war.attacker_cartel_id)
         attacker_leader = await s.get(User, war.attacker_leader_id)
         await s.commit()
 
-    await respond(update, "❌ درخواست جنگ رد شد")
+    await respond(update, "❌ <b>رد شد</b>\n\nدرخواست جنگ رد شد")
     if attacker_leader:
         try:
             await context.bot.send_message(
                 attacker_leader.telegram_id,
-                "❌ کارتل هدف درخواست جنگ شما را رد کرد",
+                "❌ <b>درخواست رد شد</b>\n\nکارتل هدف درخواست جنگ شما را رد کرد",
+                parse_mode="HTML",
             )
         except Exception:
             pass
@@ -227,11 +235,19 @@ async def _active_war_for(s, team_id: int) -> CartelWar | None:
 
 
 def _no_active_war_text() -> str:
-    return "😴 الان هیچ جنگ فعالی برای کارتلت نیست"
+    return "😴 <b>جنگی در جریان نیست</b>\n\nالان هیچ جنگ فعالی برای کارتلت نیست"
 
 
 def _not_member_text() -> str:
-    return "🚫 عضو هیچ کارتلی نیستی"
+    return "🚫 <b>عضو کارتلی نیستی</b>\n\nاول باید عضو یه کارتل باشی"
+
+
+def _cant_fight_text(reason: str) -> str:
+    return f"🚫 <b>نمی‌تونی بجنگی</b>\n\n{reason}"
+
+
+def _cooldown_text(seconds_left: int) -> str:
+    return f"⏳ <b>کول‌دان فعاله</b>\n\n{fa_dur(seconds_left)} دیگه می‌تونی دوباره حمله کنی"
 
 
 # ───────── ورودی پنل وار: متن خوش‌آمد، نه آمار ─────────
@@ -330,7 +346,7 @@ async def war_board_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         await s.commit()
 
     if not top:
-        return await respond(update, "📭 هنوز هیچ کارتلی جنگی نبرده", kb.cartel_war_back_kb())
+        return await respond(update, "📭 <b>جدول خالیه</b>\n\nهنوز هیچ کارتلی جنگی نبرده", kb.cartel_war_back_kb())
 
     lines = ["🏆 <b>جدول نبرد جنگ کارتل‌ها</b>", ""]
     for i, t in enumerate(top, 1):
@@ -341,10 +357,24 @@ async def war_board_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     await respond(update, "\n".join(lines), kb.cartel_war_back_kb())
 
 
-# ───────── حمله وار ─────────
+# ───────── حمله وار: مثل حمله پی‌وی (پیش‌نمایش هدف قبل از زدن)، بدون سپر/جاسوسی ─────────
+# چون تو وار اصلاً سپر وجود نداره (نه سپر خودی نه سپر حریف)، این جریان ساده‌تر از پی‌وی می‌مونه:
+# فقط «هدف پیدا شد» → یا بزنش، یا یه هدف دیگه بگیر. کول‌دان مستقل وار همون ۵ دقیقه‌ست (config.CARTEL_WAR_ATTACK_COOLDOWN_SECONDS)
 
-async def war_hit_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """⚔️ حمله تصادفی: یه عضو تصادفی کارتل حریف انتخاب و بهش حمله میشه"""
+def _war_target_view(victim: User) -> tuple[str, object]:
+    """متن و کیبورد پیش‌نمایش هدف وار، دقیقاً همون حس پی‌وی ولی بدون بند سپر/جاسوسی"""
+    name = users.display_name(victim)
+    text = (
+        "🎯 <b>هدف پیدا شد</b>\n\n"
+        f"👤 {esc(name)}\n"
+        f"⭐ لول {fa_num(victim.level)}\n\n"
+        "می‌زنیش یا یه هدف دیگه می‌خوای؟"
+    )
+    return text, kb.cartel_war_target_kb(victim.id)
+
+
+async def war_attack_go_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """⚔️ حمله: یه عضو تصادفی از کارتل حریف پیدا میشه و قبل از زدن پیش‌نمایشش نشون داده میشه"""
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
         membership = await team_svc.get_membership(s, user.id)
@@ -356,10 +386,31 @@ async def war_hit_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             await s.commit()
             return await respond(update, _no_active_war_text())
 
-        result = await cw_svc.attack(s, user, war)
+        fit_ok, fit_err = await cw_svc.can_fight(s, user, war)
+        if not fit_ok:
+            await s.commit()
+            return await respond(update, _cant_fight_text(fit_err), kb.cartel_war_back_kb())
+
+        cd = await cw_svc.cooldown_left(s, user.id, war.id)
+        if cd:
+            await s.commit()
+            return await respond(update, _cooldown_text(cd), kb.cartel_war_back_kb())
+
+        side = cw_svc.my_side_and_enemy(war, membership.team_id)
+        if side is None:
+            await s.commit()
+            return await respond(update, "🚫 <b>خارج از جنگ</b>\n\nکارتلت تو این جنگ نیست", kb.cartel_war_back_kb())
+        _, enemy_team_id = side
+
+        target = await cw_svc.pick_random_target(s, enemy_team_id)
+        if target is None:
+            await s.commit()
+            return await respond(update, "😴 <b>کسی نیست</b>\n\nهیچ عضوی تو کارتل حریف پیدا نشد", kb.cartel_war_back_kb())
+
+        text, markup = _war_target_view(target)
         await s.commit()
 
-    await respond(update, result["message"], kb.cartel_war_back_kb())
+    await respond(update, text, markup)
 
 
 # ───────── انتخاب دستی هدف از بین اعضای کارتل حریف ─────────
@@ -380,7 +431,7 @@ async def war_targets_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         side = cw_svc.my_side_and_enemy(war, membership.team_id)
         if side is None:
             await s.commit()
-            return await respond(update, "🚫 کارتلت تو این جنگ نیست")
+            return await respond(update, "🚫 <b>خارج از جنگ</b>\n\nکارتلت تو این جنگ نیست")
         _, enemy_team_id = side
 
         enemy_team = await s.get(Team, enemy_team_id)
@@ -389,14 +440,14 @@ async def war_targets_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await s.commit()
 
     if not members:
-        return await respond(update, "😴 هیچ عضوی تو کارتل حریف پیدا نشد", kb.cartel_war_back_kb())
+        return await respond(update, "😴 <b>کسی نیست</b>\n\nهیچ عضوی تو کارتل حریف پیدا نشد", kb.cartel_war_back_kb())
 
     lines = [f"🎯 <b>اعضای کارتل «{esc(enemy_team.name)}»</b>", "", "یکی رو برای حمله انتخاب کن"]
     await respond(update, "\n".join(lines), kb.cartel_war_targets_kb(members))
 
 
 async def war_hit_target_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """⚔️ حمله به یه عضو مشخص از کارتل حریف که از لیست انتخاب شده"""
+    """⚔️ حمله به یه عضو مشخص از کارتل حریف — چه از پیش‌نمایش «حمله» چه از لیست انتخاب دستی"""
     target_id = int(parts(update)[2])
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
@@ -412,9 +463,10 @@ async def war_hit_target_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         target = await s.get(User, target_id)
         if not target:
             await s.commit()
-            return await respond(update, "🤷 این بازیکن دیگه پیدا نمیشه", kb.cartel_war_back_kb())
+            return await respond(update, "🤷 <b>هدف گم شد</b>\n\nاین بازیکن دیگه پیدا نمیشه", kb.cartel_war_back_kb())
 
         result = await cw_svc.attack(s, user, war, target=target)
         await s.commit()
 
-    await respond(update, result["message"], kb.cartel_war_back_kb())
+    text = result["message"] if result["ok"] else f"⚠️ <b>نشد</b>\n\n{result['message']}"
+    await respond(update, text, kb.cartel_war_back_kb())

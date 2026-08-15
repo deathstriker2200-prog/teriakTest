@@ -1363,9 +1363,9 @@ def team_chat_kb() -> InlineKeyboardMarkup:
 # cw:req:<team_id>          → تایید ارسال درخواست وار به یه کارتل
 # cw:accept:<war_id> | cw:reject:<war_id>  → پاسخ رهبر هدف (فقط تو پی‌وی خودش)
 # cw:panel                  → ورودی پنل وار کارتل من (منوی کارتل → دکمه ⚔️ وار، فقط وقتی active)
-# cw:hit                    → ⚔️ حمله تصادفی (دکمه جمعی، شبیه cv:hit / bsh:hit)
+# cw:atkgo                  → ⚔️ حمله: هدف تصادفی از کارتل حریف پیدا میشه و پیش‌نمایشش نشون داده میشه (مثل پی‌وی، بدون سپر)
 # cw:targets                → 🎯 لیست اعضای کارتل حریف برای انتخاب دستی هدف
-# cw:hitu:<user_id>         → ⚔️ حمله به یه عضو مشخص از لیست
+# cw:hitu:<user_id>         → ⚔️ حمله به یه عضو مشخص (چه از پیش‌نمایش «حمله» چه از لیست انتخاب دستی)
 # cw:stats                  → 📊 آمار جنگ فعلی
 # cw:board                  → 🏆 جدول نبرد (لیدربرد کارتل‌ها بر اساس تروفی)
 
@@ -1387,15 +1387,24 @@ def cartel_war_response_kb(war_id: int) -> InlineKeyboardMarkup:
 
 
 def cartel_war_panel_kb(can_attack: bool) -> InlineKeyboardMarkup:
-    """ورودی پنل وار فعال: حمله تصادفی | انتخاب هدف | آمار | جدول نبرد"""
+    """ورودی پنل وار فعال: حمله (پیش‌نمایش مثل پی‌وی) | انتخاب هدف دستی | آمار | جدول نبرد"""
     rows: list[list[InlineKeyboardButton]] = []
     if can_attack:
-        rows.append([_btn("⚔️ حمله تصادفی", "cw:hit", DANGER)])
+        rows.append([_btn("⚔️ حمله", "cw:atkgo", DANGER)])
         rows.append([_btn("🎯 انتخاب هدف", "cw:targets", DANGER)])
     rows.append([_btn("📊 آمار جنگ", "cw:stats", PRIMARY)])
     rows.append([_btn("🏆 جدول نبرد", "cw:board", PRIMARY)])
     rows.append([_btn("🔙 کارتل من", "menu:team", PRIMARY)])
     return InlineKeyboardMarkup(rows)
+
+
+def cartel_war_target_kb(target_id: int) -> InlineKeyboardMarkup:
+    """پیش‌نمایش هدف تصادفی وار: حمله | هدف دیگه | بازگشت — بدون سپر یا جاسوسی، ساده‌تر از پی‌وی"""
+    return InlineKeyboardMarkup([
+        [_btn("⚔️ حمله", f"cw:hitu:{target_id}", DANGER)],
+        [_btn("🎲 هدف دیگه", "cw:atkgo", PRIMARY)],
+        [_btn("🔙 بازگشت", "cw:panel", PRIMARY)],
+    ])
 
 
 def cartel_war_targets_kb(members: list) -> InlineKeyboardMarkup:

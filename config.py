@@ -1128,9 +1128,10 @@ DAILY_QUEST_COUNT_MAX = 4        # حداکثر ماموریت روزانه | ر
 DAILY_QUEST_SEED_MAX = 5         # بذر جایزه کوئست رندوم بین 1 تا این عدد (نه mutant، اون همیشه 1)
 
 # ───────── Cartel War ⚔️🏴 ─────────
-CARTEL_WAR_REQUEST_TIMEOUT_SECONDS = 3600       # مهلت پاسخ رهبر هدف: ۱ ساعت
-CARTEL_WAR_PREP_SECONDS = 1800                  # فاصله بین پذیرش و فعال شدن وار: ۳۰ دقیقه
-CARTEL_WAR_DURATION_SECONDS = 6 * 3600          # مدت جنگ فعال: ۶ ساعت
+# راند تست: هر سه زمان‌بندی زیر رو موقتاً رو ۵ دقیقه گذاشتیم (مهلت قبول | فاصله تا شروع | مدت خود وار)
+CARTEL_WAR_REQUEST_TIMEOUT_SECONDS = 300        # مهلت پاسخ رهبر هدف: ۵ دقیقه (تست)
+CARTEL_WAR_PREP_SECONDS = 300                   # فاصله بین پذیرش و فعال شدن وار: ۵ دقیقه (تست)
+CARTEL_WAR_DURATION_SECONDS = 300               # مدت جنگ فعال: ۵ دقیقه (تست)
 CARTEL_WAR_ATTACK_COOLDOWN_SECONDS = 300        # کولدان شخصی هر حمله وار: ۵ دقیقه
 CARTEL_WAR_MIN_MEMBERSHIP_HOURS = 24            # عضو باید حداقل این‌قدر تو کارتل بوده باشه تا بتونه بجنگه
 CARTEL_WAR_SWEEP_SECONDS = 60                   # جاب زمان‌بندی وار: هر ۱ دقیقه (انقضا | فعال‌سازی | پایان)

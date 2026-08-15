@@ -375,7 +375,7 @@ async def cartel_war_sweep_job(context: ContextTypes.DEFAULT_TYPE) -> None:
     for a_tg, d_tg in notify_expired:
         for tg in (a_tg, d_tg):
             if tg:
-                await _send(context, tg, "⌛ درخواست جنگ بدون پاسخ منقضی شد")
+                await _send(context, tg, "⌛ <b>درخواست منقضی شد</b>\n\nدرخواست جنگ بدون پاسخ منقضی شد")
 
     # ۲) scheduled → active
     async with session_scope() as s:
