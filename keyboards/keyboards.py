@@ -793,8 +793,9 @@ def dquests_kb() -> InlineKeyboardMarkup:
 
 # ───────── کارتل ─────────
 
-def team_kb(is_owner: bool = False, is_manager: bool = False) -> InlineKeyboardMarkup:
-    """کیبورد صفحه «کارتل من»، دکمه 👑 مدیریت کارتل فقط جلوی رهبر و مدیرانه"""
+def team_kb(is_owner: bool = False, is_manager: bool = False, has_active_war: bool = False) -> InlineKeyboardMarkup:
+    """کیبورد صفحه «کارتل من»، دکمه 👑 مدیریت کارتل فقط جلوی رهبر و مدیران
+    دکمه ⚔️ جنگ کارتل‌ها فقط وقتی کارتل یه جنگ فعال داشته باشه ظاهر میشه"""
     rows: list[list[InlineKeyboardButton]] = [
         [_btn("📜 کوئست‌های امروز", "team:quests", PRIMARY),
          _btn("⛏ کنده‌کاری کارتلی", "team:mine", PRIMARY)],
@@ -802,6 +803,8 @@ def team_kb(is_owner: bool = False, is_manager: bool = False) -> InlineKeyboardM
          _btn("🏦 بانک کارتل", "team:bank", PRIMARY)],
         [_btn("🏆 لیدربرد", "team:top", PRIMARY)],
     ]
+    if has_active_war:
+        rows.append([_btn("⚔️ جنگ کارتل‌ها", "cw:panel", DANGER)])
     rows.append([_btn("💬 چت کارتل", "tc:page", PRIMARY)])  # راند ۲۰
     if is_manager:
         rows.append([_btn("👑 مدیریت کارتل", "team:mng", PRIMARY)])
@@ -1355,3 +1358,55 @@ def team_chat_kb() -> InlineKeyboardMarkup:
         [_btn("🔄 بروزرسانی", "tc:ref", PRIMARY),
          _btn("🔙 کارتل من", "tc:back", PRIMARY)],
     ])
+
+# ───────── جنگ کارتل‌ها ⚔️🏴 ─────────
+# cw:req:<team_id>          → تایید ارسال درخواست وار به یه کارتل
+# cw:accept:<war_id> | cw:reject:<war_id>  → پاسخ رهبر هدف (فقط تو پی‌وی خودش)
+# cw:panel                  → ورودی پنل وار کارتل من (منوی کارتل → دکمه ⚔️ وار، فقط وقتی active)
+# cw:hit                    → ⚔️ حمله تصادفی (دکمه جمعی، شبیه cv:hit / bsh:hit)
+# cw:targets                → 🎯 لیست اعضای کارتل حریف برای انتخاب دستی هدف
+# cw:hitu:<user_id>         → ⚔️ حمله به یه عضو مشخص از لیست
+# cw:stats                  → 📊 آمار جنگ فعلی
+# cw:board                  → 🏆 جدول نبرد (لیدربرد کارتل‌ها بر اساس تروفی)
+
+
+def cartel_war_request_confirm_kb(team_id: int) -> InlineKeyboardMarkup:
+    """تایید رهبر مهاجم قبل از ارسال درخواست وار"""
+    return InlineKeyboardMarkup([
+        [_btn("⚔️ ارسال درخواست", f"cf:cw:req:{team_id}", DANGER)],
+        [_btn("🙅 انصراف", "menu:team", PRIMARY)],
+    ])
+
+
+def cartel_war_response_kb(war_id: int) -> InlineKeyboardMarkup:
+    """دکمه‌های پیام درخواست وار برای رهبر کارتل هدف، تو پی‌وی خودش"""
+    return InlineKeyboardMarkup([
+        [_btn("✅ قبول", f"cw:accept:{war_id}", SUCCESS),
+         _btn("❌ رد", f"cw:reject:{war_id}", DANGER)],
+    ])
+
+
+def cartel_war_panel_kb(can_attack: bool) -> InlineKeyboardMarkup:
+    """ورودی پنل وار فعال: حمله تصادفی | انتخاب هدف | آمار | جدول نبرد"""
+    rows: list[list[InlineKeyboardButton]] = []
+    if can_attack:
+        rows.append([_btn("⚔️ حمله تصادفی", "cw:hit", DANGER)])
+        rows.append([_btn("🎯 انتخاب هدف", "cw:targets", DANGER)])
+    rows.append([_btn("📊 آمار جنگ", "cw:stats", PRIMARY)])
+    rows.append([_btn("🏆 جدول نبرد", "cw:board", PRIMARY)])
+    rows.append([_btn("🔙 کارتل من", "menu:team", PRIMARY)])
+    return InlineKeyboardMarkup(rows)
+
+
+def cartel_war_targets_kb(members: list) -> InlineKeyboardMarkup:
+    """لیست اعضای کارتل حریف، هر کدوم با یه دکمه حمله (حداکثر ۲۰ نفر برای جلوگیری از کیبورد غول‌پیکر)"""
+    from services.users import display_name
+    rows: list[list[InlineKeyboardButton]] = []
+    for m in members[:20]:
+        rows.append([_btn(f"⚔️ {display_name(m)}", f"cw:hitu:{m.id}", DANGER)])
+    rows.append([_btn("🔙 بازگشت", "cw:panel", PRIMARY)])
+    return InlineKeyboardMarkup(rows)
+
+
+def cartel_war_back_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([[_btn("🔙 بازگشت", "cw:panel", PRIMARY)]])

@@ -198,6 +198,7 @@ async def create_team(session: AsyncSession, user: User, name: str) -> tuple[boo
     session.add(team)
     await session.flush()
     session.add(TeamMember(team_id=team.id, user_id=user.id, role="owner", join_medals=user.medals or 0))
+    user.cartel_joined_at = now_utc()
     return True, display
 
 
@@ -296,6 +297,7 @@ async def accept_request(session: AsyncSession, req: TeamRequest, target: User) 
         await session.delete(req)
         return False, "🏴 کارتل پر شده بود، درخواست پاک شد"
     session.add(TeamMember(team_id=req.team_id, user_id=target.id, role="member", join_medals=target.medals or 0))
+    target.cartel_joined_at = now_utc()  # Cartel War (راند ۳۹): مبنای گیت ۲۴ ساعته شرکت‌پذیری وار
     await session.delete(req)
     return True, ""
 

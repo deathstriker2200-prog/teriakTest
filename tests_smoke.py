@@ -14141,9 +14141,10 @@ async def main() -> None:
     from handlers import gear as gear_h29, smuggle as smuggle_h29, jobs as jobs_h29
 
     # ── ۱) جدول جدید باس‌ها (درخواست کارفرما: سلامتی ۲۰۰۰ تا ۲۵۰۰۰، قدرت ۱۵ تا ۲۵۰، جایزه ۱٬۰۰۰ تا ۸۰٬۰۰۰) ──
+    # راند بعدی (درخواست کارفرما): سلامتی ضریب‌دار شد — معمولی ×۳، اپیک ×۲، لجندری ×۱.۵
     _b29 = {b["key"]: b for b in config.BOSSES}
     check("باس‌های راند ۲۹: سلامتی و قدرت و جایزه هر هفت تا دقیقاً تو بازه‌های درخواستی",
-          [b["hp"] for b in config.BOSSES] == [2000, 2500, 3000, 8000, 12000, 18000, 25000]
+          [b["hp"] for b in config.BOSSES] == [6000, 7500, 9000, 16000, 24000, 27000, 37500]
           and [b["dmg"] for b in config.BOSSES] == [15, 20, 25, 60, 90, 180, 250]
           and [b["reward"] for b in config.BOSSES] == [1000, 2000, 3000, 15000, 30000, 50000, 80000],
           str([(b["key"], b["hp"], b["dmg"], b["reward"]) for b in config.BOSSES]))

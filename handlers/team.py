@@ -173,11 +173,19 @@ async def render_my_team(update: Update, alert: str | None = None) -> None:
 
         data = await teams.team_stats_data(s, team)
         text = _team_stats_text(data)
+        from sqlalchemy import select
+        from models import CartelWar
+        _wq = select(CartelWar.id).where(
+            CartelWar.status == "active",
+            (CartelWar.attacker_cartel_id == team.id) | (CartelWar.defender_cartel_id == team.id),
+        )
+        has_war = (await s.execute(_wq)).scalar_one_or_none() is not None
         await s.commit()
 
     await respond(update, text, kb.team_kb(
         is_owner=membership.role == "owner",
         is_manager=teams.is_manager(membership),
+        has_active_war=has_war,
     ), alert=alert)
 
 

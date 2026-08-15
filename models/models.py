@@ -27,6 +27,12 @@ class User(Base):
     wins: Mapped[int] = mapped_column(Integer, default=0)
     losses: Mapped[int] = mapped_column(Integer, default=0)
 
+    # Cartel War — آمار شخصی جنگ کارتلی
+    war_medals: Mapped[int] = mapped_column(Integer, default=0)
+    war_attacks: Mapped[int] = mapped_column(Integer, default=0)
+    war_wins: Mapped[int] = mapped_column(Integer, default=0)
+    cartel_joined_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
     last_attack_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     last_mine_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     last_harvest_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -280,9 +286,17 @@ class Team(Base):
     # حالت نامرئی کارتل («کارتل مخفی» رهبر) — ۱ یعنی تو لیدربردهای کارتل دیده نمیشه
     lb_hidden: Mapped[int] = mapped_column(Integer, default=0)
 
-    # آمار کلن‌وار (راند ۲۵) — برد و باخت جنگ‌های کارتل به کارتل
+    # آمار کلن‌وار — برد و باخت جنگ‌های کارتل به کارتل
     war_wins: Mapped[int] = mapped_column(Integer, default=0)
     war_losses: Mapped[int] = mapped_column(Integer, default=0)
+
+    # Cartel War — آمار و وضعیت جنگ کارتلی
+    war_trophies: Mapped[int] = mapped_column(Integer, default=0)
+    total_wars: Mapped[int] = mapped_column(Integer, default=0)
+    war_medals_total: Mapped[int] = mapped_column(Integer, default=0)
+    daily_war_count: Mapped[int] = mapped_column(Integer, default=0)
+    war_day: Mapped[str | None] = mapped_column(String(10), nullable=True)  # روزی که daily_war_count برای اونه
+    pending_war_id: Mapped[int | None] = mapped_column(Integer, nullable=True)  # واری که این کارتل الان توشه (هر وضعیتی جز finished/rejected/expired/cancelled)
 
     last_team_mine_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
@@ -613,41 +627,61 @@ class BossPlan(Base):
     spawned: Mapped[int] = mapped_column(Integer, default=0)          # چندتاشون تا الان اسپون شدن
 
 
-class TeamWar(Base):
-    """کلن‌وار (راند ۲۵): اعلان جنگ یه رهبر به کارتل دیگه، بیعانه از بانک هر دو کارتل وسطه
-    status: pending (منتظر قبول طرف) | prep (جوین جنگجوها) | done | cancelled
-    برنده کل دیگ (دو برابر بیعانه) رو می‌بره، مساوی یعنی برگشت بیعانه به هر دو"""
-    __tablename__ = "team_wars"
+class CartelWar(Base):
+    """
+    Cartel War: درخواست وار یه کارتل به کارتل دیگه، جریان کامل تا رزولوشن نهایی
+    status: pending (منتظر پاسخ رهبر هدف) | rejected | expired | scheduled (پذیرفته، در حال آماده‌سازی)
+            | active (جنگ در جریانه، حمله‌پذیره) | finished | cancelled
+    """
+    __tablename__ = "cartel_wars"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    challenger_id: Mapped[int] = mapped_column(ForeignKey("teams.id"), index=True)
-    defender_id: Mapped[int] = mapped_column(ForeignKey("teams.id"), index=True)
-    wager: Mapped[int] = mapped_column(Integer, default=0)
-    status: Mapped[str] = mapped_column(String(10), default="pending")
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
-    accept_deadline: Mapped[datetime] = mapped_column(DateTime)
-    starts_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    winner_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    chal_power: Mapped[int] = mapped_column(Integer, default=0)
-    def_power: Mapped[int] = mapped_column(Integer, default=0)
-    resolved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    attacker_cartel_id: Mapped[int] = mapped_column(ForeignKey("teams.id"), index=True)
+    defender_cartel_id: Mapped[int] = mapped_column(ForeignKey("teams.id"), index=True)
+    attacker_leader_id: Mapped[int] = mapped_column(Integer)  # users.id
+    defender_leader_id: Mapped[int] = mapped_column(Integer)  # users.id
+    status: Mapped[str] = mapped_column(String(10), default="pending", index=True)
 
-    challenger: Mapped[Team] = relationship(foreign_keys=[challenger_id])
-    defender: Mapped[Team] = relationship(foreign_keys=[defender_id])
+    requested_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
+    expires_at: Mapped[datetime] = mapped_column(DateTime)          # مهلت پاسخ رهبر هدف
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    starts_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)   # لحظه فعال شدن وار
+    ends_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)     # لحظه پایان وار
+
+    attacker_xp: Mapped[int] = mapped_column(Integer, default=0)
+    defender_xp: Mapped[int] = mapped_column(Integer, default=0)
+    attacker_success_hits: Mapped[int] = mapped_column(Integer, default=0)
+    defender_success_hits: Mapped[int] = mapped_column(Integer, default=0)
+    attacker_participants: Mapped[int] = mapped_column(Integer, default=0)
+    defender_participants: Mapped[int] = mapped_column(Integer, default=0)
+
+    winner_cartel_id: Mapped[int | None] = mapped_column(Integer, nullable=True)  # None هم یعنی هنوز، هم یعنی مساوی
+
+    attacker: Mapped[Team] = relationship(foreign_keys=[attacker_cartel_id])
+    defender: Mapped[Team] = relationship(foreign_keys=[defender_cartel_id])
 
 
-class TeamWarEntry(Base):
-    """جنگجوی یه کارتل تو کلن‌وار، قدرتش موقع رزولو از رو استت و گیر و سگهاش حساب و ثبت میشه"""
-    __tablename__ = "team_war_entries"
-    __table_args__ = (UniqueConstraint("war_id", "user_id", name="uq_war_fighter"),)
+class WarAttackCooldown(Base):
+    """کول‌دان شخصی هر بازیکن تو یه وار مشخص — هر ۵ دقیقه یه حمله، مستقل از کولدان پی‌وی عادی"""
+    __tablename__ = "war_attack_cooldowns"
+    __table_args__ = (UniqueConstraint("user_id", "war_id", name="uq_war_cooldown"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    war_id: Mapped[int] = mapped_column(Integer, index=True)
-    team_id: Mapped[int] = mapped_column(ForeignKey("teams.id"), index=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
-    user_name: Mapped[str] = mapped_column(String(80), default="")
-    power: Mapped[int] = mapped_column(Integer, default=0)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
+    war_id: Mapped[int] = mapped_column(ForeignKey("cartel_wars.id"), index=True)
+    last_attack_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
 
-    user: Mapped[User] = relationship()
+
+class WarAttackLog(Base):
+    """لاگ کامل هر حمله وار — مبنای آمار، جلوگیری از ثبت تکراری/سوءاستفاده"""
+    __tablename__ = "war_attack_logs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    war_id: Mapped[int] = mapped_column(ForeignKey("cartel_wars.id"), index=True)
+    attacker_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    defender_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    success: Mapped[bool] = mapped_column(default=False)
+    xp_gained: Mapped[int] = mapped_column(Integer, default=0)
+    medals_gained: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc, index=True)
 

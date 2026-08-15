@@ -336,6 +336,80 @@ async def pending_sweep_job(context: ContextTypes.DEFAULT_TYPE) -> None:
             await _send(context, chat, text)
 
 
+# ───────── جنگ کارتل‌ها ⚔️🏴 (راند ۳۹، درخواست کارفرما) ─────────
+# هر دقیقه: منقضی‌کردن درخواست‌های pending قدیمی | فعال‌کردن scheduledهایی که وقتشون رسیده
+# | پایان‌دادن به activeهایی که تمومشون شده و ارسال پیام نتیجه
+
+async def cartel_war_sweep_job(context: ContextTypes.DEFAULT_TYPE) -> None:
+    from sqlalchemy import select
+    from models import CartelWar, Team
+    from services import cartelwar as cw_svc, teams as team_svc
+    from handlers.cartelwar import _war_started_text, _war_finished_text
+    from utils import now_utc as _now
+
+    now = _now()
+
+    # ۱) درخواست‌های pending منقضی‌شده
+    async with session_scope() as s:
+        q = select(CartelWar).where(CartelWar.status == "pending", CartelWar.expires_at <= now)
+        expired = list((await s.execute(q)).scalars())
+        notify_expired: list[tuple[int, int]] = []  # (attacker_leader_tg, defender_leader_tg)
+        for war in expired:
+            await cw_svc.expire_war(s, war)
+            a_leader = await s.get(User, war.attacker_leader_id)
+            d_leader = await s.get(User, war.defender_leader_id)
+            notify_expired.append((
+                a_leader.telegram_id if a_leader else None,
+                d_leader.telegram_id if d_leader else None,
+            ))
+        await s.commit()
+    for a_tg, d_tg in notify_expired:
+        for tg in (a_tg, d_tg):
+            if tg:
+                await _send(context, tg, "⌛ درخواست جنگ بدون پاسخ منقضی شد")
+
+    # ۲) scheduled → active
+    async with session_scope() as s:
+        q = select(CartelWar).where(CartelWar.status == "scheduled", CartelWar.starts_at <= now)
+        due = list((await s.execute(q)).scalars())
+        activations: list[tuple[list[int], str]] = []
+        for war in due:
+            await cw_svc.activate_war(s, war)
+            a_team = await s.get(Team, war.attacker_cartel_id)
+            d_team = await s.get(Team, war.defender_cartel_id)
+            members = await team_svc.get_members(s, a_team.id) + await team_svc.get_members(s, d_team.id)
+            tg_ids = []
+            for m in members:
+                u = await s.get(User, m.user_id)
+                if u:
+                    tg_ids.append(u.telegram_id)
+            activations.append((tg_ids, _war_started_text(a_team.name, d_team.name)))
+        await s.commit()
+    for tg_ids, text in activations:
+        for tg in tg_ids:
+            await _send(context, tg, text)
+
+    # ۳) active → finished
+    async with session_scope() as s:
+        q = select(CartelWar).where(CartelWar.status == "active", CartelWar.ends_at <= now)
+        due_end = list((await s.execute(q)).scalars())
+        finishes: list[tuple[list[int], str]] = []
+        for war in due_end:
+            data = await cw_svc.finish_war(s, war)
+            a_team, d_team = data["attacker_team"], data["defender_team"]
+            members = await team_svc.get_members(s, a_team.id) + await team_svc.get_members(s, d_team.id)
+            tg_ids = []
+            for m in members:
+                u = await s.get(User, m.user_id)
+                if u:
+                    tg_ids.append(u.telegram_id)
+            finishes.append((tg_ids, _war_finished_text(data)))
+        await s.commit()
+    for tg_ids, text in finishes:
+        for tg in tg_ids:
+            await _send(context, tg, text)
+
+
 # ───────── یورش پلیس 🚔 (فعلاً غیرفعال) ─────────
 
 async def police_job(context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -482,6 +556,7 @@ def register_jobs(app) -> None:
         jq.run_repeating(police_job, interval=config.POLICE_ROLL_SECONDS, first=120, name="police")
     jq.run_repeating(energy_pulse_job, interval=config.ENERGY_PULSE_SECONDS, first=config.ENERGY_PULSE_SECONDS, name="energy-pulse")
     jq.run_repeating(fj_wipe_job, interval=config.FORCE_JOIN_WIPE_SCAN_SECONDS, first=300, name="fj-wipe")
+    jq.run_repeating(cartel_war_sweep_job, interval=config.CARTEL_WAR_SWEEP_SECONDS, first=50, name="cartel-war-sweep")
     if config.ADMIN_LOG_CHAT_ID:
         jq.run_repeating(track_summary_job, interval=config.TRACK_SUMMARY_SECONDS,
                          first=config.TRACK_SUMMARY_SECONDS, name="track-summary")

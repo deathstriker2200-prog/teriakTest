@@ -108,29 +108,33 @@ async def _resolve_target(update: Update, context: ContextTypes.DEFAULT_TYPE, se
     هدف رو از ریپلای یا آرگومان دستور پیدا می‌کنه
     خروجی: (آبجکت شبه‌تلگرامی هدف, متن خطا یا None)
     فقط حضور طرف تو گروه کافیه، نیازی نیس ربات رو استارت کرده باشه
+    حضورش تو همین لحظه تو گروه چک میشه، چه از ریپلای اومده باشه چه از آرگومان
+    (کیک بشه/بره، ریپلای روی پیام قدیمیش دیگه حمله رو رد نمی‌کنه)
     """
     reply = update.message.reply_to_message
+    row = None
+    reply_user = None
     if reply and getattr(reply, "from_user", None):
-        return reply.from_user, None
-
-    # آرگومان جلوی دستور (بعد از پاک کردن پیشوند تریاکی)
-    text = strip_bot_cmd(update.message.text or "")
-    words = text.split()
-    arg = words[1].strip() if len(words) >= 2 else ""
-    # دستور دوکلمه‌ای مثل «پیو پیو» یا «بنگ بنگ» آرگومان نداره
-    if arg and arg.lower() in ("پیو", "بنگ", "حمله", "شلیک") and len(words) == 2:
-        arg = ""
-    if not arg:
-        return None, ATTACK_GUIDE_TEXT
-
-    if arg.lstrip("-").isdigit():
-        tg_id = int(arg)
-        row = None
+        reply_user = reply.from_user
+        tg_id = reply_user.id
     else:
-        row = await seen_svc.find_by_username(session, arg)
-        if not row:
-            return None, NOT_FOUND_TEXT
-        tg_id = row.telegram_id
+        # آرگومان جلوی دستور (بعد از پاک کردن پیشوند تریاکی)
+        text = strip_bot_cmd(update.message.text or "")
+        words = text.split()
+        arg = words[1].strip() if len(words) >= 2 else ""
+        # دستور دوکلمه‌ای مثل «پیو پیو» یا «بنگ بنگ» آرگومان نداره
+        if arg and arg.lower() in ("پیو", "بنگ", "حمله", "شلیک") and len(words) == 2:
+            arg = ""
+        if not arg:
+            return None, ATTACK_GUIDE_TEXT
+
+        if arg.lstrip("-").isdigit():
+            tg_id = int(arg)
+        else:
+            row = await seen_svc.find_by_username(session, arg)
+            if not row:
+                return None, NOT_FOUND_TEXT
+            tg_id = row.telegram_id
 
     # حضورش تو همین گروه چک میشه (تنها شرط لازم برای حمله به غریبه)
     try:
@@ -141,10 +145,15 @@ async def _resolve_target(update: Update, context: ContextTypes.DEFAULT_TYPE, se
         u = getattr(member, "user", None)
         if u is not None:
             return u, None
+        if reply_user is not None:
+            return reply_user, None
     except BadRequest:
         return None, "🤷 طرف تو این گروه نیس"
     except Exception:
         pass  # ربات دسترسی نداره یا تستیه، از رجیستری دیده‌شده‌ها استفاده می‌کنیم
+
+    if reply_user is not None:
+        return reply_user, None
 
     if row is None:
         from models import SeenUser

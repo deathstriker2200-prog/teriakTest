@@ -15,7 +15,7 @@ from telegram.ext import Application, CallbackQueryHandler, ChatMemberHandler, C
 
 import config
 
-from handlers import admin, attack, backup, bank, battle, boss, common, company, dogs, dquests, energy, farm, gate, gear, market, mine, mines, pending, power, profile, rank, seen, shop, skills, smuggle, snitch, start, team, textcmd, world  # راند ۳۱: raid حذف شد
+from handlers import admin, attack, backup, bank, battle, boss, cartelwar, common, company, dogs, dquests, energy, farm, gate, gear, market, mine, mines, pending, power, profile, rank, seen, shop, skills, smuggle, snitch, start, team, textcmd, world  # راند ۳۱: raid حذف شد
 
 ZWNJ = "‌"
 S = rf"[\s{ZWNJ}]"  # فاصله یا نیم‌فاصله
@@ -56,6 +56,7 @@ TEXT_HANDLERS: list[tuple[str, str, object]] = [
     ("daily_alias", rf"{T}دیلی!?$", dquests.daily_quests_cb),  # راند ۳۵ (درخواست کارفرما): «تریاکی دیلی» صفحه ماموریت‌های روزانه
     ("plot_buy", rf"{T}ساخت{S}+زمین!?$|{T}خرید{S}+زمین!?$", farm.buy_plot_text),  # راند ۳۵: «تریاکی ساخت زمین» کارت تایید خرید
     # ── کارتل ──
+    ("team_war", rf"{TP}" + TK + rf"{S}+وار{S}+(.+)$", cartelwar.cartel_war_start_text),  # «کارتل وار [نام]»، باید قبل از الگوی عمومی team بیاد
     ("team_bld", rf"{TP}" + TK + rf"{S}+ساختمان(?:{S}*ها)?!?$|{TP}" + TK + rf"{S}+ساخت!?$", team.buildings_text),
     ("team_profile", rf"{TP}" + TK + rf"{S}+پروفایل!?$", team.team_profile_text),
     ("roster", rf"{TP}" + TK + rf"{S}+عضویت!?$", team.roster_text),
@@ -331,6 +332,16 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CallbackQueryHandler(team.team_bank_text, pattern=r"^team:bank$"))
     app.add_handler(CallbackQueryHandler(team.team_upgrade_cb, pattern=r"^tbup:(?:atk|def):\d+$"))
     app.add_handler(CallbackQueryHandler(team.team_upgrade_execute, pattern=r"^tbcf:(?:atk|def):\d+$"))
+
+    # ── جنگ کارتل‌ها ⚔️🏴 (دکمه‌ها) ──
+    app.add_handler(CallbackQueryHandler(cartelwar.war_accept_cb, pattern=r"^cw:accept:\d+$"))
+    app.add_handler(CallbackQueryHandler(cartelwar.war_reject_cb, pattern=r"^cw:reject:\d+$"))
+    app.add_handler(CallbackQueryHandler(cartelwar.war_panel_cb, pattern=r"^cw:panel$"))
+    app.add_handler(CallbackQueryHandler(cartelwar.war_stats_cb, pattern=r"^cw:stats$"))
+    app.add_handler(CallbackQueryHandler(cartelwar.war_board_cb, pattern=r"^cw:board$"))
+    app.add_handler(CallbackQueryHandler(cartelwar.war_hit_cb, pattern=r"^cw:hit$"))
+    app.add_handler(CallbackQueryHandler(cartelwar.war_targets_cb, pattern=r"^cw:targets$"))
+    app.add_handler(CallbackQueryHandler(cartelwar.war_hit_target_cb, pattern=r"^cw:hitu:\d+$"))
 
     # ── سیستم‌های جهان (دکمه‌ها) ──
     app.add_handler(CallbackQueryHandler(world.shelter_cat_cb, pattern=r"^shelter:cat:\w+$"))
