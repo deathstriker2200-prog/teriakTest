@@ -1,12 +1,15 @@
 """ابزار مشترک هندلرها + قفل مالکیت دکمه‌ها تو گروه‌ها + آنتی‌اسپم"""
 
+import logging
 import re
 import time
 
 from telegram import InlineKeyboardMarkup, Update
 from telegram.constants import ChatType, ParseMode
-from telegram.error import BadRequest
+from telegram.error import BadRequest, Forbidden, TelegramError
 from telegram.ext import ApplicationHandlerStop
+
+logger = logging.getLogger("teriaky.common")
 
 
 
@@ -137,38 +140,53 @@ async def respond(update: Update, text: str, markup=None, alert: str | None = No
     اگر پیام عکسی باشه (مثل پروفایل) پاکش می‌کنه و دوباره می‌فرسته
     دکمه منوی اصلی هم تو گروه حذف میشه
     پیام‌های دکمه‌داری که تو گروه با دستور متنی ساخته میشن تو دیتابیس به اسم صاحبشون ثبت میشن
+
+    مهم: این تابع صرفاً «نمایش UI» به همون کاربریه که دکمه زده / دستور داده،
+    نباید هیچ‌وقت هندلر صداکننده رو کرش بده — چون خیلی‌جاها (مثل تایید/رد جنگ کارتل)
+    بعد از این تابع کد مهم‌تری هست (ارسال پیام به بقیه اعضا) که باید حتماً اجرا بشه،
+    حتی اگه ادیت/ریپلای پیام خودِ همین کاربر به هر دلیلی (کوئری منقضی‌شده، پیام قدیمی و
+    غیرقابل‌ادیت، بلاک کردن ربات و ...) شکست بخوره.
     """
-    markup = strip_home(update, markup)
-    query = update.callback_query
-    if query:
-        await query.answer(alert, show_alert=bool(alert))
-        if getattr(query.message, "photo", None):
+    try:
+        markup = strip_home(update, markup)
+        query = update.callback_query
+        if query:
             try:
-                await query.message.delete()
-            except BadRequest:
-                pass
-            sent = await query.message.reply_html(text, reply_markup=markup)
-            if markup is not None:
+                await query.answer(alert, show_alert=bool(alert))
+            except (BadRequest, TelegramError) as e:
+                # کوئری منقضی‌شده یا خیلی قدیمیه؛ نمی‌تونیم alert نشون بدیم ولی ادامه می‌دیم
+                logger.warning("query.answer شکست خورد (نادیده گرفته شد): %s", e)
+            if getattr(query.message, "photo", None):
+                try:
+                    await query.message.delete()
+                except (BadRequest, Forbidden):
+                    pass
+                sent = await query.message.reply_html(text, reply_markup=markup)
+                if markup is not None:
+                    await track_message(
+                        getattr(sent, "chat_id", None),
+                        getattr(sent, "message_id", None),
+                        update.effective_user.id if update.effective_user else None,
+                    )
+            else:
+                try:
+                    await query.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=markup)
+                except BadRequest as e:
+                    if "not modified" not in str(e).lower():
+                        # پیام قابل ادیت نیست (خیلی قدیمیه، حذف شده، و غیره)؛ به‌جای کرش، فقط لاگ می‌کنیم
+                        logger.warning("edit_message_text شکست خورد (نادیده گرفته شد): %s", e)
+        else:
+            sent = await update.effective_message.reply_html(text, reply_markup=markup)
+            chat = update.effective_chat
+            if markup is not None and chat is not None and chat.type in (ChatType.GROUP, ChatType.SUPERGROUP):
                 await track_message(
-                    getattr(sent, "chat_id", None),
+                    getattr(sent, "chat_id", None) or chat.id,
                     getattr(sent, "message_id", None),
                     update.effective_user.id if update.effective_user else None,
                 )
-        else:
-            try:
-                await query.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=markup)
-            except BadRequest as e:
-                if "not modified" not in str(e).lower():
-                    raise
-    else:
-        sent = await update.effective_message.reply_html(text, reply_markup=markup)
-        chat = update.effective_chat
-        if markup is not None and chat is not None and chat.type in (ChatType.GROUP, ChatType.SUPERGROUP):
-            await track_message(
-                getattr(sent, "chat_id", None) or chat.id,
-                getattr(sent, "message_id", None),
-                update.effective_user.id if update.effective_user else None,
-            )
+    except (BadRequest, Forbidden, TelegramError) as e:
+        # آخرین خط دفاع: هر خطای تلگرامی دیگه‌ای هم فقط لاگ میشه، هرگز کالر رو کرش نمی‌ده
+        logger.warning("respond() شکست خورد (نادیده گرفته شد): %s", e)
 
 
 def parts(update: Update) -> list[str]:

@@ -14,6 +14,7 @@
 - همه ثبت‌ها با لاگ (WarAttackLog) و Unique Constraint کولدان، از شمارش دوبل جلوگیری می‌کنن
 """
 
+import logging
 import random
 from datetime import timedelta
 
@@ -28,6 +29,8 @@ from services import teams as team_svc
 from services import users as user_svc
 from utils import fa_num, iran_today, money, now_utc
 
+logger = logging.getLogger("teriaky.cartelwar")
+
 WarStatus = (
     "pending", "rejected", "expired", "scheduled", "active", "finished", "cancelled",
 )
@@ -39,6 +42,10 @@ async def can_start_war(session: AsyncSession, attacker_team: Team) -> tuple[boo
     """رهبر کارتل مهاجم می‌تونه الان وار جدید بفرسته؟"""
     if attacker_team.pending_war_id:
         war = await session.get(CartelWar, attacker_team.pending_war_id)
+        logger.warning(
+            "can_start_war: team_id=%s pending_war_id=%s war_found=%s war_status=%s",
+            attacker_team.id, attacker_team.pending_war_id, bool(war), war.status if war else None,
+        )
         if war and war.status in ("pending", "scheduled", "active"):
             return False, "🚫 کارتلت الان یه جنگ فعال یا در انتظار داره، اول اونو تموم کن"
         # وار قدیمی تموم شده ولی قفل پاک نشده، خودمون پاکش می‌کنیم
