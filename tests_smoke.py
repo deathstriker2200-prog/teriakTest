@@ -13377,7 +13377,7 @@ async def main() -> None:
           any("مارکت تریاکی" in c[1] and "آگهی" in c[1] for c in upd_mk23.message.calls),
           str(upd_mk23.message.calls)[:120])
 
-    upd_mkl23 = _cb22("mk:b:0:a:part", 335001, "mkh1", "مارکتی یک")
+    upd_mkl23 = _cb22("mk:b:0:a:part:335001", 335001, "mkh1", "مارکتی یک")
     await market_h2.market_cb(upd_mkl23, None)
     _e23 = [c for c in upd_mkl23.callback_query.calls if c[0] == "edit"]
     _kd23 = _e23[-1][2].get("reply_markup") if _e23 else None
@@ -13387,7 +13387,7 @@ async def main() -> None:
           and any("🧩 قطعه افسانه‌ای ×1 | 9,000 تی‌پوینت" in t for t in _labs23)
           and any(t.startswith("📄 صفحه") for t in _labs23), str(_labs23)[:140])
 
-    upd_mks23 = _cb22("mk:si:part:a", 335001, "mkh1", "مارکتی یک", chat_id=100)
+    upd_mks23 = _cb22("mk:si:part:a:335001", 335001, "mkh1", "مارکتی یک", chat_id=100)
     await market_h2.market_cb(upd_mks23, None)
     async with session_scope() as s:
         _me23 = await users.get_by_tg(s, 335001)
@@ -13415,7 +13415,7 @@ async def main() -> None:
           any("🏷 ثبت آگهی فروش" in c[1] and "1,500 تی‌پوینت" in c[1] for c in upd_p23.message.calls),
           str(upd_p23.message.calls)[:140])
 
-    upd_c23 = _cb22("mk:cfs:part:3:1500", 335001, "mkh1", "مارکتی یک")
+    upd_c23 = _cb22("mk:cfs:part:3:1500:335001", 335001, "mkh1", "مارکتی یک")
     await market_h2.market_cb(upd_c23, None)
     async with session_scope() as s:
         _me23 = await users.get_by_tg(s, 335001)
@@ -13456,7 +13456,7 @@ async def main() -> None:
         check("استرداد لغو آگهی چوب هم سالمه", ms26.wood == 10, f"{ms26.wood}")
         await s.commit()
 
-    upd26 = _cb22("mk:my:0:a", 880269, "mks26", "آگهی‌چی")
+    upd26 = _cb22("mk:my:0:a:880269", 880269, "mks26", "آگهی‌چی")
     await market_h26.market_cb(upd26, None)
     ed26 = [c for c in upd26.callback_query.calls if c[0] == "edit"]
     check("آگهی‌های من وقتی چیزی نیس راهنمای فروش میده",
@@ -13475,30 +13475,30 @@ async def main() -> None:
         await s.commit()
     check("کارت فاکتور خرید دیگه خط انقضا نداره (درخواست کارفرما)",
           "انقضای آگهی" not in view26 and "خریدش می‌کنی؟" in view26, view26[:120])
-    upd26 = _cb22("mk:my:0:a", 880269, "mks26", "آگهی‌چی")
+    upd26 = _cb22("mk:my:0:a:880269", 880269, "mks26", "آگهی‌چی")
     await market_h26.market_cb(upd26, None)
     ed26 = [c for c in upd26.callback_query.calls if c[0] == "edit"]
     kb26m = ed26[-1][2].get("reply_markup")
     kd26 = [b.callback_data for row in kb26m.inline_keyboard for b in row]
     check("لیست آگهی‌های من تایم انقضا رو هم میگه و به کارت مدیریت لینک می‌ده",
           ed26 and "قطعه افسانه‌ای ×2" in ed26[-1][1] and "انقضای آگهی" in ed26[-1][1]
-          and f"mk:myv:{lid26}:a" in kd26,
+          and f"mk:myv:{lid26}:a:880269" in kd26,
           str(ed26[-1][1])[:160] if ed26 else "-")
-    upd26 = _cb22(f"mk:myv:{lid26}:a", 880269, "mks26", "آگهی‌چی")
+    upd26 = _cb22(f"mk:myv:{lid26}:a:880269", 880269, "mks26", "آگهی‌چی")
     await market_h26.market_cb(upd26, None)
     ed26 = [c for c in upd26.callback_query.calls if c[0] == "edit"]
     kb26m = ed26[-1][2].get("reply_markup")
     kd26 = [b.callback_data for row in kb26m.inline_keyboard for b in row]
     check("کارت آگهی خودم دکمه لغو و برگشت داره و انقضا فقط همون‌جاست",
           ed26 and "انقضای آگهی" in ed26[-1][1] and "لغو آگهی" in ed26[-1][1]
-          and f"mk:myx:{lid26}:a" in kd26 and "mk:my:0:a" in kd26,
+          and f"mk:myx:{lid26}:a:880269" in kd26 and "mk:my:0:a:880269" in kd26,
           str(ed26[-1][1])[:160] if ed26 else "-")
-    upd26 = _cb22(f"mk:myx:{lid26}:a", 880270, "mkb26", "خریدار")
+    upd26 = _cb22(f"mk:myx:{lid26}:a:880270", 880270, "mkb26", "خریدار")
     await market_h26.market_cb(upd26, None)
     an26 = [c for c in upd26.callback_query.calls if c[0] == "answer"]
     check("لغو آگهی مال غریبه از هندلر رد میشه",
           any("مال تو نیس" in str(c[1]) for c in an26), str(an26)[:120])
-    upd26 = _cb22(f"mk:myx:{lid26}:a", 880269, "mks26", "آگهی‌چی")
+    upd26 = _cb22(f"mk:myx:{lid26}:a:880269", 880269, "mks26", "آگهی‌چی")
     await market_h26.market_cb(upd26, None)
     ed26 = [c for c in upd26.callback_query.calls if c[0] == "edit"]
     async with session_scope() as s:
@@ -13517,7 +13517,7 @@ async def main() -> None:
         lid26 = (await mk_svc.my_listings(s, ms26.id))[0].id
         await s.commit()
     spy26 = SimpleNamespace(bot=_CBotSpy())
-    upd26 = _cb22(f"mk:buy:{lid26}:a", 880270, "mkb26", "خریدار")
+    upd26 = _cb22(f"mk:buy:{lid26}:a:880270", 880270, "mkb26", "خریدار")
     await market_h26.market_cb(upd26, spy26)
     ed26 = [c for c in upd26.callback_query.calls if c[0] == "edit"]
     async with session_scope() as s:
@@ -13533,9 +13533,9 @@ async def main() -> None:
           str(spy26.bot.sent)[:160])
     check("تسویه خرید مارکت: پول به فروشنده + جنس به خریدار",
           sc26 == 6000 and bc26 == 95000 and bp26 == 2, f"{sc26}|{bc26}|{bp26}")
-    kb26h = kb.market_home_kb(3)
+    kb26h = kb.market_home_kb(3, 880269)
     kd26 = [b.callback_data for row in kb26h.inline_keyboard for b in row]
-    check("خانه مارکت دکمه آگهی‌های من رو داره", "mk:my:0:a" in kd26, str(kd26))
+    check("خانه مارکت دکمه آگهی‌های من رو داره", "mk:my:0:a:880269" in kd26, str(kd26))
 
     # ── زره‌های ویژه هم قطعه افسانه‌ای می‌خوان (plasma/void ۱، neutron ۲، gods ۳) ──
     check("کانفیگ قطعه افسانه‌ای زره درسته",
@@ -13605,7 +13605,7 @@ async def main() -> None:
         mk_id27 = row_mk27.id
         await s.commit()
     spy_mk27 = _CBotSpy()
-    upd_buy27 = _cb22(f"mk:buy:{mk_id27}:a", 660202, "buyer27", "کاشولات")
+    upd_buy27 = _cb22(f"mk:buy:{mk_id27}:a:660202", 660202, "buyer27", "کاشولات")
     await market_h27.market_cb(upd_buy27, SimpleNamespace(bot=spy_mk27))
     dm_mk27 = next((t for c, t in spy_mk27.sent if c == 660201), "")
     check("دی‌ام فروشنده بعد خرید: قالب دقیق کارفرما (آگهی + قیمت + خریدار + واریز + حالشو ببر)",

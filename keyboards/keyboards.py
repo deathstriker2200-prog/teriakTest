@@ -1244,89 +1244,89 @@ def admin_boss_view_kb(key: str) -> InlineKeyboardMarkup:
 
 # ───────── مارکت 🛒 (راند ۲۳) ─────────
 
-def market_home_kb(n_open: int) -> InlineKeyboardMarkup:
+def market_home_kb(n_open: int, owner_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
-        [_btn(f"🛒 خرید از مارکت ({n_open} آگهی)", "mk:b:0:a", SUCCESS)],
-        [_btn("🏷 فروش تو مارکت", "mk:s:0:a", PRIMARY)],
-        [_btn("📋 آگهی‌های من", "mk:my:0:a", PRIMARY)],
+        [_btn(f"🛒 خرید از مارکت ({n_open} آگهی)", f"mk:b:0:a:x:{owner_id}", SUCCESS)],
+        [_btn("🏷 فروش تو مارکت", f"mk:s:0:a:{owner_id}", PRIMARY)],
+        [_btn("📋 آگهی‌های من", f"mk:my:0:a:{owner_id}", PRIMARY)],
         [_btn("🏠 منوی اصلی", "menu:home", PRIMARY)],
     ])
 
 
-def market_my_kb(rows) -> InlineKeyboardMarkup:
+def market_my_kb(rows, owner_id: int) -> InlineKeyboardMarkup:
     """لیست آگهی‌های خود کاربر، هر آگهی یه دکمه برای کارت مدیریتش"""
-    out = [[_btn(r["label"], f"mk:myv:{r['id']}:a", PRIMARY)] for r in rows]
-    out.append([_btn("🛒 برگشت به مارکت", "mk:h:0:a", PRIMARY)])
+    out = [[_btn(r["label"], f"mk:myv:{r['id']}:a:{owner_id}", PRIMARY)] for r in rows]
+    out.append([_btn("🛒 برگشت به مارکت", f"mk:h:0:a:{owner_id}", PRIMARY)])
     return InlineKeyboardMarkup(out)
 
 
-def market_my_item_kb(listing_id: int) -> InlineKeyboardMarkup:
+def market_my_item_kb(listing_id: int, owner_id: int) -> InlineKeyboardMarkup:
     """کارت آگهی خودم: لغو آگهی (استرداد جنس) یا برگشت به لیست آگهی‌های من"""
     return InlineKeyboardMarkup([
-        [_btn("❌ لغو آگهی و برگشت جنس", f"mk:myx:{listing_id}:a", DANGER)],
-        [_btn("🔙 آگهی‌های من", "mk:my:0:a", PRIMARY)],
-        [_btn("🛒 مارکت", "mk:h:0:a", PRIMARY)],
+        [_btn("❌ لغو آگهی و برگشت جنس", f"mk:myx:{listing_id}:a:{owner_id}", DANGER)],
+        [_btn("🔙 آگهی‌های من", f"mk:my:0:a:{owner_id}", PRIMARY)],
+        [_btn("🛒 مارکت", f"mk:h:0:a:{owner_id}", PRIMARY)],
     ])
 
 
-def market_buy_kb(rows, page: int, pages: int, desc: bool, item: str | None) -> InlineKeyboardMarkup:
+def market_buy_kb(rows, page: int, pages: int, desc: bool, item: str | None, owner_id: int) -> InlineKeyboardMarkup:
     """لیست خرید: هر آگهی یه ردیف، پایینش مرتب‌سازی + سرچ + قبلی/بعدی + شماره صفحه"""
     out = []
     for r in rows:
-        out.append([_btn(r["label"], f"mk:v:{r['id']}:a", PRIMARY)])
+        out.append([_btn(r["label"], f"mk:v:{r['id']}:a:{owner_id}", PRIMARY)])
     sd = "e" if desc else "a"
     flt = item or "x"
     out.append([
         _btn("💰 گرون‌تر به ارزون‌تر" if not desc else "💰 ارزون‌تر به گرون‌تر",
-             f"mk:b:0:{'a' if desc else 'e'}:{flt}", PRIMARY),
-        _btn("🔍 سرچ آیتم", "mk:f:0:a", PRIMARY),
+             f"mk:b:0:{'a' if desc else 'e'}:{flt}:{owner_id}", PRIMARY),
+        _btn("🔍 سرچ آیتم", f"mk:f:0:a:{owner_id}", PRIMARY),
     ])
     nav = []
     if page > 0:
-        nav.append(_btn("◀️ قبلی", f"mk:b:{page - 1}:{sd}:{flt}", PRIMARY))
-    nav.append(_btn(f"📄 صفحه {page + 1}/{pages}", "mk:noop:0:a", PRIMARY))
+        nav.append(_btn("◀️ قبلی", f"mk:b:{page - 1}:{sd}:{flt}:{owner_id}", PRIMARY))
+    nav.append(_btn(f"📄 صفحه {page + 1}/{pages}", f"mk:noop:0:a:{owner_id}", PRIMARY))
     if page < pages - 1:
-        nav.append(_btn("بعدی ▶️", f"mk:b:{page + 1}:{sd}:{flt}", PRIMARY))
+        nav.append(_btn("بعدی ▶️", f"mk:b:{page + 1}:{sd}:{flt}:{owner_id}", PRIMARY))
     out.append(nav)
-    out.append([_btn("🛒 برگشت به مارکت", "mk:h:0:a", PRIMARY)])
+    out.append([_btn("🛒 برگشت به مارکت", f"mk:h:0:a:{owner_id}", PRIMARY)])
     return InlineKeyboardMarkup(out)
 
 
-def market_filter_kb(desc: bool) -> InlineKeyboardMarkup:
+def market_filter_kb(desc: bool, owner_id: int) -> InlineKeyboardMarkup:
     """انتخاب آیتم برای سرچ تو آگهی‌ها"""
     sd = "e" if desc else "a"
     return InlineKeyboardMarkup([
-        [_btn("🧩 قطعه افسانه‌ای", f"mk:b:0:{sd}:part", PRIMARY)],
-        [_btn("🪵 چوب", f"mk:b:0:{sd}:wood", PRIMARY),
-         _btn("⛏️ آهن", f"mk:b:0:{sd}:iron", PRIMARY)],
-        [_btn("📋 همه آگهی‌ها", f"mk:b:0:{sd}:x", SUCCESS)],
-        [_btn("🛒 برگشت به مارکت", "mk:h:0:a", PRIMARY)],
+        [_btn("🧩 قطعه افسانه‌ای", f"mk:b:0:{sd}:part:{owner_id}", PRIMARY)],
+        [_btn("🪵 چوب", f"mk:b:0:{sd}:wood:{owner_id}", PRIMARY),
+         _btn("⛏️ آهن", f"mk:b:0:{sd}:iron:{owner_id}", PRIMARY)],
+        [_btn("📋 همه آگهی‌ها", f"mk:b:0:{sd}:x:{owner_id}", SUCCESS)],
+        [_btn("🛒 برگشت به مارکت", f"mk:h:0:a:{owner_id}", PRIMARY)],
     ])
 
 
-def market_listing_kb(listing_id: int) -> InlineKeyboardMarkup:
+def market_listing_kb(listing_id: int, owner_id: int) -> InlineKeyboardMarkup:
     """کارت یه آگهی، تایید خرید"""
     return InlineKeyboardMarkup([
-        [_btn("✅ تایید و خرید", f"mk:buy:{listing_id}:a", SUCCESS)],
-        [_btn("❌ ولش کن", "mk:b:0:a", PRIMARY)],
+        [_btn("✅ تایید و خرید", f"mk:buy:{listing_id}:a:{owner_id}", SUCCESS)],
+        [_btn("❌ ولش کن", f"mk:b:0:a:x:{owner_id}", PRIMARY)],
     ])
 
 
-def market_sell_kb() -> InlineKeyboardMarkup:
+def market_sell_kb(owner_id: int) -> InlineKeyboardMarkup:
     """انتخاب جنس برای فروش"""
     return InlineKeyboardMarkup([
-        [_btn("🧩 قطعه افسانه‌ای", "mk:si:part:a", PRIMARY)],
-        [_btn("🪵 چوب", "mk:si:wood:a", PRIMARY),
-         _btn("⛏️ آهن", "mk:si:iron:a", PRIMARY)],
-        [_btn("🛒 برگشت به مارکت", "mk:h:0:a", PRIMARY)],
+        [_btn("🧩 قطعه افسانه‌ای", f"mk:si:part:a:{owner_id}", PRIMARY)],
+        [_btn("🪵 چوب", f"mk:si:wood:a:{owner_id}", PRIMARY),
+         _btn("⛏️ آهن", f"mk:si:iron:a:{owner_id}", PRIMARY)],
+        [_btn("🛒 برگشت به مارکت", f"mk:h:0:a:{owner_id}", PRIMARY)],
     ])
 
 
-def market_sell_confirm_kb(item: str, qty: int, price: int) -> InlineKeyboardMarkup:
+def market_sell_confirm_kb(item: str, qty: int, price: int, owner_id: int) -> InlineKeyboardMarkup:
     """فاکتور نهایی فروش قبل از ثبت آگهی"""
     return InlineKeyboardMarkup([
-        [_btn("✅ ثبت آگهی", f"mk:cfs:{item}:{qty}:{price}", SUCCESS)],
-        [_btn("❌ لغو", "mk:cx:0:a", PRIMARY)],
+        [_btn("✅ ثبت آگهی", f"mk:cfs:{item}:{qty}:{price}:{owner_id}", SUCCESS)],
+        [_btn("❌ لغو", f"mk:cx:0:a:{owner_id}", PRIMARY)],
     ])
 
 
@@ -1363,9 +1363,8 @@ def team_chat_kb() -> InlineKeyboardMarkup:
 # cw:req:<team_id>          → تایید ارسال درخواست وار به یه کارتل
 # cw:accept:<war_id> | cw:reject:<war_id>  → پاسخ رهبر هدف (فقط تو پی‌وی خودش)
 # cw:panel                  → ورودی پنل وار کارتل من (منوی کارتل → دکمه ⚔️ وار، فقط وقتی active)
-# cw:atkgo                  → ⚔️ حمله: هدف تصادفی از کارتل حریف پیدا میشه و پیش‌نمایشش نشون داده میشه (مثل پی‌وی، بدون سپر)
-# cw:targets                → 🎯 لیست اعضای کارتل حریف برای انتخاب دستی هدف
-# cw:hitu:<user_id>         → ⚔️ حمله به یه عضو مشخص (چه از پیش‌نمایش «حمله» چه از لیست انتخاب دستی)
+# cw:atkgo                  → ⚔️ حمله: هدف این دور (قفل‌شده یا تازه‌رندوم) پیش‌نمایش داده میشه (مثل پی‌وی، بدون سپر/جاسوسی)
+# cw:hitu:<user_id>         → ⚔️ تایید حمله به هدف قفل‌شده‌ی همین دور (بدون قابلیت تغییر هدف)
 # cw:stats                  → 📊 آمار جنگ فعلی
 # cw:board                  → 🏆 جدول نبرد (لیدربرد کارتل‌ها بر اساس تروفی)
 
@@ -1387,11 +1386,10 @@ def cartel_war_response_kb(war_id: int) -> InlineKeyboardMarkup:
 
 
 def cartel_war_panel_kb(can_attack: bool) -> InlineKeyboardMarkup:
-    """ورودی پنل وار فعال: حمله (پیش‌نمایش مثل پی‌وی) | انتخاب هدف دستی | آمار | جدول نبرد"""
+    """ورودی پنل وار فعال: حمله (پیش‌نمایش مثل پی‌وی، هدف رندوم قفل‌شده) | آمار | جدول نبرد"""
     rows: list[list[InlineKeyboardButton]] = []
     if can_attack:
         rows.append([_btn("⚔️ حمله", "cw:atkgo", DANGER)])
-        rows.append([_btn("🎯 انتخاب هدف", "cw:targets", DANGER)])
     rows.append([_btn("📊 آمار جنگ", "cw:stats", PRIMARY)])
     rows.append([_btn("🏆 جدول نبرد", "cw:board", PRIMARY)])
     rows.append([_btn("🔙 کارتل من", "menu:team", PRIMARY)])
@@ -1399,22 +1397,11 @@ def cartel_war_panel_kb(can_attack: bool) -> InlineKeyboardMarkup:
 
 
 def cartel_war_target_kb(target_id: int) -> InlineKeyboardMarkup:
-    """پیش‌نمایش هدف تصادفی وار: حمله | هدف دیگه | بازگشت — بدون سپر یا جاسوسی، ساده‌تر از پی‌وی"""
+    """پیش‌نمایش هدف قفل‌شده‌ی این دور: فقط حمله یا بازگشت — بدون سپر/جاسوسی و بدون امکان عوض کردن هدف"""
     return InlineKeyboardMarkup([
         [_btn("⚔️ حمله", f"cw:hitu:{target_id}", DANGER)],
-        [_btn("🎲 هدف دیگه", "cw:atkgo", PRIMARY)],
         [_btn("🔙 بازگشت", "cw:panel", PRIMARY)],
     ])
-
-
-def cartel_war_targets_kb(members: list) -> InlineKeyboardMarkup:
-    """لیست اعضای کارتل حریف، هر کدوم با یه دکمه حمله (حداکثر ۲۰ نفر برای جلوگیری از کیبورد غول‌پیکر)"""
-    from services.users import display_name
-    rows: list[list[InlineKeyboardButton]] = []
-    for m in members[:20]:
-        rows.append([_btn(f"⚔️ {display_name(m)}", f"cw:hitu:{m.id}", DANGER)])
-    rows.append([_btn("🔙 بازگشت", "cw:panel", PRIMARY)])
-    return InlineKeyboardMarkup(rows)
 
 
 def cartel_war_back_kb() -> InlineKeyboardMarkup:

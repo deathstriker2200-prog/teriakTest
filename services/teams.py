@@ -469,10 +469,12 @@ async def team_stats_data(session: AsyncSession, team: Team) -> dict:
 
     daily = await _daily(session, team.id)
     owner_name = "؟"
+    owner_user: User | None = None
     for m in members:
         if m.role == "owner":
             for u in users:
                 if u.id == m.user_id:
+                    owner_user = u
                     owner_name = "👻 نامرئی" if u.lb_hidden else (u.first_name or u.username or "؟")
             break
 
@@ -492,6 +494,7 @@ async def team_stats_data(session: AsyncSession, team: Team) -> dict:
         "users": users,
         "count": len(members),
         "owner_name": owner_name,
+        "owner_user": owner_user,
         "wins": sum(u.wins for u in users),
         "losses": sum(u.losses for u in users),
         "medals": medals_sum,

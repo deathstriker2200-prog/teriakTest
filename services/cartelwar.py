@@ -9,9 +9,12 @@
 قوانین کلیدی (درخواست کارفرما):
 - فقط رهبر (owner) کارتل می‌تونه وار بفرسته یا قبول/رد کنه
 - هر کارتل هر روز حداکثر CARTEL_WAR_DAILY_LIMIT تا وار قبول‌شده/انجام‌شده (pending_war_id قفلش می‌کنه)
-- حمله وار کاملاً جدا از پی‌وی عادیه: بدون سپر | بدون انتقام | بدون زندان | کولدان شخصی ۵ دقیقه‌ای مستقل
-- عضوی که کمتر از ۲۴ ساعته عضو کارتله نمی‌تونه بجنگه، و اگه وسط وار از کارتل خارج بشه دیگه اجازه حمله نداره
-- XP و مدال حمله ثابته (بدون رندوم اضافه) که فارم بی‌نهایت ممکن نباشه؛ نتیجه حمله (برد/باخت) رندوم رقابتیه
+- حمله وار کاملاً جدا از پی‌وی عادیه: بدون سپر | بدون انتقام | بدون زندان | بدون جاسوسی | کولدان شخصی ۵ دقیقه‌ای مستقل
+- هدف هر دور تصادفیه و قفله (اسم هر بار ظاهر شد عوض نمیشه)، تا حمله نکنی نمی‌تونی هدف دیگه بگیری؛ دور بعد (بعد کول‌دان) خودکار هدف تازه میاد
+- برد/باخت حمله دقیقاً طبق همون قانون حمله پی‌وی کلاسیکه (pvattack.total_powers/decide_win): قدرت کل رقابتی، رول شانسی فقط تو بازه نزدیک
+- برد: امتیاز نبرد (رنج کوچیک رندوم) میره برای کارتل خودِ مهاجم | باخت: امتیاز نبرد کم‌تر میره برای کارتل مدافع (پاداش دفاع موفق)
+- «امتیاز نبرد» (war.attacker_xp/defender_xp) فقط برای همین وار و تعیین برنده‌ست؛ ربطی به تجربه‌ی لول کارتل (Team.xp) یا تجربه‌ی شخصی بازیکن (User.xp) نداره
+- عضوی که کمتر از CARTEL_WAR_MIN_MEMBERSHIP_HOURS ساعته عضو کارتله نمی‌تونه بجنگه، و اگه وسط وار از کارتل خارج بشه دیگه اجازه حمله نداره
 - همه ثبت‌ها با لاگ (WarAttackLog) و Unique Constraint کولدان، از شمارش دوبل جلوگیری می‌کنن
 """
 
@@ -24,8 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 import config
 from models import CartelWar, Team, TeamMember, User, WarAttackCooldown, WarAttackLog
-from services import combat
-from services import dogs as dog_svc
+from services import pvattack
 from services import teams as team_svc
 from services import users as user_svc
 from utils import fa_num, iran_today, money, now_utc
@@ -254,6 +256,46 @@ async def _touch_cooldown(session: AsyncSession, user_id: int, war_id: int) -> N
         session.add(WarAttackCooldown(user_id=user_id, war_id=war_id, last_attack_at=now))
 
 
+# ───────── هدف قفل‌شده هر دور (بدون قابلیت تغییر — درخواست کارفرما) ─────────
+# هر کاربر تو یه دور کول‌دان فقط یه هدف رندوم داره؛ با هر بار باز کردن پنل عوض نمیشه، فقط با حمله واقعی خالی و برای دور بعد از نو رندوم میشه
+
+async def get_locked_target(session: AsyncSession, user_id: int, war_id: int) -> User | None:
+    """هدف قفل‌شده‌ی این دور، اگه هنوز عضو معتبر کارتل حریفه؛ وگرنه None (باید هدف تازه گرفته بشه)"""
+    q = select(WarAttackCooldown).where(
+        WarAttackCooldown.user_id == user_id, WarAttackCooldown.war_id == war_id)
+    row = (await session.execute(q)).scalar_one_or_none()
+    if not row or not row.assigned_target_id:
+        return None
+    target = await session.get(User, row.assigned_target_id)
+    if not target:
+        return None
+    tm = await team_svc.get_membership(session, target.id)
+    if not tm:
+        return None
+    return target
+
+
+async def _set_locked_target(session: AsyncSession, user_id: int, war_id: int, target_id: int | None) -> None:
+    q = select(WarAttackCooldown).where(
+        WarAttackCooldown.user_id == user_id, WarAttackCooldown.war_id == war_id)
+    row = (await session.execute(q)).scalar_one_or_none()
+    if row:
+        row.assigned_target_id = target_id
+    else:
+        session.add(WarAttackCooldown(user_id=user_id, war_id=war_id, last_attack_at=now_utc(), assigned_target_id=target_id))
+
+
+async def assign_or_get_target(session: AsyncSession, user_id: int, war_id: int, enemy_team_id: int) -> User | None:
+    """هدف این دور رو برمی‌گردونه: اگه از قبل قفل شده همون رو، وگرنه یه هدف تصادفی تازه انتخاب و قفل می‌کنه"""
+    locked = await get_locked_target(session, user_id, war_id)
+    if locked:
+        return locked
+    target = await pick_random_target(session, enemy_team_id)
+    if target:
+        await _set_locked_target(session, user_id, war_id, target.id)
+    return target
+
+
 # ───────── انتخاب هدف ─────────
 
 async def pick_random_target(session: AsyncSession, enemy_team_id: int) -> User | None:
@@ -266,34 +308,15 @@ async def pick_random_target(session: AsyncSession, enemy_team_id: int) -> User 
     return await session.get(User, target_id)
 
 
-async def list_enemy_members(session: AsyncSession, enemy_team_id: int) -> list[User]:
-    """لیست همه اعضای کارتل حریف، برای انتخاب دستی هدف حمله"""
-    q = select(TeamMember.user_id).where(TeamMember.team_id == enemy_team_id)
-    ids = [row[0] for row in (await session.execute(q)).all()]
-    members = []
-    for uid in ids:
-        u = await session.get(User, uid)
-        if u:
-            members.append(u)
-    return members
-
-
 # ───────── حمله وار ─────────
 
-async def _user_power(session: AsyncSession, user: User) -> tuple[int, int]:
-    """(حمله, دفاع) خام همون فرمول pvp معمول کاربر، بدون بوست‌های نقش‌محور پی‌وی (وار مستقیم استت خامه)"""
-    items = await user_svc.get_item_levels(session, user.id)
-    ammo = await user_svc.get_ammo_map(session, user.id)
-    dogs = await dog_svc.get_user_dogs(session, user.id)
-    return combat.combat_stats(user, items, dogs, ammo=ammo)
 
-
-async def attack(session: AsyncSession, attacker: User, war: CartelWar,
-                  target: User | None = None) -> dict:
+async def attack(session: AsyncSession, attacker: User, war: CartelWar) -> dict:
     """
-    یه حمله وار کامل: کولدان چک، هدف (تصادفی یا مشخص‌شده)، محاسبه نبرد، ثبت لاگ و XP/مدال/تی‌پوینت
-    اگه target داده نشه یه عضو تصادفی از کارتل حریف انتخاب میشه
-    خروجی دیکشنری: {ok, message, target, success, xp_gained, medals_gained}
+    یه حمله وار کامل: کولدان چک، هدف این دور (قفل‌شده یا تازه رندوم)، محاسبه نبرد طبق همون قاعده حمله پی‌وی
+    (قدرت مهاجم/دفاع هدف، رول رندوم فقط تو بازه نزدیک)، ثبت لاگ و امتیاز نبرد/مدال/تی‌پوینت، آزاد کردن هدف برای دور بعد
+    برد: امتیاز نبرد به کارتل خودِ مهاجم | باخت: امتیاز نبرد کم به کارتل مدافع (پاداش دفاع موفق) — بدون سپر و بدون جاسوسی
+    خروجی دیکشنری: {ok, message, target, success, score_gained, medals_gained}
     """
     membership = await team_svc.get_membership(session, attacker.id)
     if not membership:
@@ -312,39 +335,41 @@ async def attack(session: AsyncSession, attacker: User, war: CartelWar,
     if cd:
         return {"ok": False, "message": f"⏳ {fa_num(cd)} ثانیه دیگه می‌تونی دوباره حمله کنی", "cooldown": cd}
 
-    if target is not None:
-        enemy_membership = await team_svc.get_membership(session, target.id)
-        if not enemy_membership or enemy_membership.team_id != enemy_team_id:
-            return {"ok": False, "message": "🚫 این بازیکن دیگه تو اون کارتل نیست، یه هدف دیگه انتخاب کن"}
-    else:
-        target = await pick_random_target(session, enemy_team_id)
-        if target is None:
-            return {"ok": False, "message": "😴 هیچ عضوی تو کارتل حریف پیدا نشد"}
+    # هدف این دور همون هدف قفل‌شده‌ست؛ قابلیت تغییرش نیست (درخواست کارفرما)
+    target = await assign_or_get_target(session, attacker.id, war.id, enemy_team_id)
+    if target is None:
+        return {"ok": False, "message": "😴 هیچ عضوی تو کارتل حریف پیدا نشد"}
     if target.id == attacker.id:
         return {"ok": False, "message": "😅 هدف خودت شدی، یکی دیگه رو انتخاب کن"}
 
-    a_atk, _ = await _user_power(session, attacker)
-    _, t_def = await _user_power(session, target)
+    # همون قاعده‌ی حمله پی‌وی: «قدرت کل» رقابتی، رول شانسی فقط تو بازه نزدیک، بدون سپر و بدون جاسوسی
+    a_total, t_total, _ = await pvattack.total_powers(session, attacker, target)
+    success = pvattack.decide_win(a_total, t_total)
 
-    attack_score = a_atk * random.uniform(0.85, 1.15)
-    defense_score = t_def * random.uniform(0.85, 1.15)
-    success = attack_score > defense_score
-
-    xp_gain = config.CARTEL_WAR_HIT_XP if success else config.CARTEL_WAR_MISS_XP
     medals_gain = config.CARTEL_WAR_HIT_MEDALS if success else config.CARTEL_WAR_MISS_MEDALS
     tp_gain = config.CARTEL_WAR_HIT_TP if success else 0
 
-    # ضریب بالانس تیم کوچک‌تر روی XP کارتل سوار میشه
-    balance_mult = await _balance_multiplier(session, war, my_side)
-    xp_gain_scaled = int(round(xp_gain * balance_mult))
-
-    if my_side == "attacker":
-        war.attacker_xp = (war.attacker_xp or 0) + xp_gain_scaled
-        if success:
-            war.attacker_success_hits = (war.attacker_success_hits or 0) + 1
+    if success:
+        # برد: امتیاز نبرد به کارتل خودِ مهاجم، تو یه بازه کوچیک رندومه که فارم یکنواخت نشه
+        score_gain = random.randint(config.CARTEL_WAR_HIT_SCORE_MIN, config.CARTEL_WAR_HIT_SCORE_MAX)
+        score_side = my_side
     else:
-        war.defender_xp = (war.defender_xp or 0) + xp_gain_scaled
-        if success:
+        # باخت: امتیاز کمی (پاداش دفاع موفق) میره برای کارتل مدافع، نه مهاجم
+        score_gain = random.randint(config.CARTEL_WAR_DEFENSE_SCORE_MIN, config.CARTEL_WAR_DEFENSE_SCORE_MAX)
+        score_side = "defender" if my_side == "attacker" else "attacker"
+
+    # ضریب بالانس تیم کوچک‌تر روی امتیازیه که همون دور بهش می‌خوره سوار میشه
+    balance_mult = await _balance_multiplier(session, war, score_side)
+    score_gain_scaled = int(round(score_gain * balance_mult))
+
+    if score_side == "attacker":
+        war.attacker_xp = (war.attacker_xp or 0) + score_gain_scaled
+    else:
+        war.defender_xp = (war.defender_xp or 0) + score_gain_scaled
+    if success:
+        if my_side == "attacker":
+            war.attacker_success_hits = (war.attacker_success_hits or 0) + 1
+        else:
             war.defender_success_hits = (war.defender_success_hits or 0) + 1
 
     attacker.war_medals = (attacker.war_medals or 0) + medals_gain
@@ -354,18 +379,19 @@ async def attack(session: AsyncSession, attacker: User, war: CartelWar,
 
     session.add(WarAttackLog(
         war_id=war.id, attacker_id=attacker.id, defender_id=target.id,
-        success=success, xp_gained=xp_gain_scaled, medals_gained=medals_gain,
+        success=success, xp_gained=score_gain_scaled, medals_gained=medals_gain,
     ))
     await _touch_cooldown(session, attacker.id, war.id)
+    await _set_locked_target(session, attacker.id, war.id, None)  # هدف این دور تموم شد، دور بعد از نو رندوم میشه
 
     return {
         "ok": True,
         "success": success,
         "target": target,
-        "xp_gained": xp_gain_scaled,
+        "score_gained": score_gain_scaled,
         "medals_gained": medals_gain,
         "tp_gained": tp_gain,
-        "message": _attack_result_text(success, target, xp_gain_scaled, medals_gain, tp_gain),
+        "message": _attack_result_text(success, target, score_gain_scaled, medals_gain, tp_gain),
     }
 
 
@@ -394,22 +420,25 @@ async def _participant_count(session: AsyncSession, war_id: int, team_id: int) -
     return len((await session.execute(q)).all())
 
 
-def _attack_result_text(success: bool, target: User, xp: int, medals: int, tp: int) -> str:
+def _attack_result_text(success: bool, target: User, score: int, medals: int, tp: int) -> str:
     from services.users import display_name
     name = display_name(target)
     if success:
         return (
-            f"🔥 <b>حمله موفق!</b>\n\n"
+            f"🔥 <b>بردی!</b>\n\n"
             f"🎯 هدف: {name}\n"
-            f"⭐ +{fa_num(xp)} امتیاز جنگ برای کارتل\n"
+            f"⚔️ حمله‌ت رو دفاعش برد و امتیاز نبرد گرفتی\n"
+            f"⭐ +{fa_num(score)} امتیاز نبرد برای کارتلت\n"
             f"🎖 +{fa_num(medals)} مدال جنگ\n"
-            f"💰 +{money(tp)} تی‌پوینت"
+            f"💰 +{money(tp)}"
         )
+    # حمله ناموفق: دفاع هدف قوی‌تر بود، امتیاز نبرد (کم) به کارتل خودِ هدف می‌خوره، نه کارتل مهاجم
     return (
-        f"🛡 <b>حمله دفع شد</b>\n\n"
+        f"🛡 <b>باختی</b>\n\n"
         f"🎯 هدف: {name}\n"
-        f"⭐ +{fa_num(xp)} امتیاز جنگ برای کارتل (تلاش)\n"
-        f"🎖 +{fa_num(medals)} مدال جنگ"
+        f"⚔️ دفاع هدف از حمله‌ت قوی‌تر بود\n"
+        f"⭐ +{fa_num(score)} امتیاز نبرد رفت برای کارتل حریف (دفاع موفقشون)\n"
+        f"🎖 +{fa_num(medals)} مدال جنگ (تلاش)"
     )
 
 

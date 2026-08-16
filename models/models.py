@@ -662,7 +662,8 @@ class CartelWar(Base):
 
 
 class WarAttackCooldown(Base):
-    """کول‌دان شخصی هر بازیکن تو یه وار مشخص — هر ۵ دقیقه یه حمله، مستقل از کولدان پی‌وی عادی"""
+    """کول‌دان شخصی هر بازیکن تو یه وار مشخص — هر ۵ دقیقه یه حمله، مستقل از کولدان پی‌وی عادی
+    هدف هر دور هم همینجا قفل میشه (assigned_target_id) تا با هر بار باز کردن پنل عوض نشه، فقط با حمله واقعی خالی میشه"""
     __tablename__ = "war_attack_cooldowns"
     __table_args__ = (UniqueConstraint("user_id", "war_id", name="uq_war_cooldown"),)
 
@@ -670,6 +671,7 @@ class WarAttackCooldown(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     war_id: Mapped[int] = mapped_column(ForeignKey("cartel_wars.id"), index=True)
     last_attack_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
+    assigned_target_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
 
 
 class WarAttackLog(Base):

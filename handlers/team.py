@@ -44,34 +44,51 @@ def _team_stats_text(data: dict) -> str:
     team = data["team"]
     created = jalali_str(team.created_at) if team.created_at else "-"
 
-    lines = [f"<b>🏴 کارتل «{esc(team.name)}»</b>"]
+    lines = [f"🏴 <b>کارتل «{esc(team.name)}»</b>"]
     if team.bio:
         lines.append(f"📜 <i>{esc(team.bio)}</i>")
     lines.append("")
-    lines.append(f"👑 رهبر: {esc(data['owner_name'])}")
+
+    owner_user: User | None = data.get("owner_user")
+    lines.append(f"👑 {esc(data['owner_name'])}")
+    if owner_user:
+        oemoji, otitle = users.title_of(owner_user)
+        lines.append(f"└ 「{oemoji} {esc(otitle)}」 • لول {fa_num(owner_user.level)}")
+    lines.append("")
+
     tlevel = team.level or 1
     if tlevel >= config.TEAM_MAX_LEVEL:
-        lines.append(f"⭐️ لول {fa_num(tlevel)} 👑 مکس")
+        lines.append(f"⭐️ لول {fa_num(tlevel)}　👑 مکس")
     else:
         need = teams.team_xp_need(tlevel)
-        lines.append(f"⭐️ لول {fa_num(tlevel)} | ✨ {fa_num(team.xp or 0)}/{fa_num(need)}")
-    lines.append(f"👥 اعضا: {fa_num(data['count'])}/{fa_num(teams.team_capacity(team))}")
+        lines.append(f"⭐️ لول {fa_num(tlevel)}　✨ {fa_num(team.xp or 0)} / {fa_num(need)}")
+    lines.append(f"👥 اعضا: {fa_num(data['count'])} / {fa_num(teams.team_capacity(team))}")
     lines.append(f"🏦 خزانه: {money(team.bank)}")
     lines.append("")
-    lines.append("<b>📊 آمار</b>")
-    lines.append(f"🎖 مدال‌ها: {fa_num(data['medals']['all'])}")
-    lines.append(f"⚔️ برد: {fa_num(data['wins'])} | ❌ باخت: {fa_num(data['losses'])}")
-    lines.append(f"🎯 کشتار: {fa_num(team.total_kills)} | 🌾 برداشت: {fa_num(team.total_harvests)}")
-    lines.append(f"📅 امروز: {fa_num(data['medals']['day'])} | این هفته: {fa_num(data['medals']['week'])}")
+
+    lines.append("📊 <b>آمار کارتل</b>")
     lines.append("")
-    lines.append("<b>🏗 ساختمان‌ها</b>")
+    lines.append(f"🎖️ مدال‌ها: {fa_num(data['medals']['all'])}")
+    lines.append(f"🏅 مدال افتخار جنگ: {fa_num(team.war_medals_total)}")
+    lines.append(f"⚔️ جنگ‌های برده: {fa_num(team.war_wins)}")
+    lines.append(f"❌ جنگ‌های باخته: {fa_num(team.war_losses)}")
+    lines.append(f"🎯 کشتار: {fa_num(team.total_kills)}")
+    lines.append(f"🌾 برداشت: {fa_num(team.total_harvests)}")
+    lines.append("")
+    lines.append(f"📅 امروز: {fa_num(data['medals']['day'])}")
+    lines.append(f"📈 این هفته: {fa_num(data['medals']['week'])}")
+    lines.append("")
+
+    lines.append("🏗️ <b>ساختمان‌ها</b>")
+    lines.append("")
     atk_pct = int(config.TEAM_ATK_BONUS_PER_LEVEL * (team.atk_bld or 0) * 100)
     def_pct = int(config.TEAM_DEF_BONUS_PER_LEVEL * (team.def_bld or 0) * 100)
-    lines.append(f"⚔️ حمله: Lv.{fa_num(team.atk_bld or 0)} (+{fa_num(atk_pct)}%)")
-    lines.append(f"🛡 دفاع: Lv.{fa_num(team.def_bld or 0)} (+{fa_num(def_pct)}%)")
+    lines.append(f'⚔️ حمله　Lv.{fa_num(team.atk_bld or 0)}　"+{fa_num(atk_pct)}%"')
+    lines.append(f'🛡️ دفاع　Lv.{fa_num(team.def_bld or 0)}　"+{fa_num(def_pct)}%"')
     lines.append("")
-    lines.append("<b>👥 اعضا</b>")
 
+    lines.append("👥 <b>اعضا</b>")
+    lines.append("")
     by_id = {u.id: u for u in data["users"]}
     pairs = [(m, by_id.get(m.user_id)) for m in data["members"]]
     # اسم‌ها بر اساس لول، از بالا به پایین
@@ -87,10 +104,12 @@ def _team_stats_text(data: dict) -> str:
         shown += 1
     if data["count"] > shown:
         lines.append(f"🔸 و {fa_num(data['count'] - shown)} نفر دیگه")
-
     lines.append("")
-    lines.append("<b>🎯 کوئست‌های امروز</b>")
+
+    lines.append("🎯 <b>کوئست‌های امروز</b>")
+    lines.append("")
     lines.extend(_quest_lines(data["daily"], team.id, team.level or 1))
+
     lines.append("")
     lines.append(f"📅 تأسیس: {created}")
     return "\n".join(lines)
@@ -99,10 +118,8 @@ def _team_stats_text(data: dict) -> str:
 def _quest_lines(daily, team_id: int = 0, team_level: int = 1) -> list[str]:
     lines: list[str] = []
     for q in teams.daily_quests_view(daily, team_id, team_level):
-        if q["done"]:
-            lines.append(f"{q['emoji']} {esc(q['title'])} ✅ انجام شد")
-        else:
-            lines.append(f"{q['emoji']} {esc(q['title'])} ({fa_num(q['progress'])}/{fa_num(q['target'])})")
+        mark = "✅" if q["done"] else ""
+        lines.append(f'{q["emoji"]} {esc(q["title"])}　"{fa_num(q["progress"])} / {fa_num(q["target"])}" {mark}'.rstrip())
     return lines
 
 

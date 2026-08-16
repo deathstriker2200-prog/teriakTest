@@ -135,14 +135,24 @@ async def market_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         n_exp = await mk_svc.sweep_expired(s)
         n_open = await mk_svc.count_listings(s)
         await s.commit()
-    return await respond(update, _home_text(n_open), kb.market_home_kb(n_open))
+    return await respond(update, _home_text(n_open), kb.market_home_kb(n_open, update.effective_user.id))
 
 
 # ───────── روتر دکمه‌ها ─────────
+# راند تست (درخواست کارفرما): مثل بقیه‌ی منوهای چندمرحله‌ای، پنل مارکت قفل به آیدی شروع‌کننده‌ست
+# آخرین تیکه‌ی هر callback_data همیشه owner_id ـه؛ غریبه‌ای که تو گروه روی دکمه‌ی یکی دیگه بزنه هیچ واکنشی نمی‌بینه
 
 async def market_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     seg = query.data.split(":")
+    try:
+        owner_id = int(seg[-1])
+    except (ValueError, IndexError):
+        owner_id = None
+    if owner_id is None or update.effective_user.id != owner_id:
+        await query.answer()  # غریبه هیچ واکنشی نمی‌بینه
+        return
+
     act = seg[1] if len(seg) > 1 else "h"
     a1 = seg[2] if len(seg) > 2 else "0"
     a2 = seg[3] if len(seg) > 3 else "a"
@@ -156,12 +166,12 @@ async def market_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             await mk_svc.sweep_expired(s)
             n_open = await mk_svc.count_listings(s)
             await s.commit()
-        return await respond(update, _home_text(n_open), kb.market_home_kb(n_open))
+        return await respond(update, _home_text(n_open), kb.market_home_kb(n_open, owner_id))
 
     # فیلتر سرچ: انتخاب آیتم
     if act == "f":
         desc = a1 == "e"
-        return await respond(update, "🔍 <b>سرچ آیتم تو مارکت</b>\n\nدنبال کدوم جنسی؟", kb.market_filter_kb(desc))
+        return await respond(update, "🔍 <b>سرچ آیتم تو مارکت</b>\n\nدنبال کدوم جنسی؟", kb.market_filter_kb(desc, owner_id))
 
     # لیست خرید با صفحه و مرتب‌سازی و فیلتر
     if act == "b":
@@ -175,7 +185,7 @@ async def market_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             kb_rows = [{"id": r.id, "label": _item_label(r)} for r in rows]
             text = _buy_list_text(flt, desc, page, pages, n)
             await s.commit()
-        return await respond(update, text, kb.market_buy_kb(kb_rows, page, pages, desc, flt))
+        return await respond(update, text, kb.market_buy_kb(kb_rows, page, pages, desc, flt, owner_id))
 
     # کارت یه آگهی + تایید خرید
     if act == "v":
@@ -187,7 +197,7 @@ async def market_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 return
             text = _view_text(row)
             await s.commit()
-        return await respond(update, text, kb.market_listing_kb(int(a1)))
+        return await respond(update, text, kb.market_listing_kb(int(a1), owner_id))
 
     # اجرای خرید بعد از تایید
     if act == "buy":
@@ -200,7 +210,7 @@ async def market_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             async with session_scope() as s:
                 n_open = await mk_svc.count_listings(s)
                 await s.commit()
-            return await respond(update, _home_text(n_open), kb.market_home_kb(n_open))
+            return await respond(update, _home_text(n_open), kb.market_home_kb(n_open, owner_id))
         if st == "own":
             return await query.answer("😅 آگهی خودته که، خریدن از خودت معنی نداره", show_alert=True)
         if st == "poor":
@@ -241,12 +251,12 @@ async def market_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             f"{it['name']} ×{fa_num(info['qty'])} به انبار {name} اضافه شد\n"
             f"💸 {money(info['price'])} به حساب {esc(info['seller_name'])} واریز شد\n\n"
             "📩 فروشنده هم توی پی‌وی از فروش موفقش باخبر شد 🤝",
-            kb.market_home_kb(0),
+            kb.market_home_kb(0, owner_id),
         )
 
     # شروع فروش: انتخاب جنس
     if act == "s":
-        return await respond(update, SELL_PICK_TEXT, kb.market_sell_kb())
+        return await respond(update, SELL_PICK_TEXT, kb.market_sell_kb(owner_id))
 
     # جنس انتخاب شد، تعداد رو با پیام بعدی می‌پرسیم
     if act == "si":
@@ -290,7 +300,7 @@ async def market_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             f"<b>✅ آگهیت ثبت شد</b>\n\n"
             f"{it['name']} ×{fa_num(qty)} به قیمت {money(price)}\n"
             f"⏳ تا {fa_num(config.MARKET_TTL_HOURS)} ساعت رو میزه، نرفته خودش سالم برمی‌گرده پیشت",
-            kb.market_home_kb(n_open),
+            kb.market_home_kb(n_open, owner_id),
         )
 
     # لغو فاکتور فروش از دکمه
@@ -305,7 +315,7 @@ async def market_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             kb_rows = [{"id": r.id, "label": _item_label(r, with_seller=False)} for r in rows]
             text = _my_listings_text(rows)
             await s.commit()
-        return await respond(update, text, kb.market_my_kb(kb_rows))
+        return await respond(update, text, kb.market_my_kb(kb_rows, owner_id))
 
     # کارت مدیریت یه آگهی خودم
     if act == "myv":
@@ -317,7 +327,7 @@ async def market_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 return await query.answer("❌ این آگهی دیگه مال تو نیس", show_alert=True)
             text = _my_item_text(row)
             await s.commit()
-        return await respond(update, text, kb.market_my_item_kb(int(a1)))
+        return await respond(update, text, kb.market_my_item_kb(int(a1), owner_id))
 
     # لغو آگهی خودم با استرداد جنس
     if act == "myx":
@@ -332,7 +342,7 @@ async def market_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             update,
             f"<b>❌ آگهی لغو شد</b>\n\n"
             f"{it['name']} ×{fa_num(row.qty)} سالم برگشت تو انبارت",
-            kb.market_home_kb(await _n_open()),
+            kb.market_home_kb(await _n_open(), owner_id),
         )
 
 

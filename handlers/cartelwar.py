@@ -94,11 +94,11 @@ def _war_finished_text(data: dict) -> str:
         result_line = f"🏆 کارتل «{esc(winner.name)}» پیروز شد"
         reward_block = (
             f"\n\n{SEP}\n\n"
-            f"🎁 <b>پاداش اعضای تیم برنده</b>\n"
-            f"• {money(50_000)}\n"
-            f"• ۵۰۰ XP کارتل\n"
-            f"• ۳۰۰ XP شخصی\n"
-            f"• یک 🎖 مدال افتخار جنگ\n\n"
+            f"🎁 <b>پاداش اعضای تیم برنده</b> (برای تک‌تک اعضا)\n"
+            f"• {money(config.CARTEL_WAR_WIN_TP)}\n"
+            f"• {fa_num(config.CARTEL_WAR_WIN_TEAM_XP)} تجربه کارتل (یه‌بار، برای لول کارتل)\n"
+            f"• {fa_num(config.CARTEL_WAR_WIN_USER_XP)} تجربه شخصی (برای لول خودت)\n"
+            f"• {fa_num(config.CARTEL_WAR_WIN_MEDALS)} 🎖 مدال افتخار جنگ\n\n"
             f"🏆 کارتل {esc(winner.name)} حالا {fa_num(winner.war_trophies)} پیروزی جنگی داره"
         )
 
@@ -107,8 +107,8 @@ def _war_finished_text(data: dict) -> str:
         f"{result_line}\n\n"
         f"{SEP}\n\n"
         f"📊 <b>نتیجه نهایی</b>\n"
-        f"🏴 {esc(a_name)} → {fa_num(war.attacker_xp)} XP\n"
-        f"🏴 {esc(d_name)} → {fa_num(war.defender_xp)} XP"
+        f"🏴 {esc(a_name)} ← {fa_num(war.attacker_xp)} امتیاز نبرد\n"
+        f"🏴 {esc(d_name)} ← {fa_num(war.defender_xp)} امتیاز نبرد"
         f"{reward_block}"
     )
 
@@ -308,7 +308,7 @@ def _panel_text(data: dict, cooldown: int, note: str) -> str:
         "",
         f"⚔️ {esc(a_team.name)} VS {esc(d_team.name)}",
         "",
-        f"⭐ امتیاز جنگ: {fa_num(war.attacker_xp)} — {fa_num(war.defender_xp)}",
+        f"⭐ امتیاز نبرد: {fa_num(war.attacker_xp)} — {fa_num(war.defender_xp)}",
         f"🎯 حملات موفق: {fa_num(war.attacker_success_hits)} — {fa_num(war.defender_success_hits)}",
         f"⏳ زمان باقی‌مانده: {left}",
         "",
@@ -357,24 +357,24 @@ async def war_board_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     await respond(update, "\n".join(lines), kb.cartel_war_back_kb())
 
 
-# ───────── حمله وار: مثل حمله پی‌وی (پیش‌نمایش هدف قبل از زدن)، بدون سپر/جاسوسی ─────────
-# چون تو وار اصلاً سپر وجود نداره (نه سپر خودی نه سپر حریف)، این جریان ساده‌تر از پی‌وی می‌مونه:
-# فقط «هدف پیدا شد» → یا بزنش، یا یه هدف دیگه بگیر. کول‌دان مستقل وار همون ۵ دقیقه‌ست (config.CARTEL_WAR_ATTACK_COOLDOWN_SECONDS)
+# ───────── حمله وار: مثل حمله پی‌وی (پیش‌نمایش هدف قبل از زدن)، بدون سپر/جاسوسی، بدون تغییر هدف ─────────
+# هر دور یه هدف تصادفی قفل میشه که تا واقعاً بهش حمله نکنی عوض نمیشه (نه با رفرش پنل، نه با دکمه‌ای)
+# نتیجه (برد/باخت) دقیقاً طبق قانون حمله پی‌وی کلاسیک تعیین میشه؛ کول‌دان مستقل وار همون ۵ دقیقه‌ست
 
 def _war_target_view(victim: User) -> tuple[str, object]:
-    """متن و کیبورد پیش‌نمایش هدف وار، دقیقاً همون حس پی‌وی ولی بدون بند سپر/جاسوسی"""
+    """متن و کیبورد پیش‌نمایش هدف قفل‌شده‌ی این دور"""
     name = users.display_name(victim)
     text = (
-        "🎯 <b>هدف پیدا شد</b>\n\n"
+        "🎯 <b>هدف این دورت</b>\n\n"
         f"👤 {esc(name)}\n"
         f"⭐ لول {fa_num(victim.level)}\n\n"
-        "می‌زنیش یا یه هدف دیگه می‌خوای؟"
+        "این هدف قفله؛ تا نزنیش عوض نمیشه — بزن بریم"
     )
     return text, kb.cartel_war_target_kb(victim.id)
 
 
 async def war_attack_go_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """⚔️ حمله: یه عضو تصادفی از کارتل حریف پیدا میشه و قبل از زدن پیش‌نمایشش نشون داده میشه"""
+    """⚔️ حمله: هدف این دور (قفل‌شده یا تازه‌رندوم) پیش‌نمایش داده میشه، تغییرش نمی‌تونی بدی"""
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
         membership = await team_svc.get_membership(s, user.id)
@@ -402,7 +402,7 @@ async def war_attack_go_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             return await respond(update, "🚫 <b>خارج از جنگ</b>\n\nکارتلت تو این جنگ نیست", kb.cartel_war_back_kb())
         _, enemy_team_id = side
 
-        target = await cw_svc.pick_random_target(s, enemy_team_id)
+        target = await cw_svc.assign_or_get_target(s, user.id, war.id, enemy_team_id)
         if target is None:
             await s.commit()
             return await respond(update, "😴 <b>کسی نیست</b>\n\nهیچ عضوی تو کارتل حریف پیدا نشد", kb.cartel_war_back_kb())
@@ -413,41 +413,8 @@ async def war_attack_go_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     await respond(update, text, markup)
 
 
-# ───────── انتخاب دستی هدف از بین اعضای کارتل حریف ─────────
-
-async def war_targets_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """🎯 لیست اعضای کارتل حریف، برای انتخاب دستی هدف حمله"""
-    async with session_scope() as s:
-        user, _ = await users.get_or_create(s, update.effective_user)
-        membership = await team_svc.get_membership(s, user.id)
-        if not membership:
-            await s.commit()
-            return await respond(update, _not_member_text())
-        war = await _active_war_for(s, membership.team_id)
-        if not war:
-            await s.commit()
-            return await respond(update, _no_active_war_text())
-
-        side = cw_svc.my_side_and_enemy(war, membership.team_id)
-        if side is None:
-            await s.commit()
-            return await respond(update, "🚫 <b>خارج از جنگ</b>\n\nکارتلت تو این جنگ نیست")
-        _, enemy_team_id = side
-
-        enemy_team = await s.get(Team, enemy_team_id)
-        members = await cw_svc.list_enemy_members(s, enemy_team_id)
-        members = [m for m in members if m.id != user.id]
-        await s.commit()
-
-    if not members:
-        return await respond(update, "😴 <b>کسی نیست</b>\n\nهیچ عضوی تو کارتل حریف پیدا نشد", kb.cartel_war_back_kb())
-
-    lines = [f"🎯 <b>اعضای کارتل «{esc(enemy_team.name)}»</b>", "", "یکی رو برای حمله انتخاب کن"]
-    await respond(update, "\n".join(lines), kb.cartel_war_targets_kb(members))
-
-
 async def war_hit_target_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """⚔️ حمله به یه عضو مشخص از کارتل حریف — چه از پیش‌نمایش «حمله» چه از لیست انتخاب دستی"""
+    """⚔️ تایید حمله به هدف قفل‌شده‌ی همین دور — فقط همون هدفی که پیش‌نمایش داده شده قابل قبوله"""
     target_id = int(parts(update)[2])
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
@@ -460,12 +427,16 @@ async def war_hit_target_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             await s.commit()
             return await respond(update, _no_active_war_text())
 
-        target = await s.get(User, target_id)
-        if not target:
+        locked = await cw_svc.get_locked_target(s, user.id, war.id)
+        if not locked or locked.id != target_id:
             await s.commit()
-            return await respond(update, "🤷 <b>هدف گم شد</b>\n\nاین بازیکن دیگه پیدا نمیشه", kb.cartel_war_back_kb())
+            return await respond(
+                update,
+                "🤷 <b>هدف عوض شده</b>\n\nاین دیگه هدف این دورت نیست، دوباره «⚔️ حمله» رو بزن",
+                kb.cartel_war_back_kb(),
+            )
 
-        result = await cw_svc.attack(s, user, war, target=target)
+        result = await cw_svc.attack(s, user, war)
         await s.commit()
 
     text = result["message"] if result["ok"] else f"⚠️ <b>نشد</b>\n\n{result['message']}"

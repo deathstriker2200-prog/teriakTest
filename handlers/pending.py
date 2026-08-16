@@ -406,7 +406,7 @@ async def capture(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 "بعد از ثبت، آیتم‌ها از انبارت کم می‌شن و وارد مارکت می‌شن 🛒\n"
                 f"⏳ اگر تا {fa_num(config.MARKET_TTL_HOURS)} ساعت فروش نرن، بدون هیچ مشکلی به انبارت برمی‌گردن\n\n"
                 "آگهی ثبت بشه؟ 👇",
-                reply_markup=kb.market_sell_confirm_kb(item23, qty23, price),
+                reply_markup=kb.market_sell_confirm_kb(item23, qty23, price, update.effective_user.id),
             )
             raise ApplicationHandlerStop()
 
