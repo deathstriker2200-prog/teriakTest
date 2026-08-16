@@ -285,10 +285,11 @@ def _intro_text(a_team: Team, d_team: Team, cooldown: int, note: str) -> str:
         "",
         f"🏴 {esc(a_team.name)} در برابر 🏴 {esc(d_team.name)}",
         "",
-        "کارتلت الان درگیر یه جنگ فعاله، از اینجا می‌تونی حمله کنی یا وضعیت نبرد رو ببینی",
+        "کارتلت در حال حاضر درگیر یک جنگ فعاله",
+        "از اینجا می‌تونی وارد نبرد بشی یا وضعیت جنگ رو ببینی",
     ]
     if cooldown:
-        lines.append(f"\n⏳ کول‌دان تو: {fa_dur(cooldown)}")
+        lines.append(f"\n⏳ کول‌داون حمله: {fa_dur(cooldown)}")
     elif note:
         lines.append(f"\n{note}")
     else:
@@ -298,12 +299,12 @@ def _intro_text(a_team: Team, d_team: Team, cooldown: int, note: str) -> str:
 
 # ───────── آمار جنگ ─────────
 
-def _panel_text(data: dict, cooldown: int, note: str) -> str:
+def _panel_text(data: dict, cooldown: int, note: str, my_medals: int = 0, my_attacks: int = 0) -> str:
     war: CartelWar = data["war"]
     a_team: Team = data["attacker_team"]
     d_team: Team = data["defender_team"]
     left = fa_dur(data["seconds_left"])
-    cd_line = f"⏳ کول‌دان تو: {fa_dur(cooldown)}" if cooldown else "✅ آماده حمله‌ای"
+    cd_line = f"⏳ کول‌داون حمله: {fa_dur(cooldown)}" if cooldown else "✅ آماده حمله‌ای"
     lines = [
         "📊 <b>آمار جنگ</b>",
         "",
@@ -312,6 +313,8 @@ def _panel_text(data: dict, cooldown: int, note: str) -> str:
         f"⭐ امتیاز نبرد: {fa_num(war.attacker_xp)} — {fa_num(war.defender_xp)}",
         f"🎯 حملات موفق: {fa_num(war.attacker_success_hits)} — {fa_num(war.defender_success_hits)}",
         f"⏳ زمان باقی‌مانده: {left}",
+        "",
+        f"🎖 مدال‌های جنگی من: {fa_num(my_medals)} (از {fa_num(my_attacks)} حمله)",
         "",
         cd_line,
     ]
@@ -332,9 +335,11 @@ async def war_stats_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             await s.commit()
             return await respond(update, _no_active_war_text())
         data = await cw_svc.war_panel_data(s, war)
+        my_medals = user.war_medals or 0
+        my_attacks = user.war_attacks or 0
         await s.commit()
 
-    text = _panel_text(data, 0, "")
+    text = _panel_text(data, 0, "", my_medals, my_attacks)
     await respond(update, text, kb.cartel_war_back_kb())
 
 

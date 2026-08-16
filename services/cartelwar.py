@@ -3,18 +3,18 @@
 
 جریان: pending (رهبر هدف پاسخ میده، مهلت CARTEL_WAR_REQUEST_TIMEOUT_SECONDS) → scheduled (پذیرفته، CARTEL_WAR_PREP_SECONDS آماده‌سازی)
        → active (CARTEL_WAR_DURATION_SECONDS، اعضا حمله می‌کنن) → finished (برنده با War XP بیشتر مشخص میشه)
-       (فعلاً هر سه رو ۵ دقیقه گذاشتیم برای تست، تو config.py قابل تغییره)
        رد یا بی‌پاسخی: rejected / expired
 
 قوانین کلیدی (درخواست کارفرما):
 - فقط رهبر (owner) کارتل می‌تونه وار بفرسته یا قبول/رد کنه
 - هر کارتل هر روز حداکثر CARTEL_WAR_DAILY_LIMIT تا وار قبول‌شده/انجام‌شده (pending_war_id قفلش می‌کنه)
-- حمله وار کاملاً جدا از پی‌وی عادیه: بدون سپر | بدون انتقام | بدون زندان | بدون جاسوسی | کولدان شخصی ۵ دقیقه‌ای مستقل
+- پیش‌نیاز ورود به جنگ (هم مهاجم هم مدافع): لول کارتل ≥ CARTEL_WAR_MIN_TEAM_LEVEL و سابقه ≥ CARTEL_WAR_MIN_TEAM_AGE_DAYS روز از تأسیس
+- حمله وار کاملاً جدا از پی‌وی عادیه: بدون سپر | بدون انتقام | بدون زندان | بدون جاسوسی | کولدان شخصی مستقل
 - هدف هر دور تصادفیه و قفله (اسم هر بار ظاهر شد عوض نمیشه)، تا حمله نکنی نمی‌تونی هدف دیگه بگیری؛ دور بعد (بعد کول‌دان) خودکار هدف تازه میاد
 - برد/باخت حمله دقیقاً طبق همون قانون حمله پی‌وی کلاسیکه (pvattack.total_powers/decide_win): قدرت کل رقابتی، رول شانسی فقط تو بازه نزدیک
 - برد: امتیاز نبرد (رنج کوچیک رندوم) میره برای کارتل خودِ مهاجم | باخت: امتیاز نبرد کم‌تر میره برای کارتل مدافع (پاداش دفاع موفق)
 - «امتیاز نبرد» (war.attacker_xp/defender_xp) فقط برای همین وار و تعیین برنده‌ست؛ ربطی به تجربه‌ی لول کارتل (Team.xp) یا تجربه‌ی شخصی بازیکن (User.xp) نداره
-- عضوی که کمتر از CARTEL_WAR_MIN_MEMBERSHIP_HOURS ساعته عضو کارتله نمی‌تونه بجنگه، و اگه وسط وار از کارتل خارج بشه دیگه اجازه حمله نداره
+- عضوی که کمتر از CARTEL_WAR_MIN_MEMBERSHIP_HOURS ساعته عضو کارتله نمی‌تونه بجنگه (چک هر بار قبل از حمله، حتی تو گروه)، و اگه وسط وار از کارتل خارج بشه دیگه اجازه حمله نداره
 - همه ثبت‌ها با لاگ (WarAttackLog) و Unique Constraint کولدان، از شمارش دوبل جلوگیری می‌کنن
 """
 
@@ -41,8 +41,51 @@ WarStatus = (
 
 # ───────── بررسی‌های شروع وار ─────────
 
+def team_war_requirements_met(team: Team) -> bool:
+    """پیش‌نیاز ورود به جنگ (هم مهاجم هم مدافع): لول کارتل و سابقه تأسیس کافی باشه"""
+    if (team.level or 1) < config.CARTEL_WAR_MIN_TEAM_LEVEL:
+        return False
+    if not team.created_at:
+        return False
+    age_days = (now_utc() - team.created_at).total_seconds() / 86400
+    return age_days >= config.CARTEL_WAR_MIN_TEAM_AGE_DAYS
+
+
+def _requirements_block() -> str:
+    return (
+        f"📋 نیازمندی:\n"
+        f"⭐ کارتل سطح {fa_num(config.CARTEL_WAR_MIN_TEAM_LEVEL)}\n"
+        f"⏳ حداقل {fa_num(config.CARTEL_WAR_MIN_TEAM_AGE_DAYS)} روز سابقه فعالیت"
+    )
+
+
+def not_eligible_target_text() -> str:
+    """برای رهبر مهاجمی که می‌خواد به یه کارتل تازه‌کار وار بده"""
+    return (
+        f"🚫 <b>درخواست جنگ ارسال نشد</b>\n\n"
+        f"🏴 این کارتل هنوز تازه‌تأسیسه و شرایط لازم برای شرکت در جنگ رو نداره\n\n"
+        f"{_requirements_block()}\n\n"
+        f"بعد از رسیدن به شرایط لازم، می‌تونید درخواست جنگ ارسال کنید ⚔️"
+    )
+
+
+def not_eligible_own_text() -> str:
+    """برای رهبر کارتل تازه‌کار که خودش می‌خواد وار بفرسته"""
+    return (
+        f"🚫 <b>کارتل تو هنوز تازه‌تأسیسه</b>\n\n"
+        f"برای ورود به جنگ‌های کارتل باید اول قوی‌تر بشی و تجربه بیشتری کسب کنی\n\n"
+        f"📋 نیازمندی ورود به جنگ:\n"
+        f"⭐ کارتل سطح {fa_num(config.CARTEL_WAR_MIN_TEAM_LEVEL)}\n"
+        f"⏳ حداقل {fa_num(config.CARTEL_WAR_MIN_TEAM_AGE_DAYS)} روز سابقه فعالیت\n\n"
+        f"بعد از رسیدن به این شرایط، می‌تونی وارد نبردهای کارتل‌ها بشی ⚔️"
+    )
+
+
 async def can_start_war(session: AsyncSession, attacker_team: Team) -> tuple[bool, str]:
     """رهبر کارتل مهاجم می‌تونه الان وار جدید بفرسته؟"""
+    if not team_war_requirements_met(attacker_team):
+        return False, not_eligible_own_text()
+
     if attacker_team.pending_war_id:
         war = await session.get(CartelWar, attacker_team.pending_war_id)
         logger.warning(
@@ -73,6 +116,9 @@ async def start_war(session: AsyncSession, attacker_user: User, attacker_team: T
     ok, err = await can_start_war(session, attacker_team)
     if not ok:
         return False, err, None
+
+    if not team_war_requirements_met(defender_team):
+        return False, not_eligible_target_text(), None
 
     if defender_team.pending_war_id:
         dwar = await session.get(CartelWar, defender_team.pending_war_id)
@@ -428,20 +474,20 @@ def _attack_result_text(success: bool, target: User, score: int, medals: int, tp
     name = display_name(target)
     if success:
         return (
-            f"🔥 <b>بردی!</b>\n\n"
-            f"🎯 هدف: {name}\n"
-            f"⚔️ حمله‌ت رو دفاعش برد و امتیاز نبرد گرفتی\n"
-            f"⭐ +{fa_num(score)} امتیاز نبرد برای کارتلت\n"
+            f"🔥 <b>حمله موفق بود</b>\n\n"
+            f"🎯 هدف: {name}\n\n"
+            f"🛡️ دفاع حریف جلوی حمله‌ت کم آورد، امتیاز نبرد به کارتلت رسید\n\n"
+            f"⭐ +{fa_num(score)} امتیاز نبرد برای کارتل\n"
             f"🎖 +{fa_num(medals)} مدال جنگ\n"
             f"💰 +{money(tp)}"
         )
     # حمله ناموفق: دفاع هدف قوی‌تر بود، امتیاز نبرد (کم) به کارتل خودِ هدف می‌خوره، نه کارتل مهاجم
     return (
-        f"🛡 <b>باختی</b>\n\n"
-        f"🎯 هدف: {name}\n"
-        f"⚔️ دفاع هدف از حمله‌ت قوی‌تر بود\n"
-        f"⭐ +{fa_num(score)} امتیاز نبرد رفت برای کارتل حریف (دفاع موفقشون)\n"
-        f"🎖 +{fa_num(medals)} مدال جنگ (تلاش)"
+        f"🛡️ <b>حمله ناموفق بود</b>\n\n"
+        f"🎯 هدف: {name}\n\n"
+        f"⚔️ حمله‌ات نتونست سوراخی توی دفاع حریف پیدا کنه\n"
+        f"⭐ +{fa_num(score)} امتیاز نبرد برای کارتل حریف بابت دفاع موفق\n"
+        f"🎖️ +{fa_num(medals)} مدال جنگ بابت تلاش"
     )
 
 
