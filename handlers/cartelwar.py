@@ -17,7 +17,7 @@ from models import CartelWar, Team, User
 from services import cartelwar as cw_svc
 from services import teams as team_svc
 from services import users
-from utils import esc, fa_dur, fa_num, money
+from utils import esc, fa_dur, fa_num, iran_clock_at, money
 
 SEP = "━━━━━━━━━━━━━━"
 
@@ -56,12 +56,12 @@ def _request_received_text(attacker_name: str) -> str:
     )
 
 
-def _prep_text(a_name: str, d_name: str) -> str:
-    prep = fa_dur(config.CARTEL_WAR_PREP_SECONDS)
+def _prep_text(a_name: str, d_name: str, starts_at) -> str:
+    clock = iran_clock_at(starts_at)
     return (
         f"⚔️ <b>نبرد در راه است</b>\n\n"
         f"🏴 {esc(a_name)} VS 🏴 {esc(d_name)}\n\n"
-        f"⏳ جنگ تا {prep} دیگر آغاز می‌شود\n"
+        f"⏳ جنگ ساعت {clock} آغاز می‌شود\n"
         f"🔥 خودتان را برای نبرد آماده کنید"
     )
 
@@ -175,6 +175,7 @@ async def war_accept_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         await cw_svc.accept_war(s, war)
         a_team = await s.get(Team, war.attacker_cartel_id)
         d_team = await s.get(Team, war.defender_cartel_id)
+        starts_at = war.starts_at
         members_a = await team_svc.get_members(s, a_team.id)
         members_d = await team_svc.get_members(s, d_team.id)
         notify_users = []
@@ -184,10 +185,10 @@ async def war_accept_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
                 notify_users.append(mu.telegram_id)
         await s.commit()
 
-    prep = fa_dur(config.CARTEL_WAR_PREP_SECONDS)
-    await respond(update, f"✅ <b>پذیرفتی</b>\n\nجنگ با «{esc(a_team.name)}» تا {prep} دیگه شروع میشه")
+    clock = iran_clock_at(starts_at)
+    await respond(update, f"✅ <b>پذیرفتی</b>\n\nجنگ با «{esc(a_team.name)}» ساعت {clock} شروع میشه")
 
-    prep_text = _prep_text(a_team.name, d_team.name)
+    prep_text = _prep_text(a_team.name, d_team.name, starts_at)
     for tg_id in notify_users:
         try:
             await context.bot.send_message(tg_id, prep_text, parse_mode="HTML")

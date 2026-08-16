@@ -282,7 +282,10 @@ async def _set_locked_target(session: AsyncSession, user_id: int, war_id: int, t
     if row:
         row.assigned_target_id = target_id
     else:
-        session.add(WarAttackCooldown(user_id=user_id, war_id=war_id, last_attack_at=now_utc(), assigned_target_id=target_id))
+        # این ردیف فقط برای قفل کردن هدفه، نه یه حمله واقعی — last_attack_at نباید «الان» باشه
+        # وگرنه باگ می‌شه: با اولین باز کردن پیش‌نمایش (بدون زدن دکمه حمله) کول‌دان کاذب شروع میشه
+        far_past = now_utc() - timedelta(seconds=config.CARTEL_WAR_ATTACK_COOLDOWN_SECONDS + 1)
+        session.add(WarAttackCooldown(user_id=user_id, war_id=war_id, last_attack_at=far_past, assigned_target_id=target_id))
 
 
 async def assign_or_get_target(session: AsyncSession, user_id: int, war_id: int, enemy_team_id: int) -> User | None:

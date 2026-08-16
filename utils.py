@@ -80,6 +80,12 @@ def iran_clock() -> str:
     return f"{n.hour:02d}:{n.minute:02d}"
 
 
+def iran_clock_at(dt_utc: datetime) -> str:
+    """ساعت ایران برای یه لحظه‌ی دلخواه (ورودی UTC بدون tzinfo) — مثل 05:34"""
+    t = dt_utc + _IRAN_OFFSET
+    return f"{t.hour:02d}:{t.minute:02d}"
+
+
 def fa(text) -> str:
     """متن آماده نمایش — اعداد لاتین می‌مونن"""
     return str(text)
