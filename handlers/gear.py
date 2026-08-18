@@ -347,4 +347,3 @@ async def gear_item_upg_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         "انجامش بدیم؟"
     )
     await respond(update, text, kb.gear_item_upg_kb(tab, key))
-

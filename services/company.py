@@ -148,6 +148,12 @@ async def build(session: AsyncSession, user: User, fac_key: str) -> tuple[bool, 
     return True, f"{cfg['emoji']} {cfg['name']} راه اومد"
 
 
+def factory_upgrade_min_level(to_level: int) -> int:
+    """حداقل لول بازیکن برای رسیدن کارخونه به to_level (۲..۱۰)، از جدول کانفیگ (اندیس ۰ = رفتن به لول ۲)"""
+    idx = min(max(to_level - 2, 0), len(config.FACTORY_UPGRADE_MIN_LEVELS) - 1)
+    return config.FACTORY_UPGRADE_MIN_LEVELS[idx]
+
+
 async def upgrade(session: AsyncSession, user: User, fac_key: str) -> tuple[bool, str]:
     cfg = config.FACTORIES[fac_key]
     if company_locked(user) and factory_level(user, fac_key) > 0:
@@ -155,6 +161,9 @@ async def upgrade(session: AsyncSession, user: User, fac_key: str) -> tuple[bool
     cur = factory_level(user, fac_key)
     if cur >= config.FACTORY_MAX_LEVEL:
         return False, "👑 این ساختمان لول مکسه"
+    need_lvl = factory_upgrade_min_level(cur + 1)
+    if (getattr(user, "level", None) or 1) < need_lvl:
+        return False, f"🔒 ارتقا به لول {fa_num(cur + 1)} از لول بازیکن {fa_num(need_lvl)} باز میشه"
     tp, wood = upgrade_cost(fac_key, cur + 1)
     if user.cash < tp:
         return False, "❌ تی‌پوینتت کافی نیس"
@@ -211,4 +220,8 @@ def company_text(user: User, got: dict | None = None) -> str:
             lines.append(f"⚙️ سرعت تولید: {fa_num(per_hour)} {res_name[key]} در ساعت")
             if full:
                 lines.append("انبارش پره، اول برداشت بزن تا تولید دوباره شروع شه")
+            if lv < config.FACTORY_MAX_LEVEL:
+                need_lvl = factory_upgrade_min_level(lv + 1)
+                if (getattr(user, "level", None) or 1) < need_lvl:
+                    lines.append(f"⭕️ ارتقای بعدی از لول بازیکن {fa_num(need_lvl)} باز میشه")
     return "\n".join(lines)

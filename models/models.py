@@ -66,6 +66,9 @@ class User(Base):
     lumber_stock: Mapped[int] = mapped_column(Integer, default=0)     # انبار تولید چوب‌بری، ۱۲ ساعته پر میشه
     ironmill_stock: Mapped[int] = mapped_column(Integer, default=0)   # انبار تولید کارخانه آهن
 
+    # 🧪 آزمایشگاه (راند ۴۳) — لول ۰ یعنی هنوز نساخته، از لول بازیکن ۱۵ باز میشه
+    lab_level: Mapped[int] = mapped_column(Integer, default=0)
+
     # کولدانهای سیستم‌های جهان
     last_search_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     last_casino_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -100,8 +103,10 @@ class User(Base):
     hp: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # بعد شکست تا این زمان بیهوشه، بعدش خودکار با HP فول زنده میشه
     dead_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    # 👑 زره خدایان: یه بار که فعال شد تا واقعاً نمیره دیگه دوباره فعال نمیشه (ضد چرخه بی‌نهایت زنده موندن)
+    # 👑 زره خدایان: یه بار که فعال شد تا واقعاً نمیره دیگه دوباره فعال نمیشه (ستون قدیمی، دیگه استفاده نمیشه ولی برای سازگاری می‌مونه)
     gods_shield_used: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
+    # راند ۴۲ (درخواست کارفرما): شمارشگر جدید — چندبار تو همین زندگی فعال شده، زره‌های لول‌بالا تا ۳ بار نجات میدن
+    gods_shield_charges: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
 
     # کوئست‌های روزانه، تاریخ به‌وقت ایران + JSON پیشرفت و جایزه‌ها
     dq_date: Mapped[str | None] = mapped_column(String(10), nullable=True)
@@ -157,6 +162,9 @@ class User(Base):
     items: Mapped[list["InventoryItem"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     dogs: Mapped[list["Dog"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     seeds: Mapped[list["SeedStock"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    lab_materials: Mapped[list["LabMaterial"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    lab_products: Mapped[list["LabProduct"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    lab_workers: Mapped[list["LabWorker"]] = relationship(back_populates="user", cascade="all, delete-orphan")
 
     def __repr__(self) -> str:
         return f"<User {self.telegram_id} lvl={self.level} cash={self.cash}>"
@@ -224,6 +232,49 @@ class SeedStock(Base):
     count: Mapped[int] = mapped_column(Integer, default=0)
 
     user: Mapped[User] = relationship(back_populates="seeds")
+
+
+class LabMaterial(Base):
+    """🧴 انبار مواد اولیه آزمایشگاه — خرید از شاپ زیادش می‌کنه | مصرف تو تولید کمش می‌کنه (راند ۴۳)"""
+    __tablename__ = "lab_material"
+    __table_args__ = (UniqueConstraint("user_id", "material_key", name="uq_user_lab_material"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    material_key: Mapped[str] = mapped_column(String(32))
+    count: Mapped[int] = mapped_column(Integer, default=0)
+
+    user: Mapped[User] = relationship(back_populates="lab_materials")
+
+
+class LabProduct(Base):
+    """📦 انبار محصولات تولیدشده آزمایشگاه — تا فروخته نشن اینجا می‌مونن (راند ۴۳)"""
+    __tablename__ = "lab_product"
+    __table_args__ = (UniqueConstraint("user_id", "product_key", name="uq_user_lab_product"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    product_key: Mapped[str] = mapped_column(String(32))
+    count: Mapped[int] = mapped_column(Integer, default=0)
+
+    user: Mapped[User] = relationship(back_populates="lab_products")
+
+
+class LabWorker(Base):
+    """👷 اسلات کارگر آزمایشگاه — یه ردیف به ازای هر کارگر استخدام‌شده
+    busy_until خالیه یعنی کارگر آزاده | پر یعنی داره رو product_key کار می‌کنه و تا اون لحظه طول می‌کشه (راند ۴۳)
+    تولید کاملاً تو دیتابیس زمان‌بندی میشه، به باز بودن صفحه یا آنلاین بودن کاربر ربطی نداره"""
+    __tablename__ = "lab_worker"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    worker_key: Mapped[str] = mapped_column(String(32))
+    hired_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
+    busy_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    job_product: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    job_output: Mapped[int] = mapped_column(Integer, default=0)   # خروجی همین یه بار تولید (با ضریب کارگر حساب‌شده، موقع شروع کار قفل میشه)
+
+    user: Mapped[User] = relationship(back_populates="lab_workers")
 
 
 class Dog(Base):
@@ -686,4 +737,3 @@ class WarAttackLog(Base):
     xp_gained: Mapped[int] = mapped_column(Integer, default=0)
     medals_gained: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc, index=True)
-

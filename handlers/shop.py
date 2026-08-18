@@ -9,7 +9,7 @@ from database import session_scope
 from handlers import dogs as dogs_h
 from handlers.common import chat_id_of, parts, respond
 from keyboards import keyboards as kb
-from services import combat, dogs as dog_svc, economy, farming, resources as res_svc, shop_svc, users
+from services import combat, dogs as dog_svc, economy, farming, lab as lab_svc, resources as res_svc, shop_svc, users
 from utils import esc, fa_num, money, money_tp
 
 SEP = "━━━━━━━━━━━━━━"
@@ -28,6 +28,12 @@ def _item_head(prefix: str, name: str) -> str:
 def _status_line(user) -> str:
     """خط سطح و موجودی زیر سر تیتر همه بخش‌های فروشگاه"""
     return f"🌟 سطح: {fa_num(user.level)} | 💵 موجودی: {money_tp(user.cash)}"
+
+
+def _status_line_parts(user) -> str:
+    """خط سطح و موجودی + موجودی قطعه افسانه‌ای، فقط بخش‌های ویژه (سلاح/زره ویژه) این رو بالا نشون میدن"""
+    have = int(getattr(user, "legendary_parts", 0) or 0)
+    return f"{_status_line(user)}\n🧩 قطعه افسانه‌ای: {fa_num(have)}"
 
 
 # ───────── متن‌ها ─────────
@@ -67,9 +73,12 @@ def _weap_home_text(user) -> str:
 
 
 def _wsec_text(user, sec: str) -> str:
-    """باکس هر سلاح یه دسته: نام | دمیج | آهن | قیمت | وضعیت (راند ۴۱: قالب زره ویژه هم همینه)"""
+    """باکس هر سلاح یه دسته: نام | دمیج | آهن | قیمت | وضعیت (راند ۴۱: قالب زره ویژه هم همینه)
+    راند ۴۲ (درخواست کارفرما): بخش ویژه، موجودی قطعه افسانه‌ای فقط یه‌بار بالا میاد، نه هر آیتم"""
     sc = config.WEAPON_SECTIONS.get(sec) or config.WEAPON_SECTIONS["cold"]
-    lines = [f"<b>{sc['emoji']} {sc['name']}</b>", _status_line(user), "", "برای خرید روی آیتم موردنظر بزن", ""]
+    has_parts = any(config.SPECIAL_WEAPON_PARTS.get(k, 0) for k, w in config.WEAPONS.items() if w.get("sec", "cold") == sec)
+    head_status = _status_line_parts(user) if has_parts else _status_line(user)
+    lines = [f"<b>{sc['emoji']} {sc['name']}</b>", head_status, "", "برای خرید روی آیتم موردنظر بزن", ""]
     for key, w in config.WEAPONS.items():
         if w.get("sec", "cold") != sec:
             continue
@@ -87,9 +96,7 @@ def _wsec_text(user, sec: str) -> str:
         cost23 = f"🪙 هزینه: ⛏️ {fa_num(w['iron'])} آهن + 💰 {money(w['price'])}"
         parts23 = config.SPECIAL_WEAPON_PARTS.get(key, 0)
         if parts23:
-            have23 = int(getattr(user, "legendary_parts", 0) or 0)
-            mark23 = "✅" if have23 >= parts23 else "❌"
-            cost23 += f" + 🧩 {fa_num(parts23)} قطعه افسانه‌ای ({mark23} تو {fa_num(have23)} تا داری)"
+            cost23 += f" + 🧩 {fa_num(parts23)} قطعه افسانه‌ای"
         lines.append(cost23)
         if locked:
             lines.append(f"⭕️ بازگشایی در سطح {fa_num(w['min_level'])}")
@@ -118,9 +125,12 @@ def _arm_home_text(user) -> str:
 
 
 def _arm_text(user, sec: str) -> str:
-    """صفحه یه دسته زره: نام | دفاع | قابلیت ویژه | قیمت | وضعیت (راند ۱۹، قالب راند ۴۱)"""
+    """صفحه یه دسته زره: نام | دفاع | قابلیت ویژه | قیمت | وضعیت (راند ۱۹، قالب راند ۴۱)
+    راند ۴۲ (درخواست کارفرما): بخش ویژه، موجودی قطعه افسانه‌ای فقط یه‌بار بالا میاد، نه هر آیتم"""
     sc = config.ARMOR_SECTIONS.get(sec) or config.ARMOR_SECTIONS["normal"]
-    lines = [f"<b>{sc['emoji']} {sc['name']}</b>", _status_line(user), "", "برای خرید روی آیتم موردنظر بزن", ""]
+    has_parts = any(config.SPECIAL_ARMOR_PARTS.get(k, 0) for k, a in config.ARMORS.items() if a.get("sec", "normal") == sec)
+    head_status = _status_line_parts(user) if has_parts else _status_line(user)
+    lines = [f"<b>{sc['emoji']} {sc['name']}</b>", head_status, "", "برای خرید روی آیتم موردنظر بزن", ""]
     for key, a in config.ARMORS.items():
         if a.get("sec", "normal") != sec:
             continue
@@ -140,9 +150,7 @@ def _arm_text(user, sec: str) -> str:
         cost_arm = f"💰 هزینه: {money(a['price'])}"
         parts_arm = config.SPECIAL_ARMOR_PARTS.get(key, 0)
         if parts_arm:
-            have_arm = int(getattr(user, "legendary_parts", 0) or 0)
-            mark_arm = "✅" if have_arm >= parts_arm else "❌"
-            cost_arm += f" + 🧩 {fa_num(parts_arm)} قطعه افسانه‌ای ({mark_arm} تو {fa_num(have_arm)} تا داری)"
+            cost_arm += f" + 🧩 {fa_num(parts_arm)} قطعه افسانه‌ای"
         lines.append(cost_arm)
         if locked:
             lines.append(f"⭕️ بازگشایی در سطح {fa_num(a['min_level'])}")
@@ -211,6 +219,28 @@ def _res_text(user) -> str:
     ])
 
 
+async def _labmat_text(session, user) -> str:
+    """🧴 مواد اولیه آزمایشگاه، خرید دونه‌ای مثل چوب/آهن (راند ۴۳)"""
+    from services import lab as lab_svc
+    stock = await lab_svc.get_materials(session, user.id)
+    lines = [
+        "<b>🛒 فروشگاه</b>",
+        _status_line(user),
+        "",
+        "🧴 مواد اولیه آزمایشگاه",
+        "",
+    ]
+    for key, info in config.LAB_MATERIALS.items():
+        have = stock.get(key, 0)
+        lines.append(f"{info['emoji']} {info['name']} {fa_num(have)} از {fa_num(config.LAB_MATERIAL_CAP)}")
+    lines += [
+        "",
+        "این مواد فقط تو آزمایشگاه مصرف میشن، هیچ فرمول یا دستور واقعی‌ای پشتشون نیست",
+        "برای خرید روی جنس موردنظر بزن و بگو چندتا می‌خوای",
+    ]
+    return "\n".join(lines)
+
+
 def _gear_up_text(kind: str, owned_lvls: dict[str, int], user) -> str:
     catalog = economy.gear_catalog(kind)
     emoji = "🔫" if kind == "weap" else "🛡"
@@ -271,6 +301,8 @@ async def _section_text(session, user, kind: str) -> str:
         return _arti_text(user)
     if kind == "res":
         return _res_text(user)
+    if kind == "labmat":
+        return await _labmat_text(session, user)
     if kind in ("wup", "aup"):
         gkind = "weap" if kind == "wup" else "arm"
         lvls = {
@@ -328,6 +360,8 @@ async def render_section(update: Update, kind: str, alert: str | None = None) ->
             markup = kb.shop_food_kb()
         elif kind == "res":
             markup = kb.shop_res_kb()
+        elif kind == "labmat":
+            markup = kb.shop_labmat_kb()
         elif kind == "arti":
             markup = kb.shop_arti_kb(user, item_keys)
         elif kind in ("wup", "aup"):
@@ -370,6 +404,24 @@ async def buy_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         async with session_scope() as s:
             user, _ = await users.get_or_create(s, update.effective_user)
             users.set_pending(user, "resbuy", key, chat_id_of(update))
+            await s.commit()
+        text = (
+            f"<b>🛒 خرید {info['emoji']} {info['name']}</b>\n\n"
+            f"چندتا {info['name']} میخوای بخری؟\n"
+            "عددشو همینجا بنویس و بفرست، مثلا: 24\n"
+            f"💸 قیمت هر دونه {money_tp(info['unit'])}\n\n"
+            "❌ اگر هم پشیمون شدی بنویس «لغو»"
+        )
+        return await respond(update, text)
+
+    # خرید دونه‌ای مواد اولیه آزمایشگاه، دقیقاً مثل چوب/آهن (راند ۴۳)
+    if kind == "labmat":
+        info = config.LAB_MATERIALS.get(key)
+        if not info:
+            return await shop_cb(update, context)
+        async with session_scope() as s:
+            user, _ = await users.get_or_create(s, update.effective_user)
+            users.set_pending(user, "labmatbuy", key, chat_id_of(update))
             await s.commit()
         text = (
             f"<b>🛒 خرید {info['emoji']} {info['name']}</b>\n\n"
@@ -490,6 +542,32 @@ async def buyres_execute(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 async def buyres_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     return await render_section(update, "res", alert="❌ خرید لغو شد")
+
+
+# ───────── تایید فاکتور خرید دونه‌ای مواد اولیه آزمایشگاه (cf:shoplabmat | cl:shoplabmat) راند ۴۳ ─────────
+
+async def buylabmat_execute(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    _, _, mat_key, qty_s = parts(update)
+    info = config.LAB_MATERIALS.get(mat_key)
+    if not info:
+        return await shop_cb(update, context)
+    qty = int(qty_s)
+    async with session_scope() as s:
+        user, _ = await users.get_or_create(s, update.effective_user)
+        ok, out = await lab_svc.purchase_material(s, user, mat_key, qty)
+        stock = await lab_svc.get_materials(s, user.id)
+        await s.commit()
+    if not ok:
+        return await respond(update, f"<b>{esc(out)}</b>", kb.shop_labmat_kb())
+    text = (
+        f"<b>{esc(out)}</b>\n\n"
+        f"{info['emoji']} موجودی انبار آزمایشگاه: {fa_num(stock.get(mat_key, 0))} از {fa_num(config.LAB_MATERIAL_CAP)}"
+    )
+    await respond(update, text, kb.shop_labmat_kb())
+
+
+async def buylabmat_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    return await render_section(update, "labmat", alert="❌ خرید لغو شد")
 
 
 # ───────── تایید فاکتور خرید بذر با تعداد (cf:shopseed | cl:shopseed) ─────────

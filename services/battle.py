@@ -333,11 +333,14 @@ async def execute_hit(session: AsyncSession, attacker: User, target: User) -> di
             armor_lines.append(f"{aname19} داشت، {fa_num(back19)} دمیج به خودت برگشت")
 
     # 👑 زره خدایان (راند ۲۳، درخواست کارفرما): ضربه‌ای که خون رو صفر می‌کنه، زره فعال میشه و نصف خون برمی‌گرده
-    # یه بار که فعال شد تا واقعاً نمیره دیگه دوباره فعال نمیشه، وگرنه با شانس هر ضربه عملاً بی‌مرگ میشه
-    if target.hp <= 0 and aabil and aabil["kind"] == "godshield" and not target.gods_shield_used:
-        target.hp = max(1, round(config.GODS_REVIVE_PCT * hp_max))
-        target.gods_shield_used = True
-        armor_lines.append(f"برکت {aname19} فعال شد و خونش به {fa_num(target.hp)} برگشت")
+    # راند ۴۲: سقف فعال‌شدن با لول ارتقای زره بالا میره (تا لول ۵ سه بار)، بعد سقف دیگه فعال نمیشه
+    if target.hp <= 0 and aabil and aabil["kind"] == "godshield":
+        gods_lvl19 = t_levels19.get(akey19, 1) or 1
+        gods_cap19 = config.GODS_SHIELD_CHARGES_BY_LEVEL.get(gods_lvl19, 1)
+        if (target.gods_shield_charges or 0) < gods_cap19:
+            target.hp = max(1, round(config.GODS_REVIVE_PCT * hp_max))
+            target.gods_shield_charges = (target.gods_shield_charges or 0) + 1
+            armor_lines.append(f"برکت {aname19} فعال شد و خونش به {fa_num(target.hp)} برگشت")
 
     # 💀 سم: برای ضربه‌های بعدی حریف ضعیف‌تر میشه
     if kind == "poison" and random.random() < config.POISON_CHANCE * growth:
@@ -374,7 +377,7 @@ async def execute_hit(session: AsyncSession, attacker: User, target: User) -> di
     killed = target.hp <= 0
     if killed:
         target.dead_until = now_utc() + timedelta(seconds=config.BATTLE_DEAD_SECONDS)
-        target.gods_shield_used = False  # واقعاً مرد، دفعه بعد که زنده شد زره خدایان دوباره می‌تونه فعال بشه
+        target.gods_shield_charges = 0  # واقعاً مرد، دفعه بعد که زنده شد شمارشگر زره خدایان از نو شروع میشه
         attacker.wins += 1
         target.losses += 1
         from services import teams as team_svc

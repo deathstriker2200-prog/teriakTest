@@ -239,4 +239,3 @@ async def bribe_cancel_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         return
     await update.callback_query.answer("❌ لغو شد")
     await respond(update, "❌ رشوه رو لغو کردی، پس همون تو زندان می‌مونی")
-

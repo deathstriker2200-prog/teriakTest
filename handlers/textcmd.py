@@ -16,6 +16,7 @@ from database import session_scope
 from handlers.common import chat_id_of, parts, respond, strip_bot_cmd
 from handlers import dogs as dogs_h
 from handlers import farm as farm_h
+from handlers import lab as lab_h
 from handlers import profile as profile_h
 from handlers import shop as shop_h
 from keyboards import keyboards as kb
@@ -36,6 +37,10 @@ def _match_arg(update: Update) -> str:
 
 async def shop_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await shop_h.shop_cb(update, context)
+
+
+async def lab_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await lab_h.lab_cb(update, context)
 
 
 async def profile_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

@@ -25,6 +25,14 @@ team:kick | tkick:<member_id> | tkcl → جریان اخراج عضو (سرچ �
 tmcf:<leave|disband>:<tg_id> → تایید ترک/انحلال کارتل (فقط خودش)
 dog:card:<dog_id>           → کارت آمار سگ (آمار [اسم])
 noop:<context>              → دکمه‌های اطلاعاتی
+menu:lab | menu:market      → 🧪 آزمایشگاه | 🛒 مارکت (راند ۴۳)
+lab:build                   → ساخت اولیه آزمایشگاه (لول ۰→۱)
+lab:up                      → cf:lab:up   ارتقای لول آزمایشگاه
+lab:workers                 → صفحه کارگرها | lab:hire:<key> → cf:lab:hire:<key>
+lab:fire:<worker_id>        → اخراج کارگر آزاد
+lab:prod                    → صفحه محصولات | lab:start:<product_key> → انتخاب کارگر آزاد → cf:lab:start:<worker_id>:<product_key>
+lab:collect                 → تسویه‌ی همه‌ی تولیدهای تموم‌شده
+lab:wh                      → انبار محصولات | lab:sell:<product_key> → cf:lab:sell:<product_key>:<qty>
 """
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
@@ -68,6 +76,8 @@ def main_menu_kb() -> InlineKeyboardMarkup:
         [_btn("🐕 سگ‌ها", "menu:dogs", PRIMARY),
          _btn("🎯 مأموریت", "menu:dquests", PRIMARY),
          _btn("🏢 شرکت", "menu:company", PRIMARY)],
+        [_btn("🧪 آزمایشگاه", "menu:lab", PRIMARY),
+         _btn("🛒 مارکت", "menu:market", PRIMARY)],
         [_btn("🏆 رتبه‌بندی", "menu:rank", PRIMARY),
          _btn("📖 راهنما", "help:menu", PRIMARY),
          _btn("🚩 کارتل من", "menu:team", PRIMARY)],
@@ -341,7 +351,8 @@ def shop_sections_kb() -> InlineKeyboardMarkup:
          _btn("🎒 منابع", "shop:sec:res", PRIMARY)],
         [_btn("🌱 بذرها", "shop:sec:seed", PRIMARY),
          _btn("🐕 سگ‌ها", "shop:sec:dog", PRIMARY)],
-        [_btn("🍖 غذای سگ", "shop:sec:food", PRIMARY)],
+        [_btn("🍖 غذای سگ", "shop:sec:food", PRIMARY),
+         _btn("🧴 مواد اولیه آزمایشگاه", "shop:sec:labmat", PRIMARY)],
         [_btn("🏠 منوی اصلی", "menu:home", PRIMARY)],
     ])
 
@@ -353,6 +364,18 @@ def shop_res_kb() -> InlineKeyboardMarkup:
         rows.append([_btn(
             f"{r['emoji']} {r['name']} | دونه {money_tp(r['unit'])}",
             f"shop:buy:res:{key}", SUCCESS,
+        )])
+    rows.append([_btn("🔙 بخش‌های شاپ", "menu:shop", PRIMARY)])
+    return InlineKeyboardMarkup(rows)
+
+
+def shop_labmat_kb() -> InlineKeyboardMarkup:
+    """بخش مواد اولیه آزمایشگاه، خرید دونه‌ای مثل چوب/آهن (راند ۴۳)"""
+    rows = []
+    for key, r in config.LAB_MATERIALS.items():
+        rows.append([_btn(
+            f"{r['emoji']} {r['name']} | دونه {money_tp(r['unit'])}",
+            f"shop:buy:labmat:{key}", SUCCESS,
         )])
     rows.append([_btn("🔙 بخش‌های شاپ", "menu:shop", PRIMARY)])
     return InlineKeyboardMarkup(rows)
@@ -1027,6 +1050,110 @@ def company_confirm_kb(action: str, key: str) -> InlineKeyboardMarkup:
     ]])
 
 
+# ───────── 🧪 آزمایشگاه (راند ۴۳) ─────────
+
+def lab_home_kb(user: User) -> InlineKeyboardMarkup:
+    from services import lab as lab_svc
+    rows: list[list[InlineKeyboardButton]] = []
+    if not lab_svc.lab_active(user):
+        if not lab_svc.lab_locked(user):
+            rows.append([_btn("🧪 ساخت آزمایشگاه", "lab:build", SUCCESS)])
+    else:
+        rows.append([
+            _btn("🧪 تولید محصول", "lab:prod", PRIMARY),
+            _btn("👷 کارگران", "lab:workers", PRIMARY),
+        ])
+        rows.append([
+            _btn("📦 انبار محصولات", "lab:wh", PRIMARY),
+        ])
+        rows.append([_btn("📥 تحویل تولیدهای آماده", "lab:collect", SUCCESS)])
+        if lab_svc.lab_level(user) >= config.LAB_MAX_LEVEL:
+            rows.append([_btn("👑 آزمایشگاه | لول مکس", "noop:maxlab")])
+        else:
+            need_lvl = lab_svc.lab_upgrade_min_level(lab_svc.lab_level(user) + 1)
+            if (getattr(user, "level", None) or 1) < need_lvl:
+                rows.append([_btn(f"🔒 ارتقا | سطح {fa_num(need_lvl)} می‌خواد", "noop:lablock", DANGER)])
+            else:
+                rows.append([_btn("⬆️ ارتقای آزمایشگاه", "lab:up", SUCCESS)])
+    rows.append([_btn("🏠 منوی اصلی", "menu:home", PRIMARY)])
+    return InlineKeyboardMarkup(rows)
+
+
+def lab_confirm_kb(action: str, key: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([[
+        _btn("✅ تایید", f"cf:lab:{action}:{key}", SUCCESS),
+        _btn("❌ لغو", f"cl:lab:{action}:{key}", DANGER),
+    ]])
+
+
+def lab_workers_kb(user: User, workers: list) -> InlineKeyboardMarkup:
+    """دکمه استخدام هر نوع کارگر + اخراج کارگرهای آزاد فعلی"""
+    from services import lab as lab_svc
+    rows: list[list[InlineKeyboardButton]] = []
+    free_workers = [w for w in workers if not w.busy_until]
+    if free_workers:
+        for w in free_workers:
+            cfg = config.LAB_WORKERS[w.worker_key]
+            rows.append([_btn(f"❌ اخراج {cfg['emoji']} {cfg['name']}", f"lab:fire:{w.id}", DANGER)])
+    if len(workers) < lab_svc.worker_slots(user):
+        for key in config.LAB_WORKER_ORDER:
+            cfg = config.LAB_WORKERS[key]
+            locked = (getattr(user, "level", None) or 1) < cfg["min_level"]
+            if locked:
+                rows.append([_btn(f"🔒 {cfg['name']} | سطح {fa_num(cfg['min_level'])}", "noop:lablock", DANGER)])
+            else:
+                rows.append([_btn(f"➕ استخدام {cfg['emoji']} {cfg['name']}", f"lab:hire:{key}", SUCCESS)])
+    rows.append([_btn("🔙 بازگشت", "menu:lab", PRIMARY)])
+    return InlineKeyboardMarkup(rows)
+
+
+def lab_products_kb(user: User) -> InlineKeyboardMarkup:
+    from services import lab as lab_svc
+    rows: list[list[InlineKeyboardButton]] = []
+    for key in config.LAB_PRODUCT_ORDER:
+        cfg = config.LAB_PRODUCTS[key]
+        if lab_svc.product_locked(user, key):
+            rows.append([_btn(f"🔒 {cfg['name']} | لول آزمایشگاه {fa_num(cfg['unlock_lab_level'])}", "noop:lablock", DANGER)])
+        else:
+            rows.append([_btn(f"{cfg['emoji']} {cfg['name']}", f"lab:start:{key}", SUCCESS)])
+    rows.append([_btn("🔙 بازگشت", "menu:lab", PRIMARY)])
+    return InlineKeyboardMarkup(rows)
+
+
+def lab_pick_worker_kb(product_key: str, workers: list) -> InlineKeyboardMarkup:
+    """انتخاب کارگر آزاد برای شروع تولید یه محصول خاص"""
+    rows: list[list[InlineKeyboardButton]] = []
+    free_workers = [w for w in workers if not w.busy_until]
+    if not free_workers:
+        rows.append([_btn("👷 تمام کارگران در حال فعالیت هستند", "noop:labbusy", DANGER)])
+    for w in free_workers:
+        cfg = config.LAB_WORKERS[w.worker_key]
+        rows.append([_btn(f"{cfg['emoji']} {cfg['name']}", f"cf:lab:start:{w.id}:{product_key}", SUCCESS)])
+    rows.append([_btn("❌ لغو", "lab:prod", DANGER)])
+    return InlineKeyboardMarkup(rows)
+
+
+def lab_warehouse_kb(user: User, stock: dict) -> InlineKeyboardMarkup:
+    from services import lab as lab_svc
+    rows: list[list[InlineKeyboardButton]] = []
+    for key in config.LAB_PRODUCT_ORDER:
+        if lab_svc.product_locked(user, key):
+            continue
+        qty = stock.get(key, 0)
+        if qty > 0:
+            cfg = config.LAB_PRODUCTS[key]
+            rows.append([_btn(f"💰 فروش همه {cfg['emoji']} {cfg['name']} ({fa_num(qty)})", f"lab:sell:{key}:{qty}", SUCCESS)])
+    rows.append([_btn("🔙 بازگشت", "menu:lab", PRIMARY)])
+    return InlineKeyboardMarkup(rows)
+
+
+def lab_sell_confirm_kb(product_key: str, qty: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([[
+        _btn("✅ تایید فروش", f"cf:lab:sell:{product_key}:{qty}", SUCCESS),
+        _btn("❌ لغو", "cl:lab:sell", DANGER),
+    ]])
+
+
 def shelter_kb(user: User, caravan_on: bool = False) -> InlineKeyboardMarkup:
     """کیبورد انبار با دسته‌بندی‌ها: محصولات | منابع | آیتم‌ها + کاروان قاچاق"""
     from services.world import shelter_price, shelter_upgrade_min_level
@@ -1158,6 +1285,14 @@ def buyres_confirm_kb(res: str, qty: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([[
         _btn("✅ تایید خرید", f"cf:shopres:{res}:{qty}", SUCCESS),
         _btn("❌ لغو", "cl:shopres", DANGER),
+    ]])
+
+
+def buylabmat_confirm_kb(mat: str, qty: int) -> InlineKeyboardMarkup:
+    """فاکتور خرید دونه‌ای ماده اولیه آزمایشگاه، تایید یا لغو (راند ۴۳)"""
+    return InlineKeyboardMarkup([[
+        _btn("✅ تایید خرید", f"cf:shoplabmat:{mat}:{qty}", SUCCESS),
+        _btn("❌ لغو", "cl:shoplabmat", DANGER),
     ]])
 
 

@@ -27,6 +27,7 @@ from services import (  # noqa: E402
     dogs as dog_svc,
     economy,
     farming,
+    lab as lab_svc,
     seen as seen_svc,
     shop_svc,
     teams as team_svc,
@@ -182,11 +183,11 @@ async def main() -> None:
     check("همه سلاح‌ها آهن خرید دارن", all(w.get("iron", 0) > 0 for w in config.WEAPONS.values()))
 
     # ═══ منحنی تجربه ═══
-    needs = [economy.xp_need(l) for l in range(1, 21)]
+    needs = [economy.xp_need(l) for l in range(1, config.MAX_LEVEL + 1)]
     check("منحنی xp صعودیه", needs == sorted(needs), str(needs[:6]))
     diffs = [b - a for a, b in zip(needs, needs[1:])]
     check("سختی تدریجی زیاد میشه (محدب)", diffs == sorted(diffs), str(diffs[:6]))
-    check("لول‌های اول سریعه", economy.xp_need(1) <= 60 and economy.xp_need(2) <= 180, f"1={economy.xp_need(1)} 2={economy.xp_need(2)}")
+    check("لول‌های اول سریعه", economy.xp_need(1) <= 100 and economy.xp_need(2) <= 300, f"1={economy.xp_need(1)} 2={economy.xp_need(2)}")
 
     # ═══ اقتصاد ═══
     prices = [economy.plot_price(i) for i in range(config.MAX_PLOTS)]
@@ -540,14 +541,17 @@ async def main() -> None:
         check("بونس گرگ اعمال میشه ولی سقف پله حفظه",
               meta_cap["bonus"] > 0 and st_cap <= int(10000 * 0.04), str(st_cap))
 
-        # ── HP: شروع ۲۰۰، هر لول +۲۰، لول‌های ۱۰ و ۲۰ مایلستون +۳۰، لول ۲۰ → ۶۰۰ ──
+        # ── HP: شروع ۲۰۰، هر لول +۲۰ تا لول ۲۰ (لول‌های ۱۰ و ۲۰ مایلستون +۳۰)، بعدش لول ۲۱..۳۰ نزولی تا ۱۰۰۰ (راند ۴۳) ──
         check("لول 1 با 200 HP شروع می‌کنه", battle_svc.max_hp(1) == 200)
-        check("هر لول 20 HP بیشتر (لول‌های 10 و 20 +30) و لول 20 مکس 600ه",
+        check("هر لول 20 HP بیشتر تا لول 20 (لول‌های 10 و 20 +30) و لول 20 → 600",
               battle_svc.max_hp(20) == 600 and battle_svc.max_hp(10) == 390
               and all(battle_svc.max_hp(i) - battle_svc.max_hp(i - 1) == (30 if i in (10, 20) else 20)
                       for i in range(2, 21)))
-        check("جدول HP تو کانفیگ ۲۰ رده داره", len(config.HP_TABLE) == 20)
-        check("سقف لول بازی ۲۰ه", config.MAX_LEVEL == 20)
+        check("لول ۲۱ تا ۳۰ نزولیه و لول ۳۰ مکس ۱۰۰۰ه",
+              battle_svc.max_hp(30) == 1000
+              and all(battle_svc.max_hp(i) > battle_svc.max_hp(i - 1) for i in range(21, 31)))
+        check("جدول HP تو کانفیگ ۳۰ رده داره", len(config.HP_TABLE) == 30)
+        check("سقف لول بازی ۳۰ه", config.MAX_LEVEL == 30)
 
         # ── دمیج نبرد HP: فرمول (حمله - دفاع) ÷ 2 با واریانس ۳۰٪ (راند ۱۹ هر دفاع ۱ کاهش، درخواست کارفرما) ──
         random.seed(7)
@@ -1575,15 +1579,15 @@ async def main() -> None:
           bank_svc.bank_capacity(1) == config.BANK_CAPS[0]
           and bank_svc.bank_capacity(config.BANK_MAX_LEVEL) == config.BANK_CAPS[-1]
           and bank_svc.bank_capacity(3) > bank_svc.bank_capacity(1))
-    check("ظرفیت بانک دقیقاً جدول ۲۰هزار تا ۱۰ میلیون (راند ۱۲)",
+    check("ظرفیت بانک دقیقاً جدول ۵۰هزار تا ۲۵ میلیون (راند ۴۳)",
           [bank_svc.bank_capacity(i) for i in range(1, 12)]
-          == [20000, 50000, 100000, 200000, 500000, 1000000, 2000000, 4000000, 6000000, 8000000, 10000000])
-    check("هزینه ارتقای بانک از جدول میاد و به ۱ میلیون ختم میشه",
+          == [50000, 125000, 250000, 500000, 1250000, 2500000, 5000000, 10000000, 15000000, 20000000, 25000000])
+    check("هزینه ارتقای بانک از جدول میاد و به ۲٫۵ میلیون ختم میشه",
           [bank_svc.bank_upgrade_price(i) for i in range(1, 11)]
-          == [25000, 50000, 100000, 200000, 350000, 500000, 650000, 800000, 900000, 1000000])
-    check("گیت لول داشتن هر لول بانک (سیستم اولیه: آپگریدها تو لول زوج)",
+          == [62000, 125000, 250000, 500000, 875000, 1250000, 1625000, 2000000, 2250000, 2500000])
+    check("گیت لول داشتن هر لول بانک (سیستم فشرده تا لول بازیکن ۱۵)",
           [bank_svc.bank_min_level(i) for i in range(1, 12)] == config.BANK_MIN_LEVELS
-          and bank_svc.bank_min_level(2) == 2 and bank_svc.bank_min_level(5) == 8 and bank_svc.bank_min_level(11) == 20)
+          and bank_svc.bank_min_level(2) == 2 and bank_svc.bank_min_level(5) == 6 and bank_svc.bank_min_level(11) == 15)
 
     async with session_scope() as s:
         b, _ = await users.get_or_create(s, tg(7711, "bnk", "بانکدار"))
@@ -1801,7 +1805,7 @@ async def main() -> None:
     check("کانفیگ نبرد HP",
           config.BATTLE_COOLDOWN_SECONDS == 30 and config.BATTLE_DMG_VARIANCE == 0.30
           and len(config.BATTLE_STEAL_TIERS) == 5 and config.BATTLE_DEAD_SECONDS == 1800
-          and config.MAX_LEVEL == 20 and config.HP_TABLE[0] == 200 and config.HP_TABLE[-1] == 600)
+          and config.MAX_LEVEL == 30 and config.HP_TABLE[0] == 200 and config.HP_TABLE[-1] == 1000)
     check("۱۰ کوئست روزانه با عنوان و عدد هدف (راند ۱۵ چهار تای جدید اضافه شد)",
           set(config.DAILY_QUESTS) == {"attack", "harvest", "mine", "plant", "search", "feed",
                                        "drink", "sellres", "caravan", "shipment"}
@@ -4578,11 +4582,11 @@ async def main() -> None:
     # ── فلوی کامل پی‌وی: دستور → لیست → تایید → اجرا → مصونیت ──
     async with session_scope() as s:
         e_atk, _ = await users.get_or_create(s, tg(9410, "pve2e", "ایتوئی"))
-        e_atk.level = 20
+        e_atk.level = config.MAX_LEVEL  # راند ۴۳: لول مکس بازیکن شد، برای فیکسچر «هزینه ماکسیموم» همیشه دینامیک بمونه
         e_atk.energy = config.MAX_ENERGY
         e_atk.cash = 10000
         e_atk.pv_attack_at = None
-        for vid, lv in ((9411, 20), (9412, 19)):
+        for vid, lv in ((9411, config.MAX_LEVEL), (9412, config.MAX_LEVEL - 1)):
             v, _ = await users.get_or_create(s, tg(vid, f"pv{vid}", f"طرف{vid}"))
             v.level = lv
             v.cash = 9000
@@ -4659,7 +4663,7 @@ async def main() -> None:
           and "پول توی جیب" not in str(ans[1][0])
           and "میبری" not in str(ans[1][0]) and "میبازی" not in str(ans[1][0]) and "🎲" not in str(ans[1][0])
           and str(ans[1][0]).count("\n") == 3
-          and c_spy == 10000 - pv_svc.spy_cost(20) and pv_svc.spy_cost(20) == 1000
+          and c_spy == 10000 - pv_svc.spy_cost(config.MAX_LEVEL) and pv_svc.spy_cost(config.MAX_LEVEL) == 1000
           and "طرف9411" in rt, f"{ans} | {c_spy}")
 
     # پول کم: جاسوسی نمیشه، الرت یکدست و پول دست‌نخورده (راند ۱۵: دیگه جاسوسی رایگان نداریم، لول 20 همیشه 5000 می‌خواد)
@@ -4692,8 +4696,8 @@ async def main() -> None:
     check("هدف دیگه یه قربانی تازه میاره", "طرف9412" in rt and f"patt:hit:{id9412}" in rdata and f"patt:spy:{id9412}" in rdata, rt)
     async with session_scope() as s:
         c_after = (await users.get_by_tg(s, 9410)).cash
-    check("هزینه هدف دیگه لول 20 برابر 2500 تی‌پوینته و کم شد",
-          c_after == 9000 - pv_svc.reroll_cost(20) and pv_svc.reroll_cost(20) == 1000, str(c_after))
+    check("هزینه هدف دیگه لول مکس برابر 1000 تی‌پوینته و کم شد",
+          c_after == 9000 - pv_svc.reroll_cost(config.MAX_LEVEL) and pv_svc.reroll_cost(config.MAX_LEVEL) == 1000, str(c_after))
 
     # پول کم: هدف دیگه نمیشه و همون پیش‌نمایش میمونه
     async with session_scope() as s:
@@ -5089,14 +5093,14 @@ async def main() -> None:
         await s.commit()
     cap2_xp = next((ln for ln in cap2.split("\n") if ln.startswith("🌟 لول")), "")
     check("بعد لول مکس فقط تجربه جمع‌شده نوشته میشه",
-          cap2_xp == "🌟 لول 20 👑 • ✨ 10,958" and "/" not in cap2_xp, cap2_xp)
+          cap2_xp == f"🌟 لول {config.MAX_LEVEL} 👑 • ✨ 10,958" and "/" not in cap2_xp, cap2_xp)
 
-    # ── سقف لول ۲۰: لول قفل میشه ولی تجربه جمع میشه ──
+    # ── سقف لول مکس: لول قفل میشه ولی تجربه جمع میشه ──
     async with session_scope() as s:
         mx, _ = await users.get_or_create(s, tg(8897, "capp", "سقفی"))
-        mx.level = 19
-        notes = users.add_xp(mx, economy.xp_need(19) * 3)
-        check("لول روی ۲۰ قفل میشه و بقیه تجربه جمع می‌مونه",
+        mx.level = config.MAX_LEVEL - 1
+        notes = users.add_xp(mx, economy.xp_need(config.MAX_LEVEL - 1) * 3)
+        check("لول روی مکس قفل میشه و بقیه تجربه جمع می‌مونه",
               mx.level == config.MAX_LEVEL and mx.xp > 0 and len(notes) >= 1)
         check("پیام لول مکس هم اومد", any("👑 لولت مکس شد" in n for n in notes))
         xp_b = mx.xp
@@ -9352,7 +9356,7 @@ async def main() -> None:
               f"{b10.skill_points}")
         await s.commit()
 
-    # ── شرکت: گیت لول 5 (خریدهای قدیمی قفل ولی سالم می‌مونن) ──
+    # ── شرکت: گیت لول 7 (خریدهای قدیمی قفل ولی سالم می‌مونن) ──
     check("قیمت ارتقای کارخونه‌ها دو تا سه برابر شد (چوب همون قبلیه)",
           comp_svc.upgrade_cost("lumber", 2) == (6000, 40) and comp_svc.upgrade_cost("lumber", 10) == (2250000, 800)
           and comp_svc.upgrade_cost("ironmill", 2) == (9000, 60) and comp_svc.upgrade_cost("ironmill", 10) == (3300000, 1210),
@@ -9366,25 +9370,160 @@ async def main() -> None:
         cl.cash = 500000
         cl.wood = 500
         ok_l1, msg_l1 = await comp_svc.collect(s, cl, "lumber")
-        check("برداشت کارخونه زیر لول 5 قفله و موجودیش دست نمی‌خوره",
-              not ok_l1 and "🔒" in msg_l1 and "لول 5" in msg_l1 and cl.lumber_stock == 100, msg_l1[:110])
+        check("برداشت کارخونه زیر لول 7 قفله و موجودیش دست نمی‌خوره",
+              not ok_l1 and "🔒" in msg_l1 and "لول 7" in msg_l1 and cl.lumber_stock == 100, msg_l1[:110])
         ok_l2, msg_l2 = await comp_svc.upgrade(s, cl, "lumber")
-        check("ارتقای کارخونه زیر لول 5 قفله و لول کارخونه سر جاشه",
+        check("ارتقای کارخونه زیر لول 7 قفله و لول کارخونه سر جاشه",
               not ok_l2 and "🔒" in msg_l2 and cl.lumber_level == 2, msg_l2[:110])
         ok_l3, msg_l3 = await comp_svc.build(s, cl, "ironmill")
-        check("ساخت شرکت زیر لول 5 رد میشه",
-              not ok_l3 and "🔒" in msg_l3 and "لول 5" in msg_l3 and cl.ironmill_level == 0, msg_l3[:110])
+        check("ساخت شرکت زیر لول 7 رد میشه",
+              not ok_l3 and "🔒" in msg_l3 and "لول 7" in msg_l3 and cl.ironmill_level == 0, msg_l3[:110])
         ctxt_l = comp_svc.company_text(cl)
         check("صفحه شرکت خط قفل رو نشون میده",
-              "🔒 شرکتت تا لول 5 قفله" in ctxt_l, ctxt_l.replace("\n", " | ")[:160])
-        cl.level = 5
+              "🔒 شرکتت تا لول 7 قفله" in ctxt_l, ctxt_l.replace("\n", " | ")[:160])
+        cl.level = 7
         cl.wood = 50
         ok_l4, msg_l4 = await comp_svc.collect(s, cl, "lumber")
-        check("لول 5 شد و قفل خودش باز شد، تولید قبلی هم میاد دستش",
+        check("لول 7 شد و قفل خودش باز شد، تولید قبلی هم میاد دستش",
               ok_l4 and cl.lumber_stock == 0 and cl.wood == 150, f"{ok_l4} | {cl.wood}")
         await s.commit()
 
-    check("کانفیگ گیت لول شرکت 5-ه", config.COMPANY_MIN_LEVEL == 5)
+    check("کانفیگ گیت لول شرکت 7-ه", config.COMPANY_MIN_LEVEL == 7)
+
+    # ═══ 🧪 آزمایشگاه (راند ۴۳، درخواست کارفرما) ═══
+    check("آزمایشگاه از لول بازیکن ۱۵ باز میشه و ۴ لول مکسه",
+          config.LAB_MIN_LEVEL == 15 and config.LAB_MAX_LEVEL == 4)
+    check("جدول ارتقای آزمایشگاه به لول بازیکن ۳۰ ختم میشه",
+          config.LAB_UPGRADE_MIN_LEVELS == [20, 25, 30] and lab_svc.lab_upgrade_min_level(4) == 30)
+    check("۴ نوع کارگر رو لول ۱۵/۲۰/۲۵/۳۰ باز میشن",
+          [config.LAB_WORKERS[k]["min_level"] for k in config.LAB_WORKER_ORDER] == [15, 20, 25, 30])
+    check("۷ محصول دقیقاً طبق ترتیب Unlock کارفرما",
+          config.LAB_PRODUCT_ORDER == ["crystal", "meth", "amph", "heroin", "fentanyl", "purecrystal", "legendary"]
+          and [config.LAB_PRODUCTS[k]["unlock_lab_level"] for k in config.LAB_PRODUCT_ORDER] == [1, 1, 2, 3, 3, 3, 4]
+          and config.LAB_PRODUCTS["legendary"]["min_worker"] == "scientist")
+
+    async with session_scope() as s:
+        lx, _ = await users.get_or_create(s, tg(43001, "labx", "شیمیدان"))
+        lx.level = 10
+        lx.cash = 5000000
+        ok_lock, msg_lock = await lab_svc.build_lab(s, lx)
+        check("زیر لول ۱۵ ساخت آزمایشگاه قفله", not ok_lock and "🔒" in msg_lock and lab_svc.lab_level(lx) == 0, msg_lock[:80])
+        lx.level = 15
+        ok_build, msg_build = await lab_svc.build_lab(s, lx)
+        check("تو لول ۱۵ آزمایشگاه بدون هیچ هزینه‌ای ساخته میشه",
+              ok_build and lab_svc.lab_level(lx) == 1 and lx.cash == 5000000, msg_build[:80])
+        ok_build2, msg_build2 = await lab_svc.build_lab(s, lx)
+        check("دوباره ساختن رد میشه", not ok_build2)
+        await s.commit()
+
+    async with session_scope() as s:
+        lx = await users.get_by_tg(s, 43001)
+        # ── خرید مواد اولیه ──
+        got_a = await lab_svc.add_material(s, lx.id, "mat_a", 50)
+        check("واریز ماده اولیه با موفقیت", got_a == 50)
+        stock = await lab_svc.get_materials(s, lx.id)
+        check("موجودی مواد اولیه درست خونده میشه", stock.get("mat_a") == 50)
+        over = await lab_svc.add_material(s, lx.id, "mat_a", 10_000)
+        check("واریز بیشتر از سقف انبار مواد اولیه بریده میشه",
+              over == config.LAB_MATERIAL_CAP - 50)
+        ok_buy, msg_buy = await lab_svc.purchase_material(s, lx, "mat_b", 5)
+        check("خرید ماده اولیه از شاپ پول کم می‌کنه و انبار زیاد می‌کنه",
+              ok_buy and lx.cash == 5000000 - 5 * config.LAB_MATERIALS["mat_b"]["unit"], msg_buy[:80])
+        await s.commit()
+
+    async with session_scope() as s:
+        lx = await users.get_by_tg(s, 43001)
+        # ── کارگر: زیر لول قفله، استخدام و اسلات ──
+        ok_hw, msg_hw = await lab_svc.hire_worker(s, lx, "skilled")
+        check("کارگر ماهر زیر لول ۲۰ قفله", not ok_hw and "🔒" in msg_hw, msg_hw[:80])
+        cash_before_hire = lx.cash
+        ok_hb, msg_hb = await lab_svc.hire_worker(s, lx, "basic")
+        check("استخدام کارگر پایه با لول کافی و پول کافی اوکیه",
+              ok_hb and lx.cash == cash_before_hire - config.LAB_WORKERS["basic"]["hire_cost"], msg_hb[:80])
+        workers = await lab_svc.get_workers(s, lx.id)
+        check("اسلات آزمایشگاه لول ۱ فقط ۱ کارگره", lab_svc.worker_slots(lx) == 1 and len(workers) == 1)
+        ok_hb2, msg_hb2 = await lab_svc.hire_worker(s, lx, "basic")
+        check("اسلات پر بعد از ظرفیت رد میشه", not ok_hb2 and "👷" in msg_hb2, msg_hb2[:80])
+        await s.commit()
+
+    async with session_scope() as s:
+        lx = await users.get_by_tg(s, 43001)
+        workers = await lab_svc.get_workers(s, lx.id)
+        w0 = workers[0]
+        # ── تولید: محصول قفل، کارگر کافی نیست، مواد کم، شروع موفق ──
+        ok_locked, msg_locked = await lab_svc.start_production(s, lx, w0.id, "amph")
+        check("محصول لول آزمایشگاه بالاتر قفله", not ok_locked and "🔒" in msg_locked, msg_locked[:80])
+        ok_start, msg_start = await lab_svc.start_production(s, lx, w0.id, "crystal")
+        check("شروع تولید کریستال با مواد کافی و کارگر پایه موفقه",
+              ok_start and "🧪" in msg_start, msg_start[:80])
+        await s.commit()
+
+    async with session_scope() as s:
+        lx = await users.get_by_tg(s, 43001)
+        workers = await lab_svc.get_workers(s, lx.id)
+        w0 = workers[0]
+        check("کارگر مشغول شد و busy_until ست شد", w0.busy_until is not None and w0.job_product == "crystal")
+        ok_busy, msg_busy = await lab_svc.start_production(s, lx, w0.id, "crystal")
+        check("کارگر مشغول دوباره نمی‌تونه شروع کنه", not ok_busy and "👷" in msg_busy, msg_busy[:80])
+        # شبیه‌سازی تموم شدن کار: busy_until رو می‌بریم عقب
+        w0.busy_until = now_utc() - timedelta(seconds=5)
+        await s.commit()
+
+    async with session_scope() as s:
+        lx = await users.get_by_tg(s, 43001)
+        cash_before = lx.cash
+        got = await lab_svc.collect_all(s, lx)
+        check("تسویه تولید تموم‌شده محصول رو میده و انبار میشینه",
+              got == [("crystal", config.LAB_PRODUCTS["crystal"]["output"])], str(got))
+        check("هزینه نگهداری کارگر پایه موقع تسویه کسر شد",
+              lx.cash == cash_before - config.LAB_WORKERS["basic"]["upkeep"], str(lx.cash))
+        products = await lab_svc.get_products(s, lx.id)
+        check("محصول تولیدشده تو انبار محصولاته",
+              products.get("crystal") == config.LAB_PRODUCTS["crystal"]["output"])
+        workers = await lab_svc.get_workers(s, lx.id)
+        check("بعد تسویه کارگر دوباره آزاده", workers[0].busy_until is None and workers[0].job_product is None)
+        await s.commit()
+
+    async with session_scope() as s:
+        lx = await users.get_by_tg(s, 43001)
+        cash_before = lx.cash
+        ok_sell, msg_sell, total = await lab_svc.sell_product(s, lx, "crystal", 2)
+        check("فروش محصول از انبار پول درست میده",
+              ok_sell and total == 2 * config.LAB_PRODUCTS["crystal"]["sell"] and lx.cash == cash_before + total,
+              f"{msg_sell} | {total}")
+        ok_over, msg_over, _ = await lab_svc.sell_product(s, lx, "crystal", 999)
+        check("فروش بیشتر از موجودی رد میشه", not ok_over and "❌" in msg_over, msg_over[:80])
+        await s.commit()
+
+    async with session_scope() as s:
+        lx = await users.get_by_tg(s, 43001)
+        workers = await lab_svc.get_workers(s, lx.id)
+        w0 = workers[0]
+        ok_fire, msg_fire = await lab_svc.fire_worker(s, lx, w0.id)
+        check("اخراج کارگر آزاد اوکیه", ok_fire, msg_fire[:80])
+        left = await lab_svc.get_workers(s, lx.id)
+        check("بعد اخراج کارگری نمونده", len(left) == 0)
+        await s.commit()
+
+    # ── ارتقای آزمایشگاه: گیت لول بازیکن + مواد اولیه ──
+    async with session_scope() as s:
+        lu, _ = await users.get_or_create(s, tg(43002, "labup", "ارتقاچی"))
+        lu.level = 15
+        lu.cash = 5_000_000
+        await lab_svc.build_lab(s, lu)
+        ok_lowlvl, msg_lowlvl = await lab_svc.upgrade_lab(s, lu)
+        check("ارتقای لول ۲ آزمایشگاه زیر لول بازیکن ۲۰ قفله",
+              not ok_lowlvl and "🔒" in msg_lowlvl and "لول بازیکن 20" in msg_lowlvl, msg_lowlvl[:90])
+        lu.level = 20
+        ok_nomat, msg_nomat = await lab_svc.upgrade_lab(s, lu)
+        check("بدون مواد اولیه کافی ارتقا رد میشه", not ok_nomat and "🧴" in msg_nomat, msg_nomat[:90])
+        await lab_svc.add_material(s, lu.id, "mat_a", 100)
+        await lab_svc.add_material(s, lu.id, "mat_b", 100)
+        cash_b = lu.cash
+        ok_up, msg_up = await lab_svc.upgrade_lab(s, lu)
+        check("با لول کافی و مواد کافی ارتقا موفقه و لول ۲ میشه",
+              ok_up and lab_svc.lab_level(lu) == 2 and lu.cash < cash_b, msg_up[:90])
+        await s.commit()
 
     # ── /update: امتیاز مهارت خرج‌نکرده‌ها به مقدار درست به‌روز میشه ──
     async with session_scope() as s:
@@ -9430,6 +9569,9 @@ async def main() -> None:
           and bool(pats_now["dquests_txt"].match("ماموریت‌ها")) and bool(pats_now["dquests_txt"].match("مأموریت‌های روزانه"))
           and bool(pats_now["dquests_txt"].match("تی مأموریت")),
           pats_now["dquests_txt"].pattern)
+    check("«آزمایشگاه» با و بدون پیشوند صفحه آزمایشگاه رو باز می‌کنه (راند ۴۳)",
+          bool(pats_now["lab"].match("آزمایشگاه")) and bool(pats_now["lab"].match("تی آزمایشگاه")),
+          pats_now["lab"].pattern)
 
     from handlers import world as world_hx
     from handlers import dquests as dq_hx
@@ -9443,6 +9585,12 @@ async def main() -> None:
     txt_mam = next((c[1] for c in upd_mam.message.calls if "مأموریت" in c[1]), "")
     check("نوشتن «مأموریت» صفحه با سر تیتر «مأموریت‌های روزانه» باز میشه",
           "<b>🎯 مأموریت‌های روزانه</b>" in txt_mam, txt_mam[:60])
+    from handlers import lab as lab_hx
+    upd_labx = _text_update("آزمایشگاه", uid=9917)
+    await lab_hx.lab_cb(upd_labx, None)
+    txt_labx = next((c[1] for c in upd_labx.message.calls if "آزمایشگاه" in c[1]), "")
+    check("نوشتن «آزمایشگاه» زیر لول ۱۵ پیام قفل رو نشون میده (راند ۴۳)",
+          "🔒 آزمایشگاه از لول 15 باز میشه" in txt_labx, txt_labx[:80])
     upd_mhk = _text_update("مهارت", uid=9917)
     await skills_h.skills_cb(upd_mhk, None)
     txt_mhk = next((c[1] for c in upd_mhk.message.calls if "مهارت" in c[1]), "")
@@ -11540,33 +11688,33 @@ async def main() -> None:
           and all(config.SEEDS[k]["price"] % 10 == 0 for k in _SOLD12),
           str({k: (config.SEEDS[k]["price"], round(config.SEEDS[k]["price"] / config.SEEDS[k]["sell"], 2)) for k in _SOLD12}))
 
-    # ── بانک: شش لول جدید ۱م تا ۱۰م، تهش ۱ میلیون قیمت لول‌آپ ──
-    check("ظرفیت بانک لیست کامل ۱۱ لوله و به ۱۰ میلیون میرسه",
-          config.BANK_CAPS == [20000, 50000, 100000, 200000, 500000,
-                               1000000, 2000000, 4000000, 6000000, 8000000, 10000000]
+    # ── بانک: راند ۴۳ (درخواست کارفرما) سقف ظرفیت ۲۵ میلیون شد و گیت لول فشرده تا لول بازیکن ۱۵ ──
+    check("ظرفیت بانک لیست کامل ۱۱ لوله و به ۲۵ میلیون میرسه",
+          config.BANK_CAPS == [50000, 125000, 250000, 500000, 1250000,
+                               2500000, 5000000, 10000000, 15000000, 20000000, 25000000]
           and config.BANK_MAX_LEVEL == 11
-          and bank_svc.bank_capacity(11) == 10000000 and bank_svc.bank_capacity(12) == 10000000)
-    check("قیمت لول‌آپ بانک به ۱ میلیون ختم میشه و هیچکدوم از ظرفیت اضافه‌شونده‌اش گرون‌تر نیس",
-          config.BANK_UPGRADE_PRICES == [25000, 50000, 100000, 200000, 350000, 500000, 650000, 800000, 900000, 1000000]
-          and config.BANK_UPGRADE_PRICES[-1] == 1000000
+          and bank_svc.bank_capacity(11) == 25000000 and bank_svc.bank_capacity(12) == 25000000)
+    check("قیمت لول‌آپ بانک به ۲٫۵ میلیون ختم میشه و هیچکدوم از ظرفیت اضافه‌شونده‌اش گرون‌تر نیس",
+          config.BANK_UPGRADE_PRICES == [62000, 125000, 250000, 500000, 875000, 1250000, 1625000, 2000000, 2250000, 2500000]
+          and config.BANK_UPGRADE_PRICES[-1] == 2500000
           and all(config.BANK_UPGRADE_PRICES[i] <= config.BANK_CAPS[i + 1] - config.BANK_CAPS[i]
                   for i in range(len(config.BANK_UPGRADE_PRICES))),
           str(config.BANK_UPGRADE_PRICES))
-    check("گیت آپگریدهای بانک سیستم اولیه شد: 2/4/6 تا 20 (راند ۲۱)",
-          config.BANK_MIN_LEVELS == [1, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20])
+    check("گیت آپگریدهای بانک فشرده شد: تا لول بازیکن ۱۵ (راند ۴۳)",
+          config.BANK_MIN_LEVELS == [1, 2, 3, 4, 6, 8, 9, 10, 12, 14, 15])
     async with session_scope() as s:
         bk6, _ = await users.get_or_create(s, tg(99121, "bank6", "میلیونر"))
-        bk6.level = 9
+        bk6.level = 5
         bk6.bank_level = 5
-        bk6.cash = 400000
+        bk6.cash = 900000
         ok6, msg6 = await bank_svc.upgrade_bank(s, bk6)
-        check("بانک لول ۶ با لول بازیکن ۹ گیت می‌خوره و لول ۱۰ می‌خواد", not ok6 and "لول 10" in msg6, msg6[:60])
-        bk6.level = 10
+        check("بانک لول ۶ با لول بازیکن ۵ گیت می‌خوره و لول ۶ می‌خواد", not ok6 and "لول 6" in msg6, msg6[:60])
+        bk6.level = 6
         cash6b = bk6.cash
         ok6, msg6 = await bank_svc.upgrade_bank(s, bk6)
-        check("ارتقا به لول ۶ با 350 هزار و ظرفیت ۱ میلیون",
-              ok6 and bk6.bank_level == 6 and bk6.cash == cash6b - 350000
-              and bank_svc.bank_capacity(bk6.bank_level) == 1000000, msg6[:60])
+        check("ارتقا به لول ۶ با 875 هزار و ظرفیت ۲٫۵ میلیون",
+              ok6 and bk6.bank_level == 6 and bk6.cash == cash6b - 875000
+              and bank_svc.bank_capacity(bk6.bank_level) == 2500000, msg6[:60])
         await s.commit()
 
     # ── قدرت کل پی‌وی: حمله + دفاع خام، بوست‌ها نقش‌محور، بدون درصد شانس ──
@@ -11948,11 +12096,13 @@ async def main() -> None:
 
     # ═══ راند ۱۵: جاسوسی همیشه پولی و دوخطی + مهارت استقامت + /energy زیر /heal + کوئست‌های جدید ═══
 
-    # ── قیمت‌های خطی جدید (راند ۲۲ درخواست کارفرما: هر دو 50 تا 1000 بر اساس لول) ──
-    check("قیمت جاسوسی لول 10 دقیقاً میانه بازه 500 تی‌پوینته (راند ۲۲)",
-          pv_svc.spy_cost(10) == 500, str(pv_svc.spy_cost(10)))
-    check("قیمت هدف شانسی لول 10 هم همون 500ه (راند ۲۲: بازه مشترک)",
-          pv_svc.reroll_cost(10) == 500, str(pv_svc.reroll_cost(10)))
+    # ── قیمت‌های خطی جدید (راند ۲۲ درخواست کارفرما: هر دو 50 تا 1000 بر اساس لول | راند ۴۳: مکس‌لول ۳۰ شد، میانه دیگه لول ۱۰ نیست) ──
+    mid_lvl43 = (1 + config.MAX_LEVEL) // 2
+    check("قیمت جاسوسی لول میانه بازه دقیقاً وسط 50 تا 1000ه (راند ۴۳)",
+          pv_svc.spy_cost(mid_lvl43) == 50 + (1000 - 50) * (mid_lvl43 - 1) // (config.MAX_LEVEL - 1),
+          str(pv_svc.spy_cost(mid_lvl43)))
+    check("قیمت هدف شانسی لول میانه هم همون بازه مشترکه (راند ۴۳)",
+          pv_svc.reroll_cost(mid_lvl43) == pv_svc.spy_cost(mid_lvl43), str(pv_svc.reroll_cost(mid_lvl43)))
     check("مکانیک جاسوسی رایگان کلاً از سرویس پاک شده",
           not hasattr(pv_svc, "spy_is_free"))
     check("ستون مرده last_spy_target_id از مدل کاربر پاک شده",
@@ -12721,20 +12871,19 @@ async def main() -> None:
         await s.commit()
 
 
-    # ═══ راند ۲۱: گیت اولیه بانک (آپگریدها تو لول 2/4/6…20) + نرف نصف تولید کارخونه ═══
-    check("گیت آپگریدهای بانک دقیقاً همون ۱۰ تا عدد کارفرماست",
-          config.BANK_MIN_LEVELS == [1, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20]
-          and len(config.BANK_MIN_LEVELS) == config.BANK_MAX_LEVEL
-          and all(config.BANK_MIN_LEVELS[i] == 2 * i for i in range(1, 11)))
-    check("ظرفیت و قیمت‌های بانک دست‌نخورده مونده (راند ۲۱ فقط گیت لول عوض شد)",
-          config.BANK_CAPS == [20000, 50000, 100000, 200000, 500000, 1000000,
-                               2000000, 4000000, 6000000, 8000000, 10000000]
-          and config.BANK_UPGRADE_PRICES[0] == 25000 and config.BANK_UPGRADE_PRICES[-1] == 1000000)
+    # ═══ راند ۴۳ (درخواست کارفرما): گیت بانک فشرده شد تا لول بازیکن ۱۵ (سقف ۲۵ میلیون) ═══
+    check("گیت آپگریدهای بانک دقیقاً همون ۱۱ تا عدد کارفرماست",
+          config.BANK_MIN_LEVELS == [1, 2, 3, 4, 6, 8, 9, 10, 12, 14, 15]
+          and len(config.BANK_MIN_LEVELS) == config.BANK_MAX_LEVEL)
+    check("ظرفیت و قیمت‌های بانک راند ۴۳ (سقف ۲۵ میلیون)",
+          config.BANK_CAPS == [50000, 125000, 250000, 500000, 1250000, 2500000,
+                               5000000, 10000000, 15000000, 20000000, 25000000]
+          and config.BANK_UPGRADE_PRICES[0] == 62000 and config.BANK_UPGRADE_PRICES[-1] == 2500000)
     async with session_scope() as s:
         g21, _ = await users.get_or_create(s, tg(217721, "gate21", "گیت‌بانک"))
         g21.level = 1
         g21.bank_level = 1
-        g21.cash = 30000
+        g21.cash = 70000
         ok21, m21 = await bank_svc.upgrade_bank(s, g21)
         check("آپگرید اول بانک تو لول ۱ قفله و لول ۲ رو می‌خواد",
               not ok21 and "لول 2" in m21, m21[:70])
@@ -12745,24 +12894,24 @@ async def main() -> None:
         await s.commit()
     async with session_scope() as s:
         t21, _ = await users.get_or_create(s, tg(217722, "top21", "مکس‌بانک"))
-        t21.level = 19
+        t21.level = 14
         t21.bank_level = 10
-        t21.cash = 2000000
+        t21.cash = 3000000
         ok21b, m21b = await bank_svc.upgrade_bank(s, t21)
-        check("آپگرید آخر (لول ۱۱ بانک) تو لول ۱۹ قفله و لول ۲۰ می‌خواد",
-              not ok21b and "لول 20" in m21b, m21b[:70])
-        t21.level = 20
+        check("آپگرید آخر (لول ۱۱ بانک) تو لول ۱۴ قفله و لول ۱۵ می‌خواد",
+              not ok21b and "لول 15" in m21b, m21b[:70])
+        t21.level = 15
         ok21b, m21b = await bank_svc.upgrade_bank(s, t21)
-        check("تو لول ۲۰ بانک میره رو لول مکس ۱۱ با ظرفیت ۱۰ میلیون",
-              ok21b and t21.bank_level == 11 and bank_svc.bank_capacity(11) == 10000000, m21b[:70])
+        check("تو لول ۱۵ بانک میره رو لول مکس ۱۱ با ظرفیت ۲۵ میلیون",
+              ok21b and t21.bank_level == 11 and bank_svc.bank_capacity(11) == 25000000, m21b[:70])
         ok21c, m21c = await bank_svc.upgrade_bank(s, t21)
         check("بعد از مکس دیگه آپگریدی نیس", not ok21c)
         await s.commit()
-    lk21 = kb3.bank_kb(SimpleNamespace(bank_level=10, level=19))
+    lk21 = kb3.bank_kb(SimpleNamespace(bank_level=10, level=14))
     lk21f = [(b.text, b.callback_data, b.style) for r in lk21.inline_keyboard for b in r]
-    check("دکمه قفل بانک «سطح 20 می‌خواد» رو درست نشون میده",
-          any("سطح 20" in t and c == "noop:banklock" and st == "danger" for t, c, st in lk21f), str(lk21f))
-    ok21k = kb3.bank_kb(SimpleNamespace(bank_level=10, level=20))
+    check("دکمه قفل بانک «سطح 15 می‌خواد» رو درست نشون میده",
+          any("سطح 15" in t and c == "noop:banklock" and st == "danger" for t, c, st in lk21f), str(lk21f))
+    ok21k = kb3.bank_kb(SimpleNamespace(bank_level=10, level=15))
     check("تو سطح کافی دکمه ارتقای بانک به لول ۱۱ فعاله",
           any(b.callback_data == "bank:up" for r in ok21k.inline_keyboard for b in r))
 
@@ -12830,11 +12979,11 @@ async def main() -> None:
     tx22b = upd22b.message.calls[-1][1] if upd22b.message.calls else ""
     check("«کارتل من» هم همون کارتل رو نشون میده", "تیم‌قدیمی" in tx22b, tx22b[:120])
 
-    # ── جاسوسی و هدف دیگه: ۵۰ تا ۱۰۰۰ بر اساس لول ──
+    # ── جاسوسی و هدف دیگه: ۵۰ تا ۱۰۰۰ بر اساس لول (راند ۴۳: مکس‌لول با config.MAX_LEVEL پویاست) ──
     check("بازه قیمت جاسوسی و هدف دیگه دقیقاً ۵۰ تا ۱۰۰۰ با لول (راند ۲۲)",
-          pv_svc.spy_cost(1) == 50 and pv_svc.spy_cost(20) == 1000 and pv_svc.spy_cost(10) == 500
-          and pv_svc.reroll_cost(1) == 50 and pv_svc.reroll_cost(20) == 1000 and pv_svc.reroll_cost(10) == 500
-          and pv_svc.spy_cost(5) > 50 and pv_svc.spy_cost(15) < 1000)
+          pv_svc.spy_cost(1) == 50 and pv_svc.spy_cost(config.MAX_LEVEL) == 1000
+          and pv_svc.reroll_cost(1) == 50 and pv_svc.reroll_cost(config.MAX_LEVEL) == 1000
+          and pv_svc.spy_cost(5) > 50 and pv_svc.spy_cost(config.MAX_LEVEL - 5) < 1000)
 
     # ── ضبط پلیس محموله: ده‌دهی ۲۰ تا ۸۰ ──
     _seize22 = {}

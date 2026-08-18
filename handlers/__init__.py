@@ -15,7 +15,7 @@ from telegram.ext import Application, CallbackQueryHandler, ChatMemberHandler, C
 
 import config
 
-from handlers import admin, attack, backup, bank, battle, boss, cartelwar, common, company, dogs, dquests, energy, farm, gate, gear, market, mine, mines, pending, power, profile, rank, seen, shop, skills, smuggle, snitch, start, team, textcmd, world  # راند ۳۱: raid حذف شد
+from handlers import admin, attack, backup, bank, battle, boss, cartelwar, common, company, dogs, dquests, energy, farm, gate, gear, lab, market, mine, mines, pending, power, profile, rank, seen, shop, skills, smuggle, snitch, start, team, textcmd, world  # راند ۳۱: raid حذف شد | راند ۴۳: lab اضافه شد
 
 ZWNJ = "‌"
 S = rf"[\s{ZWNJ}]"  # فاصله یا نیم‌فاصله
@@ -32,6 +32,7 @@ TEXT_HANDLERS: list[tuple[str, str, object]] = [
     ("mine_upg", rf"{TP}آپگرید{S}+کنده{S}*کاری!?$|{TP}کنده{S}*کاری{S}+آپگرید!?$|{TP}ابزار{S}*کنده{S}*کاری!?$", mine.mine_tools_cb),  # ارتقای ابزار، صفحه وضعیت ابزار
     ("mine", rf"^کنده[\s‌]*کاری!?$|{T}کنده{S}*کاری!?$", mine.mine_cmd),  # با و بدون پیشوند
     ("shop", rf"{TP}شاپ!?$|{TP}فروشگاه!?$", textcmd.shop_text),  # با و بدون پیشوند
+    ("lab", rf"{TP}آزمایشگاه!?$", textcmd.lab_text),  # راند ۴۳: با و بدون پیشوند
     ("profile", rf"{T}پروفایل!?$", textcmd.profile_text),
     # نبرد HP گروهی، همه دستورهای جنگ با و بدون پیشوند (فقط تو گروه اجرا میشه)
     ("attack", rf"{TP}(?:حمله|شلیک|بنگ(?:{S}+بنگ)?|پیو(?:{S}+پیو)?)(?:{S}+\S+)?!?$", battle.attack_cmd),
@@ -244,6 +245,8 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CallbackQueryHandler(dquests.daily_quests_cb, pattern=r"^menu:dquests$"))
     app.add_handler(CallbackQueryHandler(mine.mine_home_cb, pattern=r"^menu:mine$"))
     app.add_handler(CallbackQueryHandler(company.company_cb, pattern=r"^menu:company$"))
+    app.add_handler(CallbackQueryHandler(lab.lab_cb, pattern=r"^menu:lab$"))
+    app.add_handler(CallbackQueryHandler(market.market_cmd, pattern=r"^menu:market$"))
     app.add_handler(CallbackQueryHandler(world.shelter_cmd, pattern=r"^menu:shelter$"))
     app.add_handler(CallbackQueryHandler(skills.skills_cb, pattern=r"^menu:skills$"))
     app.add_handler(CallbackQueryHandler(gear.gear_cb, pattern=r"^menu:gear$"))
@@ -279,6 +282,23 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CallbackQueryHandler(company.company_action_execute, pattern=r"^cf:comp:(?:build|upg):\w+$"))
     app.add_handler(CallbackQueryHandler(company.company_action_cancel, pattern=r"^cl:comp:(?:build|upg):\w+$"))
 
+    # ── آزمایشگاه (دکمه‌ها، راند ۴۳) ──
+    app.add_handler(CallbackQueryHandler(lab.lab_build_cb, pattern=r"^lab:build$"))
+    app.add_handler(CallbackQueryHandler(lab.lab_upgrade_confirm, pattern=r"^lab:up$"))
+    app.add_handler(CallbackQueryHandler(lab.lab_upgrade_execute, pattern=r"^cf:lab:up$"))
+    app.add_handler(CallbackQueryHandler(lab.lab_cb, pattern=r"^cl:lab:up$"))
+    app.add_handler(CallbackQueryHandler(lab.lab_workers_cb, pattern=r"^lab:workers$"))
+    app.add_handler(CallbackQueryHandler(lab.lab_hire_cb, pattern=r"^lab:hire:\w+$"))
+    app.add_handler(CallbackQueryHandler(lab.lab_fire_cb, pattern=r"^lab:fire:\d+$"))
+    app.add_handler(CallbackQueryHandler(lab.lab_products_cb, pattern=r"^lab:prod$"))
+    app.add_handler(CallbackQueryHandler(lab.lab_start_pick_cb, pattern=r"^lab:start:\w+$"))
+    app.add_handler(CallbackQueryHandler(lab.lab_start_execute, pattern=r"^cf:lab:start:\d+:\w+$"))
+    app.add_handler(CallbackQueryHandler(lab.lab_collect_cb, pattern=r"^lab:collect$"))
+    app.add_handler(CallbackQueryHandler(lab.lab_warehouse_cb, pattern=r"^lab:wh$"))
+    app.add_handler(CallbackQueryHandler(lab.lab_sell_confirm, pattern=r"^lab:sell:\w+:\d+$"))
+    app.add_handler(CallbackQueryHandler(lab.lab_sell_execute, pattern=r"^cf:lab:sell:\w+:\d+$"))
+    app.add_handler(CallbackQueryHandler(lab.lab_warehouse_cb, pattern=r"^cl:lab:sell$"))
+
     # ── مزرعه ──
     app.add_handler(CallbackQueryHandler(farm.buy_plot_confirm, pattern=r"^farm:buy$"))
     app.add_handler(CallbackQueryHandler(farm.buy_plot_execute, pattern=r"^cf:farm:buy$"))
@@ -301,6 +321,8 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CallbackQueryHandler(shop.gear_up_cancel, pattern=r"^cl:gup:(?:weap|arm)$"))
     app.add_handler(CallbackQueryHandler(shop.buyres_execute, pattern=r"^cf:shopres:\w+:\d+$"))
     app.add_handler(CallbackQueryHandler(shop.buyres_cancel, pattern=r"^cl:shopres$"))
+    app.add_handler(CallbackQueryHandler(shop.buylabmat_execute, pattern=r"^cf:shoplabmat:\w+:\d+$"))
+    app.add_handler(CallbackQueryHandler(shop.buylabmat_cancel, pattern=r"^cl:shoplabmat$"))
     app.add_handler(CallbackQueryHandler(shop.buyseed_execute, pattern=r"^cf:shopseed:\w+:\d+(?::\d+)?$"))
     app.add_handler(CallbackQueryHandler(shop.buyseed_cancel, pattern=r"^cl:shopseed$"))
 

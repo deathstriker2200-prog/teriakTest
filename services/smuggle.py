@@ -513,4 +513,3 @@ def caravan_estimate(session_rows: dict[str, ProductStock], crop: str, bonus: in
     if not row or row.qty <= 0:
         return 0
     return round(row.value / row.qty * (1 + bonus / 100))
-

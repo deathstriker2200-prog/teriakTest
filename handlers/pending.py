@@ -236,6 +236,37 @@ async def capture(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             )
             raise ApplicationHandlerStop()
 
+        # ── تعداد خرید دونه‌ای ماده اولیه آزمایشگاه: فاکتور با تایید/لغو میاد (راند ۴۳) ──
+        if action == "labmatbuy":
+            mat_key = user.pending_value or ""
+            info = config.LAB_MATERIALS.get(mat_key)
+            if not info:
+                users.set_pending(user, None)
+                await s.commit()
+                await update.message.reply_html("❌ مشکلی پیش اومد، دوباره از شاپ شروع کن")
+                raise ApplicationHandlerStop()
+
+            qty = parse_amount(text)
+            if qty is None:
+                await s.commit()
+                await update.message.reply_html(
+                    "❌ فقط یه عدد صحیح بفرست، مثلا: 24\n\n❌ اگر هم پشیمون شدی بنویس «لغو»"
+                )
+                raise ApplicationHandlerStop()
+
+            users.set_pending(user, None)
+            total = info["unit"] * qty
+            await s.commit()
+            await update.message.reply_html(
+                f"<b>🧾 فاکتور خرید {info['emoji']} {info['name']}</b>\n\n"
+                f"🔢 تعداد: {fa_num(qty)} دونه\n"
+                f"💸 قیمت هر دونه: {money_tp(info['unit'])}\n"
+                f"💰 جمع فاکتور: {money(total)}\n\n"
+                "معامله‌ست؟",
+                reply_markup=kb.buylabmat_confirm_kb(mat_key, qty),
+            )
+            raise ApplicationHandlerStop()
+
         # ── تعداد دلخواه ارسال محموله (بعد از دکمه ✏️ تعداد دلخواه تو صفحه ارسال) ──
         if action == "smqty":
             crop = user.pending_value or ""
