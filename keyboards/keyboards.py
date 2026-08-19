@@ -208,9 +208,11 @@ HELP_MENU = [
     ("company",   "🏭 شرکت"),
     ("shelter",   "🏚 انبار"),
     ("smuggle",   "🚚 محموله و کاروان"),
+    ("lab",       "🧪 آزمایشگاه"),
+    ("market",    "🛒 مارکت بازیکن‌ها"),
     ("team",      "👥 کارتل"),
     ("resources", "🎒 منابع"),
-    ("shop",      "🛒 فروشگاه"),
+    ("shop",      "🏪 فروشگاه"),
     ("skills",    "⭐️ مهارت‌ها"),
     ("gear",      "🛡 تجهیزات"),
     ("titles",    "🏅 لقب‌ها"),
@@ -1120,20 +1122,41 @@ def lab_products_kb(user: User) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(rows)
 
 
+def lab_hire_confirm_kb(worker_key: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([[
+        _btn("✅ استخدام", f"cf:lab:hire:{worker_key}", SUCCESS),
+        _btn("❌ لغو", "lab:workers", DANGER),
+    ]])
+
+
+def lab_fire_confirm_kb(worker_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([[
+        _btn("✅ اخراج", f"cf:lab:fire:{worker_id}", DANGER),
+        _btn("❌ لغو", "lab:workers", PRIMARY),
+    ]])
+
+
 def lab_pick_worker_kb(product_key: str, workers: list) -> InlineKeyboardMarkup:
-    """انتخاب کارگر آزاد برای شروع تولید یه محصول خاص"""
+    """انتخاب کارگر آزاد و سازگار؛ انتخاب فقط پیش‌فاکتور را باز می‌کند."""
     rows: list[list[InlineKeyboardButton]] = []
     free_workers = [w for w in workers if not w.busy_until]
     if not free_workers:
-        rows.append([_btn("👷 تمام کارگران در حال فعالیت هستند", "noop:labbusy", DANGER)])
+        rows.append([_btn("👷 کارگر مناسب و آزاد نداری", "noop:labbusy", DANGER)])
     for w in free_workers:
         cfg = config.LAB_WORKERS[w.worker_key]
-        rows.append([_btn(f"{cfg['emoji']} {cfg['name']}", f"cf:lab:start:{w.id}:{product_key}", SUCCESS)])
+        rows.append([_btn(f"{cfg['emoji']} {cfg['name']}", f"lab:pick:{w.id}:{product_key}", SUCCESS)])
     rows.append([_btn("❌ لغو", "lab:prod", DANGER)])
     return InlineKeyboardMarkup(rows)
 
 
-def lab_warehouse_kb(user: User, stock: dict) -> InlineKeyboardMarkup:
+def lab_start_confirm_kb(worker_id: int, product_key: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([[
+        _btn("✅ شروع تولید", f"cf:lab:start:{worker_id}:{product_key}", SUCCESS),
+        _btn("❌ لغو", "lab:prod", DANGER),
+    ]])
+
+
+def lab_warehouse_kb(user: User, stock: dict, free_shipments: int = 0) -> InlineKeyboardMarkup:
     from services import lab as lab_svc
     rows: list[list[InlineKeyboardButton]] = []
     for key in config.LAB_PRODUCT_ORDER:
@@ -1142,16 +1165,27 @@ def lab_warehouse_kb(user: User, stock: dict) -> InlineKeyboardMarkup:
         qty = stock.get(key, 0)
         if qty > 0:
             cfg = config.LAB_PRODUCTS[key]
-            rows.append([_btn(f"💰 فروش همه {cfg['emoji']} {cfg['name']} ({fa_num(qty)})", f"lab:sell:{key}:{qty}", SUCCESS)])
+            if free_shipments > 0:
+                rows.append([_btn(
+                    f"📦 ارسال همه {cfg['emoji']} {cfg['name']} ({fa_num(qty)})",
+                    f"lab:ship:{key}:{qty}", SUCCESS,
+                )])
+            else:
+                rows.append([_btn(f"🚚 اسلات محموله پره | {cfg['name']} ×{fa_num(qty)}", "noop:labbusy", DANGER)])
     rows.append([_btn("🔙 بازگشت", "menu:lab", PRIMARY)])
     return InlineKeyboardMarkup(rows)
 
 
-def lab_sell_confirm_kb(product_key: str, qty: int) -> InlineKeyboardMarkup:
+def lab_ship_confirm_kb(product_key: str, qty: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([[
-        _btn("✅ تایید فروش", f"cf:lab:sell:{product_key}:{qty}", SUCCESS),
-        _btn("❌ لغو", "cl:lab:sell", DANGER),
+        _btn("✅ ارسال محموله", f"cf:lab:ship:{product_key}:{qty}", SUCCESS),
+        _btn("❌ لغو", "lab:wh", DANGER),
     ]])
+
+
+def lab_sell_confirm_kb(product_key: str, qty: int) -> InlineKeyboardMarkup:
+    """سازگاری پیام‌های قدیمی؛ فروش مستقیم دیگر استفاده نمی‌شود."""
+    return lab_ship_confirm_kb(product_key, qty)
 
 
 def shelter_kb(user: User, caravan_on: bool = False) -> InlineKeyboardMarkup:

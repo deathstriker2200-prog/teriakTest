@@ -336,6 +336,13 @@ async def market_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             ok, row = await mk_svc.cancel_listing(s, me, int(a1))
             await s.commit()
         if not ok:
+            if row is not None:
+                room = mk_svc.return_room(me, row.item)
+                return await query.answer(
+                    f"📦 انبارت جا نداره؛ برای برگشت این آگهی {fa_num(row.qty)} جا لازم داری"
+                    + (f" ولی فقط {fa_num(room)} جا خالیه" if room is not None else ""),
+                    show_alert=True,
+                )
             return await query.answer("❌ این آگهی دیگه مال تو نیس", show_alert=True)
         it = config.MARKET_ITEMS[row.item]
         return await respond(

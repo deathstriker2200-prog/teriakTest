@@ -207,8 +207,13 @@ async def boss_job(context: ContextTypes.DEFAULT_TYPE) -> None:
         offs = await power_svc.off_group_ids(s)
         groups = [g for g in await world_svc.active_group_ids(s, config.BOSS_GROUP_ACTIVE_HOURS) if g not in offs]
         due: list[int] = []
+        grace_cutoff = now_utc() - timedelta(hours=config.BOSS_NEW_GROUP_GRACE_HOURS)
         for gid in groups:
             if boss_svc.active(gid):
+                continue
+            activity = await s.get(GroupActivity, gid)
+            # بعد هر ورود واقعی ربات، گروه تا پایان مهلت امن مطلقاً باس خودکار نمی‌گیره
+            if activity and activity.bot_joined_at and activity.bot_joined_at > grace_cutoff:
                 continue
             plan = await boss_svc.ensure_plan(s, gid, day)
             if boss_svc.plan_due(plan):
@@ -279,7 +284,7 @@ async def smuggler_job(context: ContextTypes.DEFAULT_TYPE) -> None:
 
 # ───────── جاروی ورودی‌های معلق عددی ⏳ ─────────
 
-_NUMERIC_PENDING = ("bankdep", "bankwd", "resbuy", "trf_to", "trf_amt")
+_NUMERIC_PENDING = ("bankdep", "bankwd", "resbuy", "labmatbuy", "smqty", "smcqty", "trf_to", "trf_amt")
 
 
 async def pending_sweep_job(context: ContextTypes.DEFAULT_TYPE) -> None:

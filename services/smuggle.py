@@ -89,6 +89,19 @@ async def take_product(session: AsyncSession, user_id: int, crop: str, qty: int)
 
 # ═════════ ارسال محموله 📦 ═════════
 
+def shipment_item(crop: str) -> dict:
+    """مشخصات نمایشی محموله مزرعه یا محصول آزمایشگاه."""
+    if crop.startswith("lab_"):
+        key = crop[4:]
+        cfg = config.LAB_PRODUCTS.get(key)
+        if cfg:
+            return {**cfg, "key": key, "kind": "lab"}
+    cfg = config.SEEDS.get(crop)
+    if cfg:
+        return {**cfg, "key": crop, "kind": "farm"}
+    return {"name": crop, "emoji": "📦", "key": crop, "kind": "unknown"}
+
+
 def shipment_seconds() -> int:
     """زمان تحویل هر محموله (راند ۳۱، درخواست کارفرما): کاروان ساده و یکدست، ثابت و برابر برای همه"""
     return config.CARAVAN_BASE_SECONDS
@@ -174,11 +187,12 @@ async def send_shipment(session: AsyncSession, user: User, crop: str, qty: int,
 
 
 def shipment_line(sh: Shipment) -> str:
-    """خط وضعیت یه محموله در راه برای صفحه محصولات"""
-    sd = config.SEEDS.get(sh.crop, {})
+    """خط وضعیت محموله مزرعه یا آزمایشگاه."""
+    item = shipment_item(sh.crop)
     left = max(0, int((sh.deliver_at - now_utc()).total_seconds()))
     late = " | 🚛 مسیر عوض شده" if sh.hops else ""
-    return f"▫️ {sd.get('emoji', '📦')} {sd.get('name', sh.crop)} ×{fa_num(sh.qty)} | ⏱ {fa_dur(left)} مونده{late}"
+    lab = " | 🧪 آزمایشگاه" if item.get("kind") == "lab" else ""
+    return f"▫️ {item.get('emoji', '📦')} {item.get('name', sh.crop)} ×{fa_num(sh.qty)} | ⏱ {fa_dur(left)} مونده{lab}{late}"
 
 
 async def process_due_shipments(session: AsyncSession) -> list[dict]:
@@ -200,9 +214,9 @@ async def process_due_shipments(session: AsyncSession) -> list[dict]:
         from services import users as users_svc
         men = f'<a href="tg://user?id={user.telegram_id}">{esc(users_svc.display_name(user))}</a>'
 
-        sd = config.SEEDS.get(sh.crop, {})
-        name = sd.get("name", sh.crop)
-        emoji = sd.get("emoji", "📦")
+        item = shipment_item(sh.crop)
+        name = item.get("name", sh.crop)
+        emoji = item.get("emoji", "📦")
 
         if sh.outcome == "delayed" and not sh.hops:
             sh.hops = 1

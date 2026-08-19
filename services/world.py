@@ -593,8 +593,12 @@ def shelter_raid_cut(level: int) -> float:
 
 
 def shelter_dodge_chance(level: int) -> float:
-    """شانس فرار کامل از یورش، هر لول ۴%"""
-    return min(0.5, config.SHELTER_DODGE_PER_LEVEL * level)
+    """شانس استتار کامل از پلیس؛ از لول ۳ شروع میشه و هم در موج یورش هم در «لو دادن» اعمال میشه."""
+    level = max(0, int(level or 0))
+    if level < config.SHELTER_DODGE_START_LEVEL:
+        return 0.0
+    active_steps = level - config.SHELTER_DODGE_START_LEVEL + 1
+    return min(config.SHELTER_DODGE_MAX, config.SHELTER_DODGE_PER_LEVEL * active_steps)
 
 
 def seed_storage_cap(user: User) -> int:
@@ -621,9 +625,15 @@ async def upgrade_shelter(session: AsyncSession, user: User) -> tuple[bool, str]
         return False, f"❌ ارتقا {money(price)} هزینه داره و پولت کمه"
     user.cash -= price
     user.shelter_level = next_level
+    hide_pct = int(round(shelter_dodge_chance(next_level) * 100))
+    hide_line = (
+        f"\n🕶 شانس مخفی موندن محصولات از پلیس {fa_num(hide_pct)}% شد"
+        if hide_pct else f"\n🔒 استتار پلیس از لول {fa_num(config.SHELTER_DODGE_START_LEVEL)} انبار فعال میشه"
+    )
     return True, (
         f"🏚 انبارت رفت رو لول {fa_num(next_level)}\n"
         f"📦 ظرفیت انبار هر بذر {fa_num(seed_storage_cap(user))} تا شد"
+        f"{hide_line}"
     )
 
 

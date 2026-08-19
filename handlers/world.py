@@ -146,10 +146,17 @@ async def _shelter_text(session, user) -> str:
         prod_lines = [f"🌾 محصولات: {fa_num(p_kinds)} قلم", f"💰 ارزش تقریبی: {money(p_val)}"]
     else:
         prod_lines = ["🌾 محصولات: خالی، اول از مزرعه برداشت کن"]
+    hide_pct = int(round(world_svc.shelter_dodge_chance(user.shelter_level) * 100))
+    hide_line = (
+        f"🕶 شانس مخفی موندن محصولات از پلیس: {fa_num(hide_pct)}%"
+        if hide_pct
+        else f"🔒 استتار پلیس از لول {fa_num(config.SHELTER_DODGE_START_LEVEL)} انبار فعال میشه"
+    )
     lines = [
         "<b>🎒 انبار</b>",
         "",
         lvl_line,
+        hide_line,
         "",
         *prod_lines,
         "",
@@ -349,11 +356,17 @@ async def shelter_up_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE)
         price = world_svc.shelter_price(user.shelter_level + 1)
         level = user.shelter_level
         cash = user.cash
+        next_hide = int(round(world_svc.shelter_dodge_chance(level + 1) * 100))
         await s.commit()
 
+    hide_line = (
+        f"🕶 شانس مخفی موندن محصولات از پلیس: {fa_num(next_hide)}%\n"
+        if next_hide else f"🔒 استتار پلیس از لول {fa_num(config.SHELTER_DODGE_START_LEVEL)} فعال میشه\n"
+    )
     text = (
         f"<b>🏚 ارتقای انبار، لول {fa_num(level)} ← {fa_num(level + 1)}</b>\n\n"
         f"💸 هزینه {money(price)}\n"
+        f"{hide_line}"
         f"💵 الان {money(cash)} داری\n\n"
         "انجامش بدیم؟"
     )

@@ -14,7 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import config
-from models import LabMaterial, LabProduct, LabWorker, User
+from models import LabMaterial, LabProduct, LabWorker, Shipment, User
 from utils import fa_dur, fa_num, money, now_utc
 
 SEP = "━━━━━━━━━━━━━━"
@@ -35,6 +35,21 @@ def lab_active(user: User) -> bool:
     return lab_level(user) >= 1
 
 
+def _cap_for_level(table: list[int], level: int) -> int:
+    idx = min(max(int(level or 1), 1), len(table)) - 1
+    return int(table[idx])
+
+
+def material_cap(user: User) -> int:
+    """ظرفیت هر نوع ماده اولیه، متناسب با لول آزمایشگاه."""
+    return _cap_for_level(config.LAB_MATERIAL_CAP_BY_LEVEL, lab_level(user) or 1)
+
+
+def warehouse_cap(user: User) -> int:
+    """ظرفیت هر نوع محصول در انبار داخلی آزمایشگاه."""
+    return _cap_for_level(config.LAB_WAREHOUSE_CAP_BY_LEVEL, lab_level(user) or 1)
+
+
 # ───────── انبار مواد اولیه ─────────
 
 async def get_materials(session: AsyncSession, user_id: int) -> dict[str, int]:
@@ -43,13 +58,16 @@ async def get_materials(session: AsyncSession, user_id: int) -> dict[str, int]:
 
 
 async def add_material(session: AsyncSession, user_id: int, material_key: str, amount: int) -> int:
-    """واریز ماده اولیه با سقف انبار، خروجی: مقدار واقعی واریزشده"""
-    if amount <= 0:
+    """واریز ماده اولیه با سقف متناسب با لول آزمایشگاه، خروجی مقدار واقعی واریزشده."""
+    if amount <= 0 or material_key not in config.LAB_MATERIALS:
+        return 0
+    user = await session.get(User, user_id)
+    if user is None:
         return 0
     q = select(LabMaterial).where(LabMaterial.user_id == user_id, LabMaterial.material_key == material_key)
     row = (await session.execute(q)).scalar_one_or_none()
     cur = row.count if row else 0
-    got = max(0, min(amount, config.LAB_MATERIAL_CAP - cur))
+    got = max(0, min(amount, material_cap(user) - cur))
     if got <= 0:
         return 0
     if row:
@@ -71,8 +89,8 @@ async def _take_materials(session: AsyncSession, user_id: int, need: dict[str, i
     return True
 
 
-def material_room(material_key: str, stock: dict[str, int]) -> int:
-    return max(0, config.LAB_MATERIAL_CAP - stock.get(material_key, 0))
+def material_room(user: User, material_key: str, stock: dict[str, int]) -> int:
+    return max(0, material_cap(user) - stock.get(material_key, 0))
 
 
 async def purchase_material(session: AsyncSession, user: User, material_key: str, qty: int) -> tuple[bool, str]:
@@ -85,7 +103,7 @@ async def purchase_material(session: AsyncSession, user: User, material_key: str
         return False, "❌ تعداد باید حداقل ۱ باشه"
     total = info["unit"] * qty
     stock = await get_materials(session, user.id)
-    free = material_room(material_key, stock)
+    free = material_room(user, material_key, stock)
     if qty > free:
         return False, (
             "❌ توی انبار آزمایشگاهت جای خالی برای اینهمه نداری\n"
@@ -106,12 +124,16 @@ async def get_products(session: AsyncSession, user_id: int) -> dict[str, int]:
 
 
 async def add_product(session: AsyncSession, user_id: int, product_key: str, amount: int) -> int:
-    if amount <= 0:
+    """واریز محصول به انبار داخلی آزمایشگاه، بدون ردکردن سقف لول فعلی."""
+    if amount <= 0 or product_key not in config.LAB_PRODUCTS:
+        return 0
+    user = await session.get(User, user_id)
+    if user is None:
         return 0
     q = select(LabProduct).where(LabProduct.user_id == user_id, LabProduct.product_key == product_key)
     row = (await session.execute(q)).scalar_one_or_none()
     cur = row.count if row else 0
-    got = max(0, min(amount, config.LAB_WAREHOUSE_CAP_PER_PRODUCT - cur))
+    got = max(0, min(amount, warehouse_cap(user) - cur))
     if got <= 0:
         return 0
     if row:
@@ -121,21 +143,72 @@ async def add_product(session: AsyncSession, user_id: int, product_key: str, amo
     return got
 
 
+async def product_room(session: AsyncSession, user: User, product_key: str, reserve_jobs: bool = False) -> int:
+    """جای خالی محصول؛ reserve_jobs خروجی تولیدهای درراه هم رزرو حساب می‌کنه."""
+    stock = await get_products(session, user.id)
+    used = stock.get(product_key, 0)
+    if reserve_jobs:
+        workers = await get_workers(session, user.id)
+        used += sum((w.job_output or 0) for w in workers if w.busy_until and w.job_product == product_key)
+    return max(0, warehouse_cap(user) - used)
+
+
 async def sell_product(session: AsyncSession, user: User, product_key: str, amount: int) -> tuple[bool, str, int]:
-    """فروش محصول تولیدشده به تی‌پوینت، طبق سیستم اقتصادی فعلی (خروجی: اوکی, پیام خطا, مبلغ)"""
+    """فروش مستقیم حذف شده؛ محصولات آزمایشگاه فقط با محموله نقد میشن."""
+    return False, "📦 فروش مستقیم آزمایشگاه غیرفعاله؛ محصول رو با ارسال محموله بفرست", 0
+
+
+def shipment_key(product_key: str) -> str:
+    return f"lab_{product_key}"
+
+
+def shipment_product_key(crop: str) -> str | None:
+    if not crop.startswith("lab_"):
+        return None
+    key = crop[4:]
+    return key if key in config.LAB_PRODUCTS else None
+
+
+async def send_product_shipment(
+    session: AsyncSession, user: User, product_key: str, amount: int,
+    chat_id: int | None = None,
+) -> tuple[bool, str, Shipment | None]:
+    """محصول انبار داخلی آزمایشگاه را با همان سیستم محموله و ریسک پلیس ارسال می‌کند."""
     cfg = config.LAB_PRODUCTS.get(product_key)
     if not cfg:
-        return False, "❌ همچین محصولی نیست", 0
+        return False, "❌ همچین محصولی نیست", None
+    amount = int(amount)
     if amount <= 0:
-        return False, "❌ تعدادشو درست بگو", 0
-    q = select(LabProduct).where(LabProduct.user_id == user.id, LabProduct.product_key == product_key)
+        return False, "❌ تعدادشو درست بگو", None
+
+    from services import smuggle as smg
+    ongoing = await smg.active_shipments(session, user.id)
+    if len(ongoing) >= config.SHIPMENT_MAX_ACTIVE:
+        return False, f"🚚 هر {fa_num(config.SHIPMENT_MAX_ACTIVE)} محموله‌ات تو راهن؛ اول صبر کن یکی برسه", None
+
+    q = (select(LabProduct)
+         .where(LabProduct.user_id == user.id, LabProduct.product_key == product_key)
+         .with_for_update())
     row = (await session.execute(q)).scalar_one_or_none()
     if not row or row.count < amount:
-        return False, "❌ این همه ازش تو انبار نداری", 0
+        return False, f"📦 {fa_num(amount)} تا {cfg['name']} تو انبار آزمایشگاه نداری", None
+
+    value = amount * cfg["sell"]
+    outcome = smg.roll_outcome()
+    seize = smg.roll_seize_pct() if outcome == "police" else None
+    pay = value if seize is None else value - round(value * seize / 100)
+    from services.snitch import sell_mult
+    pay = round(pay * sell_mult(user))
+
     row.count -= amount
-    total = amount * cfg["sell"]
-    user.cash += total
-    return True, "", total
+    sh = Shipment(
+        user_id=user.id, crop=shipment_key(product_key), qty=amount,
+        value=value, pay=pay, outcome=outcome, hops=0,
+        chat_id=chat_id, seize_pct=seize,
+        deliver_at=now_utc() + timedelta(seconds=smg.shipment_seconds()),
+    )
+    session.add(sh)
+    return True, "🚚 محموله آزمایشگاه راه افتاد", sh
 
 
 # ───────── ارتقای آزمایشگاه ─────────
@@ -252,46 +325,93 @@ def _settle_worker(w: LabWorker) -> tuple[str, int] | None:
 
 
 async def collect_all(session: AsyncSession, user: User) -> list[tuple[str, int]]:
-    """تسویه‌ی همه‌ی کارگرهایی که کارشون تموم شده، محصول میره تو انبار (هزینه نگهداری کارگر همون‌جا کسر میشه)
-    خروجی: لیست (product_key, مقدار دریافتی واقعی بعد سقف انبار) برای هرکدوم که چیزی تحویل داد"""
+    """
+    تولید آماده فقط وقتی تحویل میشه که دستمزد کامل و فضای انبار موجود باشه.
+    در صورت کمبود پول/جا، کارگر و خروجی در حالت آماده می‌مونن؛ محصول دیگر گم نمی‌شود.
+    """
     workers = await get_workers(session, user.id)
-    got = []
+    got: list[tuple[str, int]] = []
     for w in workers:
+        if not w.busy_until or now_utc() < w.busy_until or not w.job_product or w.job_output <= 0:
+            continue
         wcfg = config.LAB_WORKERS[w.worker_key]
-        done = _settle_worker(w)
-        if done:
-            pk, out = done
-            user.cash = max(0, user.cash - wcfg["upkeep"])   # نگهداری کارگر، هر بار که یه دور تولید تموم میشه کسر میشه
-            actual = await add_product(session, user.id, pk, out)
-            if actual > 0:
-                got.append((pk, actual))
+        upkeep = int(wcfg["upkeep"])
+        if user.cash < upkeep:
+            continue
+        stock = await get_products(session, user.id)
+        room = max(0, warehouse_cap(user) - stock.get(w.job_product, 0))
+        if room < w.job_output:
+            continue
+        pk, out = w.job_product, w.job_output
+        actual = await add_product(session, user.id, pk, out)
+        if actual != out:
+            continue
+        user.cash -= upkeep
+        w.busy_until = None
+        w.job_product = None
+        w.job_output = 0
+        got.append((pk, actual))
     return got
 
 
-async def start_production(session: AsyncSession, user: User, worker_id: int, product_key: str) -> tuple[bool, str]:
+async def production_quote(
+    session: AsyncSession, user: User, worker_id: int, product_key: str,
+) -> tuple[bool, str | dict]:
+    """پیش‌فاکتور واحد برای صفحه تایید و اجرای نهایی؛ هیچ موجودی‌ای تغییر نمی‌دهد."""
     cfg = config.LAB_PRODUCTS.get(product_key)
     if not cfg:
         return False, "❌ همچین محصولی نیست"
+    if not lab_active(user):
+        return False, "🧪 اول باید آزمایشگاه رو بسازی"
     if product_locked(user, product_key):
         return False, f"🔒 {cfg['emoji']} {cfg['name']} از لول آزمایشگاه {fa_num(cfg['unlock_lab_level'])} باز میشه"
-    q = select(LabWorker).where(LabWorker.id == worker_id, LabWorker.user_id == user.id)
+    q = (select(LabWorker)
+         .where(LabWorker.id == worker_id, LabWorker.user_id == user.id)
+         .with_for_update())
     w = (await session.execute(q)).scalar_one_or_none()
     if not w:
         return False, "❌ این کارگر رو نداری"
     if w.busy_until:
-        return False, "👷 تمام کارگران در حال فعالیت هستند"
+        return False, "👷 این کارگر هنوز مشغوله یا تولید آماده‌اش تحویل نشده"
     if worker_rank(w.worker_key) < worker_rank(cfg["min_worker"]):
         need = config.LAB_WORKERS[cfg["min_worker"]]
         return False, f"🔒 این محصول حداقل {need['emoji']} {need['name']} می‌خواد"
-    if not await _take_materials(session, user.id, cfg["materials"]):
+
+    stock = await get_materials(session, user.id)
+    if any(stock.get(k, 0) < v for k, v in cfg["materials"].items()):
         return False, "❌ مواد اولیه کافی نیست"
     wcfg = config.LAB_WORKERS[w.worker_key]
     seconds = max(1, round(cfg["time_seconds"] / wcfg["speed_mult"]))
     output = max(1, round(cfg["output"] * wcfg["yield_mult"]))
-    w.busy_until = now_utc() + timedelta(seconds=seconds)
+    room = await product_room(session, user, product_key, reserve_jobs=True)
+    if room < output:
+        return False, f"📦 انبار آزمایشگاه جا نداره؛ برای این تولید {fa_num(output)} جا لازم داری ولی {fa_num(room)} جا خالیه"
+    return True, {
+        "worker": w,
+        "worker_cfg": wcfg,
+        "product": cfg,
+        "seconds": seconds,
+        "output": output,
+        "upkeep": int(wcfg["upkeep"]),
+        "materials": dict(cfg["materials"]),
+    }
+
+
+async def start_production(session: AsyncSession, user: User, worker_id: int, product_key: str) -> tuple[bool, str]:
+    ok, quote = await production_quote(session, user, worker_id, product_key)
+    if not ok:
+        return False, str(quote)
+    if not await _take_materials(session, user.id, quote["materials"]):
+        return False, "❌ مواد اولیه کافی نیست؛ موجودی عوض شده، دوباره تلاش کن"
+    w = quote["worker"]
+    w.busy_until = now_utc() + timedelta(seconds=quote["seconds"])
     w.job_product = product_key
-    w.job_output = output
-    return True, f"🧪 تولید {cfg['emoji']} {cfg['name']} با موفقیت شروع شد، {fa_dur(seconds)} دیگه آماده‌ست"
+    w.job_output = quote["output"]
+    cfg = quote["product"]
+    return True, (
+        f"🧪 تولید {cfg['emoji']} {cfg['name']} شروع شد، {fa_dur(quote['seconds'])} دیگه آماده‌ست\n"
+        f"👷 موقع تحویل {money(quote['upkeep'])} دستمزد از نقدینگیت کم میشه"
+    )
 
 
 # ───────── متن‌های صفحه ─────────
@@ -313,6 +433,7 @@ async def lab_home_text(session: AsyncSession, user: User) -> str:
     workers = await get_workers(session, user.id)
     busy_n = sum(1 for w in workers if w.busy_until)
     free_n = len(workers) - busy_n
+    ready_n = sum(1 for w in workers if w.busy_until and w.busy_until <= now_utc())
     products_unlocked = [config.LAB_PRODUCTS[k]["name"] for k in config.LAB_PRODUCT_ORDER
                           if not product_locked(user, k)]
     lines = [
@@ -322,8 +443,12 @@ async def lab_home_text(session: AsyncSession, user: User) -> str:
         f"▫️ وضعیت تولید: {fa_num(busy_n)} کارگر مشغول، {fa_num(free_n)} آزاد",
         f"▫️ کارگران فعال: {fa_num(len(workers))} / {fa_num(worker_slots(user))}",
         f"▫️ ظرفیت تولید: {fa_num(worker_slots(user))} اسلات همزمان",
+        f"▫️ ظرفیت هر ماده: {fa_num(material_cap(user))}",
+        f"▫️ ظرفیت هر محصول: {fa_num(warehouse_cap(user))}",
         f"▫️ محصولات قابل تولید: {', '.join(products_unlocked) if products_unlocked else '—'}",
     ]
+    if ready_n:
+        lines.append(f"\n🟠 {fa_num(ready_n)} تولید آماده تحویله؛ برای تحویل باید دستمزد و فضای انبار کافی داشته باشی")
     if lab_level(user) < config.LAB_MAX_LEVEL:
         need_lvl = lab_upgrade_min_level(lab_level(user) + 1)
         if (getattr(user, "level", None) or 1) < need_lvl:
@@ -342,7 +467,13 @@ async def lab_workers_text(session: AsyncSession, user: User) -> str:
         if w.busy_until:
             pcfg = config.LAB_PRODUCTS.get(w.job_product, {})
             left = max(0, int((w.busy_until - now_utc()).total_seconds()))
-            lines.append(f"{cfg['emoji']} {cfg['name']} — 🟢 مشغول ({pcfg.get('emoji', '')} {pcfg.get('name', '')}، {fa_dur(left)} مونده)")
+            if left > 0:
+                state = f"🟢 مشغول ({pcfg.get('emoji', '')} {pcfg.get('name', '')}، {fa_dur(left)} مونده)"
+            elif user.cash < cfg["upkeep"]:
+                state = f"🟠 آماده؛ منتظر {money(cfg['upkeep'])} دستمزد"
+            else:
+                state = "🟠 آماده تحویل؛ انبار را بررسی کن"
+            lines.append(f"{cfg['emoji']} {cfg['name']} — {state}")
         else:
             lines.append(f"{cfg['emoji']} {cfg['name']} — ⚪ آزاد")
     lines.append("")
@@ -356,7 +487,7 @@ async def lab_workers_text(session: AsyncSession, user: User) -> str:
         lines.append(SEP)
         lines.append(f"🔒 {cfg['name']} (قفل)" if locked else f"{cfg['emoji']} {cfg['name']}")
         lines.append(f"⚡ سرعت: ×{cfg['speed_mult']:g}  |  📦 بازده: ×{cfg['yield_mult']:g}")
-        lines.append(f"🪙 هزینه استخدام: {money(cfg['hire_cost'])}  |  نگهداری: {money(cfg['upkeep'])}")
+        lines.append(f"🪙 هزینه استخدام: {money(cfg['hire_cost'])}  |  دستمزد هر دور: {money(cfg['upkeep'])}")
         if locked:
             lines.append(f"⭕️ بازگشایی در سطح {fa_num(cfg['min_level'])}")
     lines.append(SEP)
@@ -386,9 +517,17 @@ async def lab_products_text(session: AsyncSession, user: User) -> str:
 
 
 async def lab_warehouse_text(session: AsyncSession, user: User) -> str:
-    """صفحه انبار محصولات: نام، مقدار، ارزش فروش، وضعیت Unlock"""
-    lines = ["<b>📦 انبار محصولات</b>", ""]
+    """انبار داخلی آزمایشگاه؛ فروش مستقیم ندارد و از همین‌جا محموله فرستاده می‌شود."""
+    from services import smuggle as smg
     stock = await get_products(session, user.id)
+    ongoing = [sh for sh in await smg.active_shipments(session, user.id) if shipment_product_key(sh.crop)]
+    free = max(0, config.SHIPMENT_MAX_ACTIVE - len(await smg.active_shipments(session, user.id)))
+    lines = [
+        "<b>📦 انبار محصولات آزمایشگاه</b>", "",
+        f"📦 ظرفیت هر محصول: {fa_num(warehouse_cap(user))}",
+        f"🚚 اسلات محموله آزاد: {fa_num(free)} از {fa_num(config.SHIPMENT_MAX_ACTIVE)}", "",
+        "محصولات فقط با ارسال محموله نقد میشن؛ تحویلش زمان و ریسک پلیس داره", "",
+    ]
     for key in config.LAB_PRODUCT_ORDER:
         cfg = config.LAB_PRODUCTS[key]
         locked = product_locked(user, key)
@@ -397,7 +536,10 @@ async def lab_warehouse_text(session: AsyncSession, user: User) -> str:
         name_line = f"🔒 {cfg['name']} (قفل)" if locked else f"{cfg['emoji']} {cfg['name']}"
         lines.append(name_line)
         if not locked:
-            lines.append(f"▫️ مقدار موجود: {fa_num(qty)} / {fa_num(config.LAB_WAREHOUSE_CAP_PER_PRODUCT)}")
-            lines.append(f"▫️ ارزش فروش: {money(cfg['sell'])} هر واحد")
+            lines.append(f"▫️ مقدار موجود: {fa_num(qty)} / {fa_num(warehouse_cap(user))}")
+            lines.append(f"▫️ ارزش محموله: {money(cfg['sell'])} هر واحد")
     lines.append(SEP)
+    if ongoing:
+        lines += ["", "🚚 محموله‌های آزمایشگاه در راه:"]
+        lines.extend(smg.shipment_line(sh) for sh in ongoing)
     return "\n".join(lines)

@@ -126,7 +126,6 @@ async def snitch_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         await s.commit()
 
 
-    items = "، ".join(res["names"])
     src_men = f'<a href="tg://user?id={src_tg}">{esc(src_name)}</a>'
     tgt_men = f'<a href="tg://user?id={tgt_tg}">{esc(tgt_name)}</a>'
 
@@ -137,7 +136,15 @@ async def snitch_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             f"لو دادنت سوخت، {fa_dur(config.SNITCH_COOLDOWN_SECONDS)} دیگه می‌تونی یکی دیگه رو لو بدی\n"
             "ولی همین تلاشم تو شمارش هفتگی لقب چاپلوس حسابه",
         )
+    elif res["status"] == "hidden":
+        await respond(
+            update,
+            f"🕶 انبار {tgt_men} از چشم پلیس مخفی موند\n\n"
+            f"🏚 شانس استتار {fa_num(res['hide_pct'])}% فعال شد و پلیس هیچ محصولی پیدا نکرد\n"
+            f"لو دادنت سوخت، {fa_dur(config.SNITCH_COOLDOWN_SECONDS)} دیگه می‌تونی یکی دیگه رو لو بدی",
+        )
     else:
+        items = "، ".join(res.get("names", []))
         # کارت یورش پلیس (راند ۳۵، متن قطعی کارفرما)
         await respond(
             update,

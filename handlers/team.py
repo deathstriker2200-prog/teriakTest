@@ -1391,7 +1391,8 @@ async def team_members_text(update: Update) -> None:
             return await respond(update, "🏴 اصلا تو کارتلی نیستی که")
         rows = (await s.execute(
             select(TeamMember, User).join(User, User.id == TeamMember.user_id)
-            .where(TeamMember.team_id == team.id).order_by(TeamMember.joined_at)
+            .where(TeamMember.team_id == team.id)
+            .order_by(User.level.desc(), User.wins.desc(), TeamMember.joined_at.asc())
         )).all()
         await s.commit()
 
@@ -1399,7 +1400,9 @@ async def team_members_text(update: Update) -> None:
     for i, (mem, u) in enumerate(rows, 1):
         em = "👑" if mem.role == "owner" else ("⭐" if mem.role == "admin" else "👤")
         uname = f"@{esc(u.username)}" if u.username else "بدون یوزرنیم"
-        lines.append(f"{fa_num(i)}. {em} {esc(users.display_name(u))} | {uname}")
+        lines.append(
+            f"{fa_num(i)}. {em} {esc(users.display_name(u))} | ⭐ لول {fa_num(u.level)} | {uname}"
+        )
     lines += ["", "با «کارتل چت» باهاشون حرف بزن 💬"]
     await respond(update, "\n".join(lines), kb.team_back_kb())
 

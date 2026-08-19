@@ -414,6 +414,8 @@ class GroupActivity(Base):
     chat_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     last_active_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
     last_caravan_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # زمان آخرین ورود واقعی ربات به گروه؛ با خروج و ورود دوباره تازه میشه و گیت ۳ساعته باس روی اینه
+    bot_joined_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     title: Mapped[str | None] = mapped_column(String(128), nullable=True)      # اسم گروه برای آمار ادمین
     msgs_hour: Mapped[int] = mapped_column(Integer, default=0)                  # پیام‌های ساعت فعلی ایران
     hour_key: Mapped[str | None] = mapped_column(String(16), nullable=True)     # کلید سطل ساعتی ایران «روز-ساعت»

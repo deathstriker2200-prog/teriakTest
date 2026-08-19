@@ -138,12 +138,14 @@ TEXT_DEDUP_SECONDS = 0.5      # تکرار همون دستور زیر نیم ث�
 FARM_UPDATE_SECONDS = 3       # کولدان ریز دکمه آپدیت مزرعه
 
 # ───────── لول و تجربه بازیکن ─────────
-# منحنی Idle/RPG: لول‌های پایین سریع | لول‌های بالا سنگین‌تر ولی قابل پیشرفت
-# xp لازم برای لول N = XP_CURVE_BASE × N^XP_CURVE_EXP
-# راند ۴۳ (درخواست کارفرما): مکس لول ۲۰→۳۰ شد، BASE طوری حساب شد که جمع تجربه لازم تا لول ۳۰ حدود ۲۰۰٬۰۰۰ بشه
-# نمونه: لول۱→۷۸ | لول۵→۱۰۳۰ | لول۱۰→۳۱۲۵ | لول۲۰→۹۴۷۳ | لول۲۹→۱۷۱۶۷ | جمع کل تا ۳۰ ≈ ۲۰۰٬۱۲۹
+# منحنی Idle/RPG: لول‌های پایین سریع | از لول ۲۰ به بعد رشد نرم‌تر میشه
+# لول‌های ۱ تا ۲۰: XP_CURVE_BASE × level^XP_CURVE_EXP
+# لول‌های بالاتر از ۲۰: مقدار لول ۲۰ × (level / 20)^XP_CURVE_HIGH_EXP
+# توان دوم عمداً از ۱٫۶ کمتره تا مسیر ۲۰→۳۰ سنگین بشه ولی جهش غیرمنطقی نداشته باشه
 XP_CURVE_BASE = 78.5
 XP_CURVE_EXP = 1.6
+XP_CURVE_HIGH_START = 20
+XP_CURVE_HIGH_EXP = 1.15
 LEVEL_CASH_REWARD = 400         # جایزه نقدی لول‌آپ = این عدد × لول جدید
 
 # ───────── اثر لول روی اقتصاد و تجهیزات ─────────
@@ -320,23 +322,25 @@ LAB_UPGRADE_COST = [
 # تعداد اسلات کارگر همزمان به ازای لول آزمایشگاه (۱ تا ۴)
 LAB_WORKER_SLOTS = [1, 2, 3, 4]
 
-# 🧴 مواد اولیه: آیتم خیالی و عمومی، فقط Resource بازی، هیچ فرمول واقعی‌ای پشتش نیست
-# قابل خرید تو بخش جدید شاپ (شبیه RES_SHOP)، هرچی محصول بالاتر مواد بیشتر و گرون‌تر می‌خواد
+# مواد اولیه کاملاً خیالی بازی‌اند و هیچ فرمول یا دستور واقعی‌ای پشتشان نیست
+# قابل خرید تو بخش آزمایشگاه فروشگاه؛ هرچی محصول بالاتر باشه ماده کمیاب‌تر و گرون‌تری می‌خواد
 LAB_MATERIALS = {
-    "mat_a": {"name": "ماده اولیه A", "emoji": "🧴", "unit": 400},
-    "mat_b": {"name": "ماده اولیه B", "emoji": "🧴", "unit": 900},
-    "mat_c": {"name": "ماده اولیه C", "emoji": "🧴", "unit": 1800},
-    "mat_d": {"name": "ماده اولیه D", "emoji": "🧴", "unit": 3500},
+    "mat_a": {"name": "رزین نئون",       "emoji": "🧪", "unit": 400,  "desc": "پایه پایدار ترکیبات آزمایشگاهی"},
+    "mat_b": {"name": "حلال سایه",       "emoji": "⚗️", "unit": 900,  "desc": "حلال خیالی برای تولیدهای پیشرفته"},
+    "mat_c": {"name": "کاتالیزور کبالت", "emoji": "🧫", "unit": 1800, "desc": "شتاب‌دهنده کمیاب فرایند تولید"},
+    "mat_d": {"name": "هسته کوانتومی",   "emoji": "💠", "unit": 3500, "desc": "ماده افسانه‌ای محصولات آخر بازی"},
 }
-LAB_MATERIAL_CAP = 500          # سقف انبار هر ماده اولیه (مستقل از پناهگاه، ظرفیت ثابت آزمایشگاه)
+# ظرفیت هر نوع ماده با لول آزمایشگاه رشد می‌کنه (لول ۱ تا ۴)
+LAB_MATERIAL_CAP_BY_LEVEL = [250, 500, 800, 1200]
+LAB_MATERIAL_CAP = LAB_MATERIAL_CAP_BY_LEVEL[-1]  # سقف نهایی؛ برای سازگاری کدهای قدیمی
 
-# 👷 کارگرها: هر کدوم تو یه لول بازیکن باز میشه، سرعت و بازده تولید رو ضرب می‌کنن
+# 👷 کارگرها: هزینه استخدام دست‌نخورده، دستمزد هر دور تولید ۴ برابر شده
 # speed_mult: زمان تولید ÷ این عدد (بیشتر = سریع‌تر) | yield_mult: خروجی هر بار × این عدد
 LAB_WORKERS = {
-    "basic":     {"name": "کارگر پایه",      "emoji": "👷",     "min_level": 15, "speed_mult": 1.00, "yield_mult": 1.00, "hire_cost": 50000,   "upkeep": 500},
-    "skilled":   {"name": "کارگر ماهر",      "emoji": "🧑‍🔬", "min_level": 20, "speed_mult": 1.25, "yield_mult": 1.15, "hire_cost": 200000,  "upkeep": 1500},
-    "expert":    {"name": "متخصص",           "emoji": "🧪",     "min_level": 25, "speed_mult": 1.55, "yield_mult": 1.35, "hire_cost": 600000,  "upkeep": 4000},
-    "scientist": {"name": "دانشمند ارشد",    "emoji": "🧠",     "min_level": 30, "speed_mult": 2.00, "yield_mult": 1.60, "hire_cost": 1500000, "upkeep": 9000},
+    "basic":     {"name": "کارگر پایه",      "emoji": "👷",     "min_level": 15, "speed_mult": 1.00, "yield_mult": 1.00, "hire_cost": 50000,   "upkeep": 2000},
+    "skilled":   {"name": "کارگر ماهر",      "emoji": "🧑‍🔬", "min_level": 20, "speed_mult": 1.25, "yield_mult": 1.15, "hire_cost": 200000,  "upkeep": 6000},
+    "expert":    {"name": "متخصص",           "emoji": "🧪",     "min_level": 25, "speed_mult": 1.55, "yield_mult": 1.35, "hire_cost": 600000,  "upkeep": 16000},
+    "scientist": {"name": "دانشمند ارشد",    "emoji": "🧠",     "min_level": 30, "speed_mult": 2.00, "yield_mult": 1.60, "hire_cost": 1500000, "upkeep": 36000},
 }
 # ترتیب نمایش کارگرها تو صفحه (پایین‌ترین لول اول)
 LAB_WORKER_ORDER = ["basic", "skilled", "expert", "scientist"]
@@ -347,36 +351,38 @@ LAB_WORKER_ORDER = ["basic", "skilled", "expert", "scientist"]
 LAB_PRODUCTS = {
     "crystal": {
         "name": "کریستال", "emoji": "🧪", "unlock_lab_level": 1, "min_worker": "basic",
-        "materials": {"mat_a": 4}, "time_seconds": 900, "output": 3, "sell": 1100,
+        "materials": {"mat_a": 4}, "time_seconds": 900, "output": 3, "sell": 7500,
     },
     "meth": {
         "name": "متفتامین", "emoji": "🧪", "unlock_lab_level": 1, "min_worker": "basic",
-        "materials": {"mat_a": 6, "mat_b": 2}, "time_seconds": 1500, "output": 3, "sell": 2300,
+        "materials": {"mat_a": 6, "mat_b": 2}, "time_seconds": 1500, "output": 3, "sell": 11000,
     },
     "amph": {
         "name": "آمفتامین", "emoji": "⚡", "unlock_lab_level": 2, "min_worker": "skilled",
-        "materials": {"mat_b": 6, "mat_c": 2}, "time_seconds": 2700, "output": 4, "sell": 4500,
+        "materials": {"mat_b": 6, "mat_c": 2}, "time_seconds": 2700, "output": 4, "sell": 18000,
     },
     "heroin": {
         "name": "هروئین", "emoji": "☠️", "unlock_lab_level": 3, "min_worker": "expert",
-        "materials": {"mat_b": 8, "mat_c": 6}, "time_seconds": 4500, "output": 4, "sell": 8800,
+        "materials": {"mat_b": 8, "mat_c": 6}, "time_seconds": 4500, "output": 4, "sell": 35000,
     },
     "fentanyl": {
         "name": "فنتانیل", "emoji": "🧬", "unlock_lab_level": 3, "min_worker": "expert",
-        "materials": {"mat_c": 10, "mat_d": 4}, "time_seconds": 5400, "output": 4, "sell": 13500,
+        "materials": {"mat_c": 10, "mat_d": 4}, "time_seconds": 5400, "output": 4, "sell": 55000,
     },
     "purecrystal": {
         "name": "کریستال خالص", "emoji": "💎", "unlock_lab_level": 3, "min_worker": "expert",
-        "materials": {"mat_c": 12, "mat_d": 8}, "time_seconds": 6300, "output": 4, "sell": 17500,
+        "materials": {"mat_c": 12, "mat_d": 8}, "time_seconds": 6300, "output": 4, "sell": 80000,
     },
     "legendary": {
         "name": "محصول افسانه‌ای", "emoji": "👑", "unlock_lab_level": 4, "min_worker": "scientist",
-        "materials": {"mat_d": 25}, "time_seconds": 10800, "output": 1, "sell": 180000,
+        "materials": {"mat_d": 25}, "time_seconds": 10800, "output": 1, "sell": 400000,
     },
 }
 # ترتیب نمایش محصولات تو صفحه تولید (به ترتیب باز شدن)
 LAB_PRODUCT_ORDER = ["crystal", "meth", "amph", "heroin", "fentanyl", "purecrystal", "legendary"]
-LAB_WAREHOUSE_CAP_PER_PRODUCT = 300   # سقف انبار هر محصول تو آزمایشگاه
+# ظرفیت هر محصول در انبار داخلی آزمایشگاه، متناسب با لول آزمایشگاه
+LAB_WAREHOUSE_CAP_BY_LEVEL = [40, 80, 140, 220]
+LAB_WAREHOUSE_CAP_PER_PRODUCT = LAB_WAREHOUSE_CAP_BY_LEVEL[-1]  # سقف نهایی؛ سازگاری با نسخه‌های قبل
 
 # ───────── برداشت ─────────
 HARVEST_COOLDOWN_SECONDS = 120  # هر ۲ دقیقه فقط یه بار برداشت، زمان‌بندی برای هر کاربر جداست
@@ -976,8 +982,11 @@ MINES_MULTS = [0.25, 0.50, 0.75, 1.0, 1.5, 2.0, 2.5, 4.0]  # خونه امن ۱ 
 SHELTER_MAX_LEVEL = 10
 # هزینه ارتقا به لول ۱..۱۰، اعداد رند
 SHELTER_PRICES = [3000, 7500, 16000, 30000, 52000, 85000, 130000, 190000, 265000, 360000]
-SHELTER_RAID_CUT_PER_LEVEL = 0.05  # هر لول ۵% از خسارت یورش کم می‌کنه
-SHELTER_DODGE_PER_LEVEL = 0.04     # هر لول ۴% شانس فرار کامل از یورش
+SHELTER_RAID_CUT_PER_LEVEL = 0.05  # هر لول ۵% از خسارت موج عمومی یورش کم می‌کنه
+# استتار پلیس از لول ۳ انبار فعال میشه؛ لول ۳ = ۷٪ و هر لول بعدی +۷٪ تا سقف ۵۶٪
+SHELTER_DODGE_START_LEVEL = 3
+SHELTER_DODGE_PER_LEVEL = 0.07
+SHELTER_DODGE_MAX = 0.56
 SHELTER_SEED_CAP_BASE = 5          # ظرفیت انبار هر بذر بدون پناهگاه
 SHELTER_SEED_CAP_PER_LEVEL = 5     # هر لول پناهگاه +۵ ظرفیت هر بذر
 # لول بازیکن لازم برای ارتقای پناهگاه به لول ۱..۱۰ | راند ۴۳ (درخواست کارفرما): فشرده شد تا آخرین لول تو لول بازیکن ۱۵ باز بشه
@@ -1108,6 +1117,7 @@ BOSS_WINDOW_FROM = 7              # پنجره اسپان روزانه به وق
 BOSS_WINDOW_TO = 24               # تا نیمه‌شب
 BOSS_TICK_SECONDS = 60            # چک اسپون/انقضا هر دقیقه
 BOSS_GROUP_ACTIVE_HOURS = 24      # گروه فعال = دستور تو ۲۴ ساعت اخیر
+BOSS_NEW_GROUP_GRACE_HOURS = 3    # بعد هر ورود واقعی ربات به گروه، تا ۳ ساعت باس خودکار اسپان نمیشه
 BOSS_HIT_COOLDOWN_SECONDS = 60    # هر بازیکن هر ۱ دقیقه یه ضربه
 BOSS_DMG_VARIANCE = 0.20          # دمیج ضربه بازیکن تا این‌قدر نوسان
 BOSS_MONEY_PER_DMG = 2            # اسکناس هر ضربه = دمیج × این

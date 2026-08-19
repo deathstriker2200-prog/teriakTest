@@ -42,10 +42,28 @@ def take(user: User, item: str, n: int) -> bool:
     return True
 
 
+def return_room(user: User, item: str) -> int | None:
+    """جای خالی واقعی برای برگشت آگهی؛ قطعه افسانه‌ای سقف نداره."""
+    if item == "part":
+        return None
+    if item in ("wood", "iron"):
+        from services.resources import res_cap
+        return max(0, res_cap(user, item) - qty_of(user, item))
+    return 0
+
+
+def can_return(user: User, item: str, qty: int) -> bool:
+    room = return_room(user, item)
+    return room is None or qty <= room
+
+
 # ───────── جاروی آگهی‌های باطل (۲۴ ساعت) ─────────
 
 async def sweep_expired(session: AsyncSession) -> int:
-    """آگهی‌های قدیمی‌تر از TTL باطل میشن و جنسشون به فروشنده برمی‌گرده، خروجی تعداد باطل‌شده"""
+    """
+    آگهی منقضی فقط وقتی جمع میشه که جنس بدون ردکردن سقف انبار به فروشنده برگرده.
+    اگر انبار چوب/آهن پر باشه، آگهی رزرو می‌مونه تا کاربر جا باز کنه؛ جنس نه گم میشه نه تکثیر.
+    """
     cutoff = now_utc() - timedelta(hours=config.MARKET_TTL_HOURS)
     q = select(MarketListing).where(MarketListing.created_at < cutoff)
     rows = list((await session.execute(q)).scalars())
@@ -53,6 +71,10 @@ async def sweep_expired(session: AsyncSession) -> int:
     for row in rows:
         seller = await session.get(User, row.seller_id)
         if seller is not None:
+            if not can_return(seller, row.item, row.qty):
+                # تا وقتی جا باز شود آگهی روی مارکت می‌ماند و ۲۴ ساعت دیگر دوباره برای استرداد چک می‌شود
+                row.created_at = now_utc()
+                continue
             give(seller, row.item, row.qty)
         await session.delete(row)
         n += 1
@@ -131,10 +153,15 @@ async def my_listings(session: AsyncSession, user_id: int) -> list[MarketListing
 
 
 async def cancel_listing(session: AsyncSession, user: User, listing_id: int) -> tuple[bool, MarketListing | None]:
-    """لغو آگهی توسط صاحبش: جنس سالم برمی‌گرده انبارش، آگهی پاک میشه (فقط آگهی خودش)"""
+    """
+    لغو آگهی توسط صاحبش. False/None یعنی آگهی مال کاربر نیست؛ False/row یعنی انبار جا نداره.
+    این قرارداد دوخروجی قبلی رو حفظ می‌کنه ولی اجازه نمی‌ده لغو، ظرفیت چوب/آهن رو دور بزنه.
+    """
     row = await session.get(MarketListing, listing_id)
     if row is None or row.seller_id != user.id:
         return False, None
+    if not can_return(user, row.item, row.qty):
+        return False, row
     give(user, row.item, row.qty)
     await session.delete(row)
     return True, row

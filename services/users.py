@@ -54,7 +54,7 @@ async def wipe_account(session: AsyncSession, user: User) -> None:
     """
     from sqlalchemy import delete as sql_delete
 
-    from models import Dog, SeedStock, TeamDaily, TeamMember, TeamRequest, Team
+    from models import Dog, LabMaterial, LabProduct, LabWorker, SeedStock, TeamDaily, TeamMember, TeamRequest, Team
 
     # کارتل: رهبره → انحلال کامل | عضو ساده → حذف عضویت
     from services import teams as team_svc
@@ -70,7 +70,7 @@ async def wipe_account(session: AsyncSession, user: User) -> None:
             await session.delete(m)
         await session.flush()
 
-    for model in (Plot, InventoryItem, Dog, SeedStock):
+    for model in (Plot, InventoryItem, Dog, SeedStock, LabMaterial, LabProduct, LabWorker):
         await session.execute(sql_delete(model).where(model.user_id == user.id))
     await session.flush()
 
@@ -90,6 +90,7 @@ async def wipe_account(session: AsyncSession, user: User) -> None:
     user.axe_level = user.pick_level = 1
     user.lumber_level = user.ironmill_level = 0
     user.company_at = None
+    user.lab_level = 0
     user.last_search_at = user.last_casino_at = None
     set_pending(user, None)
     user.shield_until = user.pv_attack_at = None

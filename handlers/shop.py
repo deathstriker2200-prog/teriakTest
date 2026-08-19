@@ -223,16 +223,19 @@ async def _labmat_text(session, user) -> str:
     """🧴 مواد اولیه آزمایشگاه، خرید دونه‌ای مثل چوب/آهن (راند ۴۳)"""
     from services import lab as lab_svc
     stock = await lab_svc.get_materials(session, user.id)
+    cap = lab_svc.material_cap(user)
     lines = [
         "<b>🛒 فروشگاه</b>",
         _status_line(user),
         "",
         "🧴 مواد اولیه آزمایشگاه",
+        f"📦 ظرفیت هر ماده در لول فعلی: {fa_num(cap)}",
         "",
     ]
     for key, info in config.LAB_MATERIALS.items():
         have = stock.get(key, 0)
-        lines.append(f"{info['emoji']} {info['name']} {fa_num(have)} از {fa_num(config.LAB_MATERIAL_CAP)}")
+        lines.append(f"{info['emoji']} {info['name']} {fa_num(have)} از {fa_num(cap)}")
+        lines.append(f"└ {info.get('desc', '')}")
     lines += [
         "",
         "این مواد فقط تو آزمایشگاه مصرف میشن، هیچ فرمول یا دستور واقعی‌ای پشتشون نیست",
@@ -561,7 +564,7 @@ async def buylabmat_execute(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         return await respond(update, f"<b>{esc(out)}</b>", kb.shop_labmat_kb())
     text = (
         f"<b>{esc(out)}</b>\n\n"
-        f"{info['emoji']} موجودی انبار آزمایشگاه: {fa_num(stock.get(mat_key, 0))} از {fa_num(config.LAB_MATERIAL_CAP)}"
+        f"{info['emoji']} موجودی انبار آزمایشگاه: {fa_num(stock.get(mat_key, 0))} از {fa_num(lab_svc.material_cap(user))}"
     )
     await respond(update, text, kb.shop_labmat_kb())
 

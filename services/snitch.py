@@ -12,6 +12,7 @@
 بعد از تموم شدنش لقب خودکار برمی‌گرده به لقب عادی | تمام عددها تو config.py ان
 """
 
+import random
 import time as _time
 from datetime import datetime, timedelta
 
@@ -124,6 +125,26 @@ async def snitch(session: AsyncSession, snitcher: User, target: User) -> dict:
         snitcher.snitch_count = 0
         snitcher.snitch_window_at = now
         got_khaye = True
+
+    # اول بدون دست‌زدن به انبار می‌فهمیم چیزی برای کشف هست یا نه؛ از لول ۳ انبار شانس استتار واقعی داره
+    has_products = (await session.execute(
+        select(ProductStock.id).where(
+            ProductStock.user_id == target.id,
+            ProductStock.qty > 0,
+            ProductStock.value > 0,
+        ).limit(1)
+    )).scalar_one_or_none() is not None
+    if not has_products:
+        return {"status": "empty", "khaye": got_khaye}
+
+    from services.world import shelter_dodge_chance
+    hide_chance = shelter_dodge_chance(getattr(target, "shelter_level", 0) or 0)
+    if hide_chance > 0 and random.random() < hide_chance:
+        return {
+            "status": "hidden",
+            "khaye": got_khaye,
+            "hide_pct": int(round(hide_chance * 100)),
+        }
 
     seized, names = await seize_all_products(session, target)
     if seized <= 0:
