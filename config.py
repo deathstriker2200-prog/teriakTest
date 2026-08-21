@@ -400,11 +400,11 @@ BATTLE_COOLDOWN_SECONDS = 60  # بعد هر حمله فقط مهاجم اینق�
 ATTACK_ENERGY_COST = 12       # هزینه انرژی هر ضربه
 # فاز تست وار گروهی (درخواست کارفرما): فقط مالک گروه (creator) و ادمین ربات اجازه حمله دارن و بقیه کاملاً بی‌صدا
 # با False کردن این فلگ، وار گروهی برای عموم باز میشه
-# فرمول درخواستی کارفرما (راند ۱۹): هر ۱ حمله = ۱ دمیج، هر ۱ دفاع = ۱ کاهش دمیج، تهش ÷2
-# نمونه: حمله 700 دفاع 443 (دو طرف مکس) ≈ 129 دمیج | حمله 700 دفاع 250 ≈ 225 | حمله 880 دفاع 235 ≈ 323
-# دفاعی به‌بزرگی حمله یا مساوی ≈ هیچ دمیجی (هنوز انرژی و کولدان می‌سوزونه) و پیام «زورت نمی‌رسه»
-BATTLE_DMG_DIVISOR = 2          # تقسیمگر دمیج (درخواست کارفرما راند ۱۹): دمیج = (حمله - دفاع حریف) ÷ 2، بعد واریانس
-BATTLE_DMG_VARIANCE = 0.30    # دمیج نهایی تا ۳۰% بیشتر یا کمتر رندوم میشه
+# دمیج بدون سقف مصنوعی: پایه ثابت + بخشی از اختلاف حمله و دفاع
+# با تجهیزات مکس لول۳۰ در برابر زره خدایان مکس حدود ۱۰۰ دمیج و در برابر لول۱۵ حدود ۲٫۵ تا ۳ برابر می‌شود
+BATTLE_DMG_BASE = 80
+BATTLE_DMG_PER_POWER = 0.22
+BATTLE_DMG_VARIANCE = 0.10    # دمیج نهایی تا ۳۰% بیشتر یا کمتر رندوم میشه
 # غارت هر ضربه: درصد از جیب حریف = سقف پله موجودی × (دمیج ÷ HP کامل حریف)، بعد مادیفایرها و سقف سخت
 # پله‌ای بر اساس جیب قربانی (درخواست کارفرما): (کمتر از, درصد) | زیر10هزار 5% | تا50هزار 4% | تا100هزار 2.5% | تا500هزار 1.5% | تا5میل 1% | بیشتر 0.75%
 BATTLE_STEAL_TIERS = (
@@ -421,16 +421,15 @@ BATTLE_DEAD_SECONDS = 900     # بعد شکست ۱۵ دقیقه بیهوشه (ک
 # ضربه کریتیکال، فقط وقتی ضربه اصلا دمیج داره رول میشه و دمیج نهایی چند برابر میشه
 BATTLE_CRIT_CHANCE = 0.02     # شانس ۲ درصدی کریتیکال
 BATTLE_CRIT_MULT = 2.0        # دمیج نهایی ×۲
-# راند ۳۹ (درخواست کارفرما): سقف دمیج هر ضربه، شانسی بین این دو عدد رول میشه و بالاتر از رولش نمیره
-BATTLE_DMG_MAX_LOW = 240
-BATTLE_DMG_MAX_HIGH = 270
+# سقف دمیج حذف شده؛ خود فرمول قدرت و دفاع دمیج را کنترل می‌کند
 
 # ───────── حمله پی‌وی کلاسیک ⚔️ ─────────
 # سیستم قدیمی بدون HP | راند ۱۲ درخواست کارفرما: قدرت کل (حمله + دفاع) دو طرف با بوست‌های نقش‌محور مقایسه میشه، درصدی نیس | مهاجم فقط بوست حمله‌ای و هدف فقط بوست دفاعی می‌گیره | بیشتر بود برده، مساوی یا کمتر باخته
 # بعد هر حمله قربانی ۶ ساعت مصونیت می‌گیره و از لیست حمله‌های پی‌وی خارج میشه
-# راند ۱۳: اختلاف قدرت کل تا این حد شانس متناسب نسبت قدرت‌ها رول میشه (درخواست کارفرما)، بیرونش قطعیه
-PV_ATTACK_CLOSE_DIFF = 50  # (راند ۱۷، درخواست کارفرما: بازه پنجاه‌تایی)
-PV_ATTACK_CLOSE_EDGE_CHANCE = 0.95  # شانس قوی‌تر روی لبه بازه نزدیک (راند ۲۲ حرفه‌ای‌تر: تساوی پنجاه‌پنجاه، لبه 95، خطی بینشون؛ حق کسی ضایع نمیشه)
+# اختلاف قدرت کل تا ۴۰: قوی‌تر ۷۵٪ و ضعیف‌تر ۲۵٪؛ بیشتر از ۴۰ نتیجه قطعی است
+PV_ATTACK_CLOSE_DIFF = 40
+PV_ATTACK_STRONG_CHANCE = 0.75
+PV_ATTACK_WEAK_CHANCE = 0.25
 # راند ۱۳: هر هدف پیش‌نمایش‌داده‌شده تا این تعداد نشون بعدی تکرار نمیشه (درخواست کارفرما)
 PV_SEEN_EXCLUDE_LAST = 20
 PV_ATTACK_ENERGY_COST = 15        # هزینه انرژی هر حمله پی‌وی
@@ -456,7 +455,13 @@ PV_REROLL_MIN_COST = 50           # هزینه «هدف دیگه» تو لول �
 PV_REROLL_MAX_COST = 1000        # هزینه «هدف دیگه» تو مکس لول، بین اینا خطی با لول جست‌وجوگر (راند ۲۲)
 PV_SPY_MIN_COST = 50            # هزینه «جاسوسی» تو لول ۱، جیب و قدرت کلی طرف رو لو میده (راند ۲۲ به درخواست کارفرما: 50 تا 1000 بر اساس لول)
 PV_SPY_MAX_COST = 1000         # هزینه «جاسوسی» تو مکس لول، بین اینا خطی با لول جست‌وجوگر (راند ۲۲)
-PV_ATTACK_SHIELD_BREAK_COST = 1500  # هزینه شکستن سپر ۶ ساعته قربانی (اختیاری مهاجمه)
+PV_ATTACK_SHIELD_BREAK_COST = 1500  # فقط سپر رایگان بعد حمله قابل شکستن با تی‌پوینته
+# سپرهای جمی فروشگاه؛ تا پایان زمان، در پی‌وی مطلقاً قابل شکستن یا حمله نیستند
+PROTECTIVE_SHIELDS = {
+    "h6":  {"hours": 6,  "gems": 100, "name": "سپر ۶ ساعته"},
+    "h12": {"hours": 12, "gems": 180, "name": "سپر ۱۲ ساعته"},
+    "h24": {"hours": 24, "gems": 320, "name": "سپر ۲۴ ساعته"},
+}
 
 # قدرت پایه نبرد (حمله و دفاع) که با لول رشد می‌کنه
 ATK_BASE = 4
@@ -468,20 +473,20 @@ DEF_PER_LEVEL = 2
 # مثل غذای سگ: کلیک یعنی خرید و استفاده همون لحظه، تو انبار ذخیره نمیشه
 # heal = مقدار HP برگردونده‌شده | None یعنی فول
 HEAL_ITEMS = {
-    "band": {"name": "🩹 باند کوچک",          "heal": 75,   "price": 1500,  "desc": "بخشی از HP رو برمی‌گردونه"},
-    "kit":  {"name": "💉 کیت درمان",           "heal": 150,  "price": 2500,  "desc": "مقدار بیشتری HP برمی‌گردونه"},
-    "box":  {"name": "🏥 جعبه کمک‌های اولیه",   "heal": None, "price": 6000,  "desc": "HP رو کامل می‌کنه"},
+    "band": {"name": "🩹 باند کوچک",          "heal": 75,   "price": 3000,  "desc": "بخشی از HP رو برمی‌گردونه"},
+    "kit":  {"name": "💉 کیت درمان",           "heal": 150,  "price": 5000,  "desc": "مقدار بیشتری HP برمی‌گردونه"},
+    "box":  {"name": "🏥 جعبه کمک‌های اولیه",   "heal": None, "price": 12000, "desc": "HP رو کامل می‌کنه"},
 }
 
 # ───────── انرژی‌زا ⚡ (بخش «تی انرژی» و /Energy) ─────────
 # مثل درمان: کلیک یعنی خرید و استفاده همون لحظه، تو انبار ذخیره نمیشه
 # energy = مقدار شارژ | None یعنی فول | boost = ضریب بوست قدرت حمله (None یعنی نداره)
-# قیمت‌ها و مقدارها درخواست کارفرما: ۵هزار و ۸هزار و ۱۲هزار و ۳۰هزار
+# سه انرژی‌زای اول با سختی اقتصادی ۱٫۵× می‌شوند؛ بمب انرژی قیمت قطعی ۲۰۰٬۰۰۰ دارد
 ENERGY_DRINKS = {
     "shot": {"name": "⚡ شات انرژی",  "energy": 25,   "price": 5000,  "boost": None, "desc": "25 انرژی شارژ می‌کنه"},
     "dobl": {"name": "⚡ دوبل انرژی", "energy": 50,   "price": 8000,  "boost": None, "desc": "50 انرژی شارژ می‌کنه"},
     "mega": {"name": "⚡ مگا انرژی",  "energy": 100,  "price": 12000, "boost": None, "desc": "100 انرژی شارژ می‌کنه"},
-    "bomb": {"name": "💣 بمب انرژی",  "energy": None, "price": 30000, "boost": 0.30, "desc": "انرژی فول + 10 دقیقه 30% قدرت حمله بیشتر"},
+    "bomb": {"name": "💣 بمب انرژی",  "energy": None, "price": 200000, "boost": 0.30, "desc": "انرژی فول + 10 دقیقه 30% قدرت حمله بیشتر"},
 }
 ENERGY_BOOST_SECONDS = 600       # مدت بوست حمله بمب انرژی، ۱۰ دقیقه (درخواست کارفرما)
 ENERGY_BOOST_SWEEP_SECONDS = 30  # فاصله جاروی بوست‌های تموم‌شده، پیام «اثر انرژی‌زا به پایان رسید» میره پی‌وی
@@ -511,37 +516,46 @@ WEAPONS = {
     # گاتلینگ و آرپی‌جی از ویژه اومدن بخش گرم و هر کدوم یه پله زودتر باز میشن
     "minigun": {"name": "گاتلینگ 🔫",         "price": 60000, "iron": 42, "attack": 130, "min_level": 12, "desc": "رگبار تموم‌نشدنی", "gun": True, "sec": "hot"},
     "rpg":     {"name": "آرپی‌جی 🔫",          "price": 95000, "iron": 55, "attack": 175, "min_level": 14, "desc": "باهاش نصف محله دود میشه", "gun": True, "sec": "hot"},
-    # ── سلاح‌های ویژه لول ۱۶ تا ۲۰، دمیج هر پنج‌تا برابره و هر کدوم یه قابلیت مخصوص دارن ──
-    "viperx":  {"name": "💀 Viper-X",     "price": 150000, "iron": 75,  "attack": 250, "min_level": 16, "desc": "نیش سمیش حریف رو ضعیف می‌کنه", "gun": True, "sec": "special",
+    # ── سلاح‌های ویژه؛ همه اسم‌های نمایشی فارسی و مسیر آخر بازی تا لول ۳۰ ──
+    "viperx":  {"name": "💀 افعی زهرآگین", "price": 150000, "iron": 75,  "attack": 250, "min_level": 16, "desc": "نیش سمی حریف را ضعیف می‌کند", "gun": True, "sec": "special",
                 "ability": {"kind": "poison", "chance": 0.10}},
-    "hellfire": {"name": "🔥 Hellfire",   "price": 175000, "iron": 85,  "attack": 250, "min_level": 17, "desc": "کارِ حریف نیمه‌جان رو تموم می‌کنه", "gun": True, "sec": "special",
+    "hellfire": {"name": "🔥 آتش جهنم",    "price": 175000, "iron": 85,  "attack": 265, "min_level": 17, "desc": "کار حریف نیمه‌جان را تمام می‌کند", "gun": True, "sec": "special",
                 "ability": {"kind": "hellfire", "bonus": 0.10}},
-    "vampire": {"name": "🩸 Vampire",     "price": 200000, "iron": 95,  "attack": 250, "min_level": 18, "desc": "خون حریف جون تو میشه", "gun": True, "sec": "special",
+    "vampire": {"name": "🩸 خون‌آشام",     "price": 200000, "iron": 95,  "attack": 280, "min_level": 18, "desc": "بخشی از دمیج را به سلامت برمی‌گرداند", "gun": True, "sec": "special",
                 "ability": {"kind": "vampire", "leech": 0.10}},
-    "shadowfang": {"name": "🌑 Shadow Fang", "price": 230000, "iron": 105, "attack": 250, "min_level": 19, "desc": "تاریکی یار این تفنگه", "gun": True, "sec": "special",
+    "shadowfang": {"name": "🌑 نیش سایه",  "price": 230000, "iron": 105, "attack": 292, "min_level": 19, "desc": "در تاریکی قدرت بیشتری دارد", "gun": True, "sec": "special",
                 "ability": {"kind": "shadow", "bonus": 0.20}},
-    # راند ۲۳ (درخواست کارفرما): سلاح آخری یکم قوی‌تر شد، ۲۵۰ ← ۲۷۵
-    "oblivion": {"name": "👑 Oblivion",   "price": 280000, "iron": 120, "attack": 305, "min_level": 20, "desc": "هر ضربه یه جور مرگ با خودش داره", "gun": True, "sec": "special",
+    "oblivion": {"name": "👑 فراموشی",      "price": 280000, "iron": 120, "attack": 305, "min_level": 20, "desc": "هر ضربه یکی از قدرت‌های ویژه را آزاد می‌کند", "gun": True, "sec": "special",
                 "ability": {"kind": "oblivion"}},
+    "stormbringer": {"name": "⚡ طوفان‌ساز", "price": 500000,  "iron": 150, "attack": 330, "min_level": 22, "desc": "سلاح سنگین الکتریکی آخر بازی", "gun": True, "sec": "special"},
+    "sunlance":     {"name": "☀️ نیزه خورشیدی", "price": 900000, "iron": 185, "attack": 355, "min_level": 24, "desc": "پرتوی متمرکز با قدرت تخریب بالا", "gun": True, "sec": "special"},
+    "dragonbreath": {"name": "🐉 نفس اژدها", "price": 1500000, "iron": 225, "attack": 380, "min_level": 26, "desc": "شلیک داغ و سنگین اژدهایی", "gun": True, "sec": "special"},
+    "worldbreaker": {"name": "🌍 جهان‌شکن",  "price": 2500000, "iron": 275, "attack": 405, "min_level": 28, "desc": "برای شکستن خط دفاعی ساخته شده", "gun": True, "sec": "special"},
+    "judgment":     {"name": "⚖️ داوری نهایی", "price": 4000000, "iron": 340, "attack": 430, "min_level": 30, "desc": "قوی‌ترین سلاح قابل ساخت تریاکی", "gun": True, "sec": "special"},
 }
 
 # ───────── مهمات 🔫 (راند ۲۹، درخواست کارفرما) ─────────
 # سلاح‌های سرد مهمات ندارن؛ گرم‌ها cap = ظرفیت پایه (با هر لول ارتقا ظرفیت در لول ضرب میشه) و price = قیمت هر تیر
 WEAPON_AMMO = {
-    # راند ۳۰ (درخواست کارفرما): هر تیر بر اساس گرونی خود سلاح قیمت گرفت (گاتلینگ ۵۰۰، آرپی‌جی ۱۵۰۰)
-    "colt":       {"cap": 6,   "price": 25},
-    "uzi":        {"cap": 30,  "price": 40},
-    "shotgun":    {"cap": 6,   "price": 60},
-    "deagle":     {"cap": 8,   "price": 80},
-    "ak47":       {"cap": 30,  "price": 120},
-    "svd":        {"cap": 5,   "price": 180},
-    "minigun":    {"cap": 100, "price": 500},
-    "rpg":        {"cap": 2,   "price": 1500},
-    "viperx":     {"cap": 12,  "price": 800},
-    "hellfire":   {"cap": 10,  "price": 950},
-    "vampire":    {"cap": 12,  "price": 1100},
-    "shadowfang": {"cap": 10,  "price": 1300},
-    "oblivion":   {"cap": 15,  "price": 1600},
+    # قیمت تمام تیرها دقیقاً سه‌برابر نسخه قبل شده؛ سلاح‌های تازه هم پله‌ای قیمت‌گذاری شدند
+    "colt":       {"cap": 6,   "price": 75},
+    "uzi":        {"cap": 30,  "price": 120},
+    "shotgun":    {"cap": 6,   "price": 180},
+    "deagle":     {"cap": 8,   "price": 240},
+    "ak47":       {"cap": 30,  "price": 360},
+    "svd":        {"cap": 5,   "price": 540},
+    "minigun":    {"cap": 100, "price": 1500},
+    "rpg":        {"cap": 2,   "price": 4500},
+    "viperx":     {"cap": 12,  "price": 2400},
+    "hellfire":   {"cap": 10,  "price": 2850},
+    "vampire":    {"cap": 12,  "price": 3300},
+    "shadowfang": {"cap": 10,  "price": 3900},
+    "oblivion":   {"cap": 15,  "price": 4800},
+    "stormbringer": {"cap": 18, "price": 5400},
+    "sunlance":     {"cap": 10, "price": 6600},
+    "dragonbreath": {"cap": 8,  "price": 7800},
+    "worldbreaker": {"cap": 6,  "price": 9600},
+    "judgment":     {"cap": 5,  "price": 12000},
 }
 
 # ───────── قابلیت‌های سلاح ویژه 🌟 ─────────
@@ -648,7 +662,7 @@ TITLES = [
 # legendary=True یعنی سکه دزدیده‌شده از صاحبش نصف میشه
 ARMOR_SECTIONS = {
     "normal":  {"name": "زره معمولی", "emoji": "🦺", "desc": "محافظ کلاسیک، مستقیم دفاع می‌ده"},
-    "special": {"name": "زره ویژه",   "emoji": "🚀", "desc": "هرکدوم یه قابلیت مخصوص خودشون رو دارن، دمیج هر چهارتا برابره"},
+    "special": {"name": "زره ویژه",   "emoji": "🚀", "desc": "زره‌های آخر بازی با دفاع پله‌ای؛ بعضی‌ها قابلیت مخصوص دارند"},
 }
 
 ARMORS = {
@@ -662,18 +676,22 @@ ARMORS = {
     "titan":  {"name": "زره تیتانیومی",  "price": 60000, "defense": 117, "min_level": 12, "desc": "سبک ولی شکست‌ناپذیر", "sec": "normal"},
     # راند ۱۹: زره افسانه‌ای قابلیتش (نیم کردن غارت) پاک شد و اسمش آدامانتیوم، فقط زره قوی معمولی
     "legend": {"name": "زره آدامانتیوم 👑", "price": 100000, "defense": 143, "min_level": 14, "desc": "سخت‌ترین فلز روی زمین، لقبش آدمو پاره نمی‌کنه", "sec": "normal"},
-    # ── زره‌های ویژه لول ۱۶ به بعد، دفاع هر چهارتا برابره و هر کدوم یه قابلیت مخصوص دارن ──
+    # ── زره‌های ویژه؛ قدرت دفاعی پله‌ای تا لول ۳۰، زره خدایان آخرین و قوی‌ترین زره است ──
     "plasma":  {"name": "🛡️ زره پلاسمایی", "price": 160000, "defense": 169, "min_level": 16, "sec": "special",
-                "desc": "سطحش انرژی حمله رو به حمله‌کننده برمی‌گردونه",
+                "desc": "بخشی از انرژی ضربه را به مهاجم برمی‌گرداند",
                 "ability": {"kind": "reflect", "pct": 0.20}},
-    "void":    {"name": "🌑 زره خلأ",      "price": 185000, "defense": 169, "min_level": 17, "sec": "special",
-                "desc": "گاهی حمله حریف رو قورت میده و هیچ‌وقت پیداش نمی‌کنه",
+    "void":    {"name": "🌑 زره خلأ",       "price": 210000, "defense": 185, "min_level": 18, "sec": "special",
+                "desc": "گاهی حمله حریف را کامل در خلأ می‌بلعد",
                 "ability": {"kind": "void", "chance": 0.12}},
-    "neutron": {"name": "☄️ زره نواترون",   "price": 210000, "defense": 169, "min_level": 18, "sec": "special",
-                "desc": "چگالی ستاره‌ای داره و ضربه‌ها رو له می‌کنه",
+    "neutron": {"name": "☄️ زره نوترونی",   "price": 300000, "defense": 205, "min_level": 20, "sec": "special",
+                "desc": "چگالی بالا دمیج ورودی را خرد می‌کند",
                 "ability": {"kind": "reduce", "pct": 0.25}},
-    "gods":    {"name": "👑 زره خدایان",  "price": 240000, "defense": 169, "min_level": 19, "sec": "special",
-                "desc": "میری زیر خاک، برکتش نصف جونتو برمی‌گردونه",
+    "dragonbone": {"name": "🐉 زره استخوان اژدها", "price": 600000, "defense": 240, "min_level": 22, "sec": "special", "desc": "زره سنگین ساخته‌شده از بقایای اژدها"},
+    "quantum":    {"name": "💠 زره کوانتومی",      "price": 1000000, "defense": 275, "min_level": 24, "sec": "special", "desc": "لایه‌های کوانتومی ضربه را پخش می‌کنند"},
+    "celestial":  {"name": "🌌 زره آسمانی",       "price": 1600000, "defense": 315, "min_level": 26, "sec": "special", "desc": "محافظ پیشرفته فرماندهان آسمانی"},
+    "emperor":    {"name": "🏛 زره امپراتوری",     "price": 2500000, "defense": 350, "min_level": 28, "sec": "special", "desc": "آخرین سپر پیش از قلمرو خدایان"},
+    "gods":       {"name": "👑 زره خدایان",       "price": 5000000, "defense": 390, "min_level": 30, "sec": "special",
+                "desc": "قوی‌ترین زره بازی؛ در لحظه سقوط دوباره زنده‌ات می‌کند",
                 "ability": {"kind": "godshield", "chance": 0.10}},
 }
 
@@ -1051,8 +1069,24 @@ CARAVAN_LOOT = [
 LEGENDARY_PART_NAME = "🧩 قطعه افسانه‌ای"
 LEGENDARY_PART_SHORT = "قطعه افسانه‌ای"
 # قطعه لازم برای ساخت هر سلاح ویژه (روی قیمت تی‌پوینت و آهن اضافه‌ست)، بین ۱ تا ۳ قطعه بر اساس قدرت
-SPECIAL_WEAPON_PARTS = {"viperx": 1, "hellfire": 1, "vampire": 2, "shadowfang": 2, "oblivion": 3}
-SPECIAL_ARMOR_PARTS = {"plasma": 1, "void": 1, "neutron": 2, "gods": 3}  # راند ۲۶ (درخواست کارفرما): زره ویژه هم قطعه افسانه‌ای می‌خواد
+SPECIAL_WEAPON_PARTS = {
+    "viperx": 1, "hellfire": 1, "vampire": 2, "shadowfang": 2, "oblivion": 3,
+    "stormbringer": 3, "sunlance": 4, "dragonbreath": 5, "worldbreaker": 6, "judgment": 8,
+}
+SPECIAL_ARMOR_PARTS = {
+    "plasma": 1, "void": 1, "neutron": 2, "dragonbone": 3, "quantum": 4,
+    "celestial": 5, "emperor": 6, "gods": 8,
+}
+# فرگمنت‌های باس منبع ساخت تجهیزات لول ۲۰ تا ۳۰ هستند؛ قطعه افسانه‌ای کمیاب‌تر و جداست
+BOSS_FRAGMENT_NAME = "🔹 فرگمنت باس"
+SPECIAL_WEAPON_FRAGMENTS = {
+    "oblivion": 20, "stormbringer": 30, "sunlance": 45, "dragonbreath": 60,
+    "worldbreaker": 80, "judgment": 110,
+}
+SPECIAL_ARMOR_FRAGMENTS = {
+    "neutron": 20, "dragonbone": 30, "quantum": 45, "celestial": 60,
+    "emperor": 80, "gods": 110,
+}
 
 # ───────── باس‌های محله 👹 (راند ۲۳، درخواست کارفرما) ─────────
 # هر روز دو باس تو هر گروه فعال اسپان میشن، ساعتاشون شانسی ولی حداقل ۲ ساعت فاصله دارن
@@ -1062,10 +1096,13 @@ BOSS_TIERS = {
     "epic":      {"name": "اپیک",   "emoji": "🟣"},
     "legendary": {"name": "لجندری", "emoji": "🟡"},
 }
-# شانس درجه هر اسپان
-BOSS_TIER_SPAWN = [("common", 0.70), ("epic", 0.20), ("legendary", 0.10)]
-# شانس دراپ قطعه افسانه‌ای برای قاتل باس، فقط اپیک و لجندری
-BOSS_PART_DROP = {"epic": 0.10, "legendary": 0.40}
+# باس‌های قوی کمیاب‌تر شدند: معمولی ۸۰٪، اپیک ۱۵٪، لجندری ۵٪
+BOSS_TIER_SPAWN = [("common", 0.80), ("epic", 0.15), ("legendary", 0.05)]
+# شانس قطعه افسانه‌ای برای قاتل؛ دیگر تضمینی نیست
+BOSS_PART_DROP = {"common": 0.00, "epic": 0.05, "legendary": 0.20}
+# فرگمنت برای سه نفر برتر؛ عدد هر نفر بر اساس درجه باس
+BOSS_FRAGMENT_TOP_N = 3
+BOSS_FRAGMENT_DROP = {"common": (1, 2), "epic": (3, 6), "legendary": (8, 15)}
 BOSSES = [
     # ⚪ معمولی: مارلو ← ویکتور ← کِروک
     {"key": "marlo",   "name": "مارلو",   "emoji": "🥃", "tier": "common", "tag": "قاچاقچی قدیمی",
@@ -1147,20 +1184,18 @@ GIFT_PART_MIN = 1                 # حداقل قطعه تو هر هدیه
 
 # راند ۳۱ (درخواست کارفرما): فیچر غارت محموله کلاً حذف شد (سرویس/هندلر/جاب/کیبورد/کانفیگ پاک شدن)
 
-# ───────── 💎 جم (راند ۲۷، درخواست کارفرما) ─────────
-# جم با تی‌پوینت یا شاپ به‌دست نمیاد؛ فقط از غارت کاروان قاچاق گروهی و کشتن باس
-GEM_DROP_MIN = 5                  # کف جم هر شرکت‌کننده موقع غارت کاروان قاچاق
-GEM_DROP_MAX = 50                 # سقفش
-# راند ۴۱ (درخواست کارفرما): جم باس دیگه به همه ضربه‌زنا نمیرسه، فقط ۳ نفر برتر دمیج
+# ───────── 💎 جم ─────────
+# جم عادی فقط از باس می‌افتد؛ کاروان دیگر هیچ جمی وارد بازی نمی‌کند
+GEM_DROP_MIN = 0
+GEM_DROP_MAX = 0
 BOSS_GEM_TOP_N = 3
-BOSS_GEM_MIN = 3                  # کف جم نفرات برتر باس (۱/۳ مقدار قبلی)
-BOSS_GEM_MAX = 17                 # سقفش (۱/۳ مقدار قبلی)
-# جایزه ویژه قاتل: یا فقط جم بین این بازه، یا جم ثابت کمتر + شانس قطعه افسانه‌ای (اگه تیر داشت)
-BOSS_KILLER_GEM_ONLY_MIN = 4      # ۱/۳ مقدار قبلی
-BOSS_KILLER_GEM_ONLY_MAX = 8      # ۱/۳ مقدار قبلی
-BOSS_KILLER_GEM_WITH_PART = 3     # ۱/۳ مقدار قبلی
-BOSS_KILLER_PART_CHANCE = 0.5     # شانس اینکه جایزه ویژه قاتل جم+قطعه باشه به‌جای فقط جم
-GEM_PLOT_SPEED_MINUTES = 1        # تسریع ساخت زمین: هر جم این‌قدر دقیقه جلو میندازه (راند ۲۹: هر دقیقه ۱ جم و هر ساعت ۶۰ جم، درخواست کارفرما)
+# مجموع جم هر باس که بین سه نفر برتر تقسیم می‌شود؛ لجندری دقیقاً ۵۰ تا ۸۰ جم وارد بازی می‌کند
+BOSS_GEM_TOTAL_RANGE = {
+    "common": (3, 8),
+    "epic": (12, 25),
+    "legendary": (50, 80),
+}
+GEM_PLOT_SPEED_MINUTES = 1        # هر جم یک دقیقه ساخت زمین را جلو می‌اندازد
 
 # ───────── عضویت اجباری 🔒 ─────────
 # کانال از پنل ادمین ست میشه و توی game_meta ذخیره می‌مونه (با ری‌استارت حفظه)
@@ -1273,3 +1308,56 @@ CARTEL_WAR_BALANCE_TABLE = [
     (14, 1.30),
     (999, 1.50),
 ]
+
+# ═════════ سختی اقتصادی سراسری ═════════
+# هزینه‌های اصلی پیشرفت ۱٫۵ برابر می‌شوند؛ جوایز دست‌نخورده‌اند تا کل مسیر حدود ۵۰٪ سخت‌تر شود.
+# قیمت تیر (×۳)، درمان (×۲)، بمب انرژی (۲۰۰هزار)، دستمزد/استخدام آزمایشگاه و قیمت‌های جمی سپر
+# بالانس مستقل خودشان را دارند و دوباره در این ضریب ضرب نمی‌شوند.
+ECONOMY_COST_MULTIPLIER = 1.50
+
+
+def _hard_cost(value: int) -> int:
+    return int(round(int(value) * ECONOMY_COST_MULTIPLIER))
+
+
+for _spec in PLOT_CATALOG.values():
+    if _spec.get("price", 0) > 0:
+        _spec["price"] = _hard_cost(_spec["price"])
+PLOT_UPGRADE_PRICES[:] = [_hard_cost(x) for x in PLOT_UPGRADE_PRICES]
+for _spec in SEEDS.values():
+    if _spec.get("price", 0) > 0:
+        _spec["price"] = _hard_cost(_spec["price"])
+for _spec in RES_SHOP.values():
+    _spec["unit"] = _hard_cost(_spec["unit"])
+for _tool in TOOLS.values():
+    _tool["upgrades"] = [(_hard_cost(tp), iron) for tp, iron in _tool["upgrades"]]
+for _factory in FACTORIES.values():
+    _factory["build"] = (_hard_cost(_factory["build"][0]), _factory["build"][1])
+    _factory["up_tp"] = [_hard_cost(x) for x in _factory["up_tp"]]
+LAB_UPGRADE_COST[:] = [(_hard_cost(tp), mats) for tp, mats in LAB_UPGRADE_COST]
+for _spec in LAB_MATERIALS.values():
+    _spec["unit"] = _hard_cost(_spec["unit"])
+for _spec in WEAPONS.values():
+    _spec["price"] = _hard_cost(_spec["price"])
+for _spec in ARMORS.values():
+    _spec["price"] = _hard_cost(_spec["price"])
+for _spec in ARTIFACTS.values():
+    _spec["price"] = _hard_cost(_spec["price"])
+for _spec in DOGS.values():
+    _spec["price"] = _hard_cost(_spec["price"])
+for _spec in DOG_FOODS.values():
+    _spec["price"] = _hard_cost(_spec["price"])
+for _key in ("shot", "dobl", "mega"):
+    ENERGY_DRINKS[_key]["price"] = _hard_cost(ENERGY_DRINKS[_key]["price"])
+BANK_UPGRADE_PRICES[:] = [_hard_cost(x) for x in BANK_UPGRADE_PRICES]
+SHELTER_PRICES[:] = [_hard_cost(x) for x in SHELTER_PRICES]
+TEAM_BUILDING_PRICES[:] = [_hard_cost(x) for x in TEAM_BUILDING_PRICES]
+TEAM_CREATE_COST = _hard_cost(TEAM_CREATE_COST)
+TEAM_RENAME_COST = _hard_cost(TEAM_RENAME_COST)
+SKILL_RESET_COST = _hard_cost(SKILL_RESET_COST)
+BRIBE_COST = _hard_cost(BRIBE_COST)
+PV_REROLL_MIN_COST = _hard_cost(PV_REROLL_MIN_COST)
+PV_REROLL_MAX_COST = _hard_cost(PV_REROLL_MAX_COST)
+PV_SPY_MIN_COST = _hard_cost(PV_SPY_MIN_COST)
+PV_SPY_MAX_COST = _hard_cost(PV_SPY_MAX_COST)
+PV_ATTACK_SHIELD_BREAK_COST = _hard_cost(PV_ATTACK_SHIELD_BREAK_COST)

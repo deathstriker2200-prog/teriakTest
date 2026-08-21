@@ -78,7 +78,8 @@ class User(Base):
     snitch_window_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True) # شروع پنجره هفتگی شمارش
     khaye_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)      # تا این وقت لقب «خایه‌مال» داره
     jailed_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)     # تا این وقت زندانیه و هیچ دستوری نمی‌تونه بزنه
-    gems: Mapped[int] = mapped_column(Integer, default=0)                              # 💎 جم، فقط از کاروان قاچاق گروه و باس به‌دست میاد (راند ۲۷)
+    gems: Mapped[int] = mapped_column(Integer, default=0)                              # 💎 جم، فقط از باس به‌دست میاد
+    boss_fragments: Mapped[int] = mapped_column(Integer, default=0)                    # 🔹 فرگمنت باس، برای تجهیزات آخر بازی
     caravan_level: Mapped[int] = mapped_column(Integer, default=1)                     # راند ۳۱: لگاسی (کاروان لولی حذف شد)، زمان تحویل ثابت CARAVAN_BASE_SECONDS
     trucks: Mapped[int] = mapped_column(Integer, default=1)                            # راند ۳۱: فیچر کامیون حذف شد؛ ستون لگاسی برای سازگاری دیتابیس قدیمی مونده
     truck_level: Mapped[int] = mapped_column(Integer, default=1)                       # راند ۳۱: لگاسی (لول ناوگان راند ۲۹ حذف شد)، به‌جاش SHIPMENT_MAX_ACTIVE=5 ثابته
@@ -95,6 +96,8 @@ class User(Base):
 
     # مصونیت حمله پی‌وی — بعد اینکه بهت حمله شد تا این زمان از لیست حمله‌های پی‌وی خارجی (۱۲ ساعت)
     shield_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # سپر جمی فروشگاه؛ برخلاف سپر رایگان بعد حمله، مهاجم نمی‌تواند با تی‌پوینت بشکندش
+    paid_shield_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     # آخرین حمله پی‌وی که خودت زدی — کولدان حمله پی‌وی روی این حساب میشه
     pv_attack_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

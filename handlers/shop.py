@@ -9,7 +9,7 @@ from database import session_scope
 from handlers import dogs as dogs_h
 from handlers.common import chat_id_of, parts, respond
 from keyboards import keyboards as kb
-from services import combat, dogs as dog_svc, economy, farming, lab as lab_svc, resources as res_svc, shop_svc, users
+from services import combat, dogs as dog_svc, economy, farming, lab as lab_svc, pvattack, resources as res_svc, shop_svc, users
 from utils import esc, fa_num, money, money_tp
 
 SEP = "━━━━━━━━━━━━━━"
@@ -33,7 +33,8 @@ def _status_line(user) -> str:
 def _status_line_parts(user) -> str:
     """خط سطح و موجودی + موجودی قطعه افسانه‌ای، فقط بخش‌های ویژه (سلاح/زره ویژه) این رو بالا نشون میدن"""
     have = int(getattr(user, "legendary_parts", 0) or 0)
-    return f"{_status_line(user)}\n🧩 قطعه افسانه‌ای: {fa_num(have)}"
+    fragments = int(getattr(user, "boss_fragments", 0) or 0)
+    return f"{_status_line(user)}\n🧩 قطعه افسانه‌ای: {fa_num(have)} | 🔹 فرگمنت باس: {fa_num(fragments)}"
 
 
 # ───────── متن‌ها ─────────
@@ -47,6 +48,7 @@ def _sections_text(cash: int, level: int) -> str:
         "🎒 چوب و آهن\n"
         "🌱 بذر برای کشت توی زمینتون\n"
         "🐕 سگ‌ها و 🍖 غذاشون\n"
+        "🛡 سپر محافظتی جمی برای پی‌وی\n"
         "🧿 آرتیفکت‌های آخر بازی که بعد از لول 10 باز میشن"
     )
 
@@ -97,6 +99,9 @@ def _wsec_text(user, sec: str) -> str:
         parts23 = config.SPECIAL_WEAPON_PARTS.get(key, 0)
         if parts23:
             cost23 += f" + 🧩 {fa_num(parts23)} قطعه افسانه‌ای"
+        frags23 = config.SPECIAL_WEAPON_FRAGMENTS.get(key, 0)
+        if frags23:
+            cost23 += f" + 🔹 {fa_num(frags23)} فرگمنت باس"
         lines.append(cost23)
         if locked:
             lines.append(f"⭕️ بازگشایی در سطح {fa_num(w['min_level'])}")
@@ -151,6 +156,9 @@ def _arm_text(user, sec: str) -> str:
         parts_arm = config.SPECIAL_ARMOR_PARTS.get(key, 0)
         if parts_arm:
             cost_arm += f" + 🧩 {fa_num(parts_arm)} قطعه افسانه‌ای"
+        frags_arm = config.SPECIAL_ARMOR_FRAGMENTS.get(key, 0)
+        if frags_arm:
+            cost_arm += f" + 🔹 {fa_num(frags_arm)} فرگمنت باس"
         lines.append(cost_arm)
         if locked:
             lines.append(f"⭕️ بازگشایی در سطح {fa_num(a['min_level'])}")
@@ -291,6 +299,23 @@ def _gear_up_text(kind: str, owned_lvls: dict[str, int], user) -> str:
     return "\n".join(lines)
 
 
+def _shield_text(user) -> str:
+    left = pvattack.paid_shield_left(user)
+    lines = [
+        "<b>🛡 سپر محافظتی پی‌وی</b>",
+        f"💎 موجودی جم: {fa_num(user.gems or 0)}", "",
+        "تا وقتی سپر جمی فعاله هیچ بازیکنی نمی‌تونه در پی‌وی بهت حمله کنه و با تی‌پوینت هم قابل شکستن نیست.",
+        "اگر خودت حمله کنی سپرت می‌شکنه.", "",
+    ]
+    if left:
+        from utils import fa_dur
+        lines.append(f"🟢 سپر فعلی: {fa_dur(left)} باقی مانده")
+        lines.append("خرید دوباره، زمان سپر جمی را تمدید می‌کند.")
+    else:
+        lines.append("⚪ الان سپر جمی فعال نداری")
+    return "\n".join(lines)
+
+
 async def _section_text(session, user, kind: str) -> str:
     if kind == "weap":
         return _weap_home_text(user)
@@ -306,6 +331,8 @@ async def _section_text(session, user, kind: str) -> str:
         return _res_text(user)
     if kind == "labmat":
         return await _labmat_text(session, user)
+    if kind == "shield":
+        return _shield_text(user)
     if kind in ("wup", "aup"):
         gkind = "weap" if kind == "wup" else "arm"
         lvls = {
@@ -365,6 +392,8 @@ async def render_section(update: Update, kind: str, alert: str | None = None) ->
             markup = kb.shop_res_kb()
         elif kind == "labmat":
             markup = kb.shop_labmat_kb()
+        elif kind == "shield":
+            markup = kb.shop_shield_kb(user)
         elif kind == "arti":
             markup = kb.shop_arti_kb(user, item_keys)
         elif kind in ("wup", "aup"):
@@ -392,6 +421,37 @@ async def shop_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def section_cb(update: Update, context: ContextTypes.DEFAULT_TYPE, alert: str | None = None) -> None:
     await render_section(update, parts(update)[2], alert=alert)
+
+
+async def shield_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    key = parts(update)[2]
+    spec = config.PROTECTIVE_SHIELDS.get(key)
+    if not spec:
+        return await render_section(update, "shield")
+    async with session_scope() as s:
+        user, _ = await users.get_or_create(s, update.effective_user)
+        gems = user.gems or 0
+        current = pvattack.paid_shield_left(user)
+        await s.commit()
+    from utils import fa_dur
+    text = (
+        f"<b>🛡 خرید {spec['name']}</b>\n\n"
+        f"⏱ مدت: {fa_num(spec['hours'])} ساعت\n"
+        f"💎 قیمت: {fa_num(spec['gems'])} جم\n"
+        f"💰 جم فعلی: {fa_num(gems)}\n"
+        + (f"🟢 سپر فعلی: {fa_dur(current)} باقی مانده؛ زمان جدید به آن اضافه می‌شود\n" if current else "")
+        + "\nخرید را تایید می‌کنی؟"
+    )
+    await respond(update, text, kb.shield_confirm_kb(key))
+
+
+async def shield_execute(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    key = parts(update)[3]
+    async with session_scope() as s:
+        user, _ = await users.get_or_create(s, update.effective_user)
+        ok, msg = pvattack.buy_protective_shield(user, key)
+        await s.commit()
+    await render_section(update, "shield", alert=msg)
 
 
 # ───────── خرید (اینلاین) ─────────
@@ -471,6 +531,8 @@ async def buy_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
         cash, iron = user.cash, user.iron
+        parts_have = int(getattr(user, "legendary_parts", 0) or 0)
+        fragments_have = int(getattr(user, "boss_fragments", 0) or 0)
         await s.commit()
 
     emoji = shop_svc.KIND_EMOJI.get(kind, "🛒")
@@ -490,10 +552,19 @@ async def buy_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             f"💰 فروش {money_tp(item['sell'])}\n"
         )
 
+    need_parts = (config.SPECIAL_WEAPON_PARTS if kind == "weap" else config.SPECIAL_ARMOR_PARTS if kind == "arm" else {}).get(key, 0)
+    need_fragments = (config.SPECIAL_WEAPON_FRAGMENTS if kind == "weap" else config.SPECIAL_ARMOR_FRAGMENTS if kind == "arm" else {}).get(key, 0)
+    craft_lines = ""
+    if need_parts:
+        craft_lines += f"🧩 قطعه افسانه‌ای: {fa_num(need_parts)} (داری {fa_num(parts_have)})\n"
+    if need_fragments:
+        craft_lines += f"🔹 فرگمنت باس: {fa_num(need_fragments)} (داری {fa_num(fragments_have)})\n"
+
     text = (
         "<b>🧾 فاکتور خرید</b>\n\n"
         f"{esc(_item_head(emoji, item['name']))}\n"
         f"{stat_lines}"
+        f"{craft_lines}"
         f"💸 قیمت {money(item['price'])}\n"
         f"💵 بعد خرید {money(max(0, cash - item['price']))} برات میمونه\n\n"
         "معامله‌ست؟"

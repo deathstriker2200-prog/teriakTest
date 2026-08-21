@@ -146,14 +146,11 @@ async def battle_powers(session: AsyncSession, attacker: User, target: User) -> 
 
 def roll_damage(atk: int, dfn: int, victim_max_hp: int) -> tuple[int, bool]:
     """
-    (دمیج نهایی یه ضربه, کریتیکال بود؟)
-    فرمول درخواستی کارفرما (راند ۱۹): هر ۱ حمله = ۱ دمیج، هر ۱ دفاع = ۱ کاهش، تهش ÷2
-    بعد واریانس رندوم که نبرد هیجانی و غیرقابل پیش‌بینی بمونه
-    دفاع حریف به‌بزرگی حمله یا مساوی‌اش باشه ضربه اصلاً نمی‌نشینه (پیام زیادی قدرتمنده)
-    کریتیکال با شانس کم دمیج نهایی رو چند برابر می‌کنه
-    راند ۳۹ (درخواست کارفرما): سقف دمیج هر ضربه، شانسی بین BATTLE_DMG_MAX_LOW و BATTLE_DMG_MAX_HIGH رول میشه
+    دمیج = پایه + ضریب اختلاف قدرت. سقف مصنوعی ندارد؛ خود قدرت سلاح و دفاع زره نتیجه را می‌سازند.
+    بالانس پایه: مکس‌لول/مکس‌سلاح مقابل زره خدایان مکس نزدیک ۱۰۰ دمیج و مقابل لول۱۵ حدود ۲٫۵–۳ برابر.
     """
-    base = (atk - dfn) / config.BATTLE_DMG_DIVISOR
+    power_gap = atk - dfn
+    base = config.BATTLE_DMG_BASE + power_gap * config.BATTLE_DMG_PER_POWER
     if base < 1:
         return 0, False
     v = config.BATTLE_DMG_VARIANCE
@@ -161,8 +158,6 @@ def roll_damage(atk: int, dfn: int, victim_max_hp: int) -> tuple[int, bool]:
     crit = random.random() < config.BATTLE_CRIT_CHANCE
     if crit:
         dmg = max(1, round(dmg * config.BATTLE_CRIT_MULT))
-    dmg_cap = random.randint(config.BATTLE_DMG_MAX_LOW, config.BATTLE_DMG_MAX_HIGH)
-    dmg = min(dmg, dmg_cap)
     return dmg, crit
 
 

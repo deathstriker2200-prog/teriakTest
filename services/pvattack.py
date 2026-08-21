@@ -29,11 +29,35 @@ from utils import now_utc
 # ───────── مصونیت قربانی 🛡 ─────────
 
 def shield_left(user: User) -> int:
-    """ثانیه مونده از مصونیت پی‌وی، صفر یعنی دوباره تو لیست حمله‌ست"""
-    if not user.shield_until:
+    """ثانیه مانده از هر نوع مصونیت پی‌وی."""
+    untils = [x for x in (getattr(user, "shield_until", None), getattr(user, "paid_shield_until", None)) if x]
+    if not untils:
         return 0
-    left = (user.shield_until - now_utc()).total_seconds()
-    return max(0, int(left))
+    return max(0, int((max(untils) - now_utc()).total_seconds()))
+
+
+def paid_shield_left(user: User) -> int:
+    """سپر جمی غیرقابل‌شکستن فروشگاه."""
+    until = getattr(user, "paid_shield_until", None)
+    return max(0, int((until - now_utc()).total_seconds())) if until else 0
+
+
+def buy_protective_shield(user: User, key: str) -> tuple[bool, str]:
+    """خرید/تمدید سپر جمی؛ زمان سپر جمی قبلی تمدید می‌شود و سپر رایگان به آن تبدیل نمی‌شود."""
+    spec = config.PROTECTIVE_SHIELDS.get(key)
+    if not spec:
+        return False, "❌ همچین سپری نیست"
+    cost = int(spec["gems"])
+    if (user.gems or 0) < cost:
+        return False, f"💎 {cost} جم می‌خواد و تو {int(user.gems or 0)} جم داری"
+    now = now_utc()
+    paid = getattr(user, "paid_shield_until", None)
+    base = paid if paid and paid > now else now
+    user.gems -= cost
+    user.paid_shield_until = base + timedelta(hours=int(spec["hours"]))
+    if not user.shield_until or user.shield_until < user.paid_shield_until:
+        user.shield_until = user.paid_shield_until
+    return True, f"🛡 {spec['name']} فعال شد"
 
 
 # ───────── کولدان مهاجم ⏳ ─────────
@@ -72,22 +96,14 @@ def is_close(a_total: int, t_total: int) -> bool:
 
 
 def close_win_chance(a_total: int, t_total: int) -> float:
-    """
-    شانس برد مهاجم تو رنج نزدیک (راند ۱۷، تیون حرفه‌ای راند ۲۲: لبه ۹۵ درصد)
-    خطی از ۵۰ درصد روی تساوی تا PV_ATTACK_CLOSE_EDGE_CHANCE روی لبه بازه
-    طرف قوی‌تر همیشه بالای پنجاه‌پنجاهه و هرچی نزدیک لبه، برتریش بیشتر میشه
-    """
-    diff = config.PV_ATTACK_CLOSE_DIFF
-    edge = config.PV_ATTACK_CLOSE_EDGE_CHANCE
-    c = 0.5 + ((a_total - t_total) / max(1, diff)) * (edge - 0.5)
-    return max(0.0, min(1.0, c))
+    """در اختلاف حداکثر ۴۰: مساوی ۵۰٪، مهاجم قوی‌تر ۷۵٪ و مهاجم ضعیف‌تر ۲۵٪."""
+    if a_total == t_total:
+        return 0.50
+    return config.PV_ATTACK_STRONG_CHANCE if a_total > t_total else config.PV_ATTACK_WEAK_CHANCE
 
 
 def decide_win(a_total: int, t_total: int) -> bool:
-    """
-    داور نهایی برد مهاجم (راند ۱۳، اصلاح راند ۱۷ و ۲۲):
-    اختلاف تا بازه نزدیک شانسی با برتری قوی‌تره (تا لبه ۹۵ درصد)، بیرون بازه قوی‌تر قطعی می‌بره
-    """
+    """اختلاف تا ۴۰ شانسی ۷۵/۲۵؛ اختلاف بیشتر از ۴۰ برد قطعی بازیکن قوی‌تر."""
     if is_close(a_total, t_total):
         return random.random() < close_win_chance(a_total, t_total)
     return a_total > t_total
@@ -265,7 +281,8 @@ async def execute(session: AsyncSession, attacker: User, victim: User) -> dict:
 
     a_total, t_total, _info = await total_powers(session, attacker, victim)
     artis = user_svc.artifact_keys(await user_svc.get_item_keys(session, attacker.id))
-    won = decide_win(a_total, t_total)
+    # حمله پی‌وی با همان قدرت کل قابل مشاهده داوری می‌شود؛ اختلاف ≤۴۰ شانس ۷۵/۲۵، بیشتر قطعی
+    won = decide_win(_info["a_display"], _info["t_display"])
 
     # راند ۲۹ (درخواست کارفرما): هر حمله پی‌وی با سلاح گرم یه تیر مصرف می‌کنه
     weapon_key, ammo_left = None, -1

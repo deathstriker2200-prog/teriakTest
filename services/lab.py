@@ -494,6 +494,64 @@ async def lab_workers_text(session: AsyncSession, user: User) -> str:
     return "\n".join(lines)
 
 
+async def lab_employed_text(session: AsyncSession, user: User) -> str:
+    """فقط کارگران استخدام‌شده، وضعیت و دستمزدشان."""
+    workers = await get_workers(session, user.id)
+    lines = ["<b>👷 کارگران استخدام‌شده</b>", ""]
+    if not workers:
+        lines.append("هنوز کارگری استخدام نکردی؛ از بخش «استخدام کارگر جدید» شروع کن")
+    for w in workers:
+        cfg = config.LAB_WORKERS[w.worker_key]
+        lines.append(SEP)
+        lines.append(f"{cfg['emoji']} {cfg['name']}")
+        lines.append(f"🪙 دستمزد هر دور: {money(cfg['upkeep'])}")
+        if not w.busy_until:
+            lines.append("⚪ وضعیت: آزاد")
+        else:
+            pcfg = config.LAB_PRODUCTS.get(w.job_product, {})
+            left = max(0, int((w.busy_until - now_utc()).total_seconds()))
+            if left:
+                lines.append(f"🟢 در حال تولید {pcfg.get('name', '')} | {fa_dur(left)} مانده")
+            else:
+                lines.append("🟠 تولید آماده تحویل است؛ دکمه «تحویل تولیدهای آماده» را بزن")
+    lines += [SEP, "", f"اسلات پر: {fa_num(len(workers))} از {fa_num(worker_slots(user))}"]
+    return "\n".join(lines)
+
+
+async def lab_hire_catalog_text(session: AsyncSession, user: User) -> str:
+    """فقط کاتالوگ استخدام کارگر جدید."""
+    workers = await get_workers(session, user.id)
+    lines = ["<b>➕ استخدام کارگر جدید</b>", "",
+             f"اسلات آزاد: {fa_num(max(0, worker_slots(user) - len(workers)))} از {fa_num(worker_slots(user))}", ""]
+    for key in config.LAB_WORKER_ORDER:
+        cfg = config.LAB_WORKERS[key]
+        locked = user.level < cfg["min_level"]
+        lines += [SEP, f"{'🔒' if locked else cfg['emoji']} {cfg['name']}"]
+        lines.append(f"⚡ سرعت ×{cfg['speed_mult']:g} | 📦 بازده ×{cfg['yield_mult']:g}")
+        lines.append(f"💸 استخدام: {money(cfg['hire_cost'])} | 🪙 دستمزد: {money(cfg['upkeep'])}")
+        if locked:
+            lines.append(f"⭕️ از لول {fa_num(cfg['min_level'])} باز می‌شود")
+    lines.append(SEP)
+    return "\n".join(lines)
+
+
+async def collection_report(session: AsyncSession, user: User) -> dict:
+    """تحویل دستی و دلیل روشنِ تحویل‌نشدن تولیدهای آماده."""
+    got = await collect_all(session, user)
+    workers = await get_workers(session, user.id)
+    due = [w for w in workers if w.busy_until and w.busy_until <= now_utc()]
+    waiting_pay = []
+    waiting_room = []
+    stock = await get_products(session, user.id)
+    for w in due:
+        upkeep = config.LAB_WORKERS[w.worker_key]["upkeep"]
+        if user.cash < upkeep:
+            waiting_pay.append((w, upkeep))
+        elif warehouse_cap(user) - stock.get(w.job_product, 0) < (w.job_output or 0):
+            waiting_room.append(w)
+    return {"got": got, "waiting_pay": waiting_pay, "waiting_room": waiting_room, "due": due}
+
+
 async def lab_products_text(session: AsyncSession, user: User) -> str:
     """صفحه انتخاب محصول برای تولید"""
     lines = ["<b>🧪 تولید محصول</b>", "", "برای دیدن Recipe و شروع تولید روی محصول موردنظر بزن", ""]

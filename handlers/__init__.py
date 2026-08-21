@@ -290,6 +290,8 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CallbackQueryHandler(lab.lab_upgrade_execute, pattern=r"^cf:lab:up$"))
     app.add_handler(CallbackQueryHandler(lab.lab_cb, pattern=r"^cl:lab:up$"))
     app.add_handler(CallbackQueryHandler(lab.lab_workers_cb, pattern=r"^lab:workers$"))
+    app.add_handler(CallbackQueryHandler(lab.lab_employed_cb, pattern=r"^lab:employed$"))
+    app.add_handler(CallbackQueryHandler(lab.lab_hire_list_cb, pattern=r"^lab:hirelist$"))
     app.add_handler(CallbackQueryHandler(lab.lab_hire_cb, pattern=r"^lab:hire:\w+$"))
     app.add_handler(CallbackQueryHandler(lab.lab_hire_execute, pattern=r"^cf:lab:hire:\w+$"))
     app.add_handler(CallbackQueryHandler(lab.lab_fire_cb, pattern=r"^lab:fire:\d+$"))
@@ -322,6 +324,8 @@ def register_handlers(app: Application) -> None:
 
     # ── فروشگاه ──
     app.add_handler(CallbackQueryHandler(shop.section_cb, pattern=r"^shop:sec:\w+$"))
+    app.add_handler(CallbackQueryHandler(shop.shield_confirm, pattern=r"^shop:shield:\w+$"))
+    app.add_handler(CallbackQueryHandler(shop.shield_execute, pattern=r"^cf:shop:shield:\w+$"))
     app.add_handler(CallbackQueryHandler(shop.buy_confirm, pattern=r"^shop:buy:\w+:\w+$"))
     app.add_handler(CallbackQueryHandler(shop.buy_execute, pattern=r"^cf:shop:buy:\w+:\w+$"))
     app.add_handler(CallbackQueryHandler(shop.gear_up_confirm, pattern=r"^gup:(?:weap|arm):\w+$"))

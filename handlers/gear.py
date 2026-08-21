@@ -138,7 +138,8 @@ def _gear_item_text(user, tab: str, key: str, lv: int, ammo_left: int | None) ->
              f"{stat_lbl}: {fa_num(economy.gear_stat(kind, key, lv))}"]
     abil = item.get("ability")
     if abil:
-        lines.append(f"🎯 قابلیت ویژه: {config.WEAPON_ABILITY_TEXT.get(abil['kind'], '')}")
+        ability_texts = config.WEAPON_ABILITY_TEXT if kind == "weap" else config.ARMOR_ABILITY_TEXT
+        lines.append(f"🎯 قابلیت ویژه: {ability_texts.get(abil['kind'], '')}")
     if combat.is_gun(key):
         cap = combat.ammo_cap(key, lv)
         left = cap if ammo_left is None else ammo_left

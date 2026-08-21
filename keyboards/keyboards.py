@@ -355,6 +355,7 @@ def shop_sections_kb() -> InlineKeyboardMarkup:
          _btn("🐕 سگ‌ها", "shop:sec:dog", PRIMARY)],
         [_btn("🍖 غذای سگ", "shop:sec:food", PRIMARY),
          _btn("🧴 مواد اولیه آزمایشگاه", "shop:sec:labmat", PRIMARY)],
+        [_btn("🛡 سپر محافظتی", "shop:sec:shield", SUCCESS)],
         [_btn("🏠 منوی اصلی", "menu:home", PRIMARY)],
     ])
 
@@ -371,8 +372,27 @@ def shop_res_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(rows)
 
 
+def shop_shield_kb(user: User) -> InlineKeyboardMarkup:
+    """سپرهای جمی غیرقابل‌شکستن پی‌وی."""
+    rows = []
+    for key, spec in config.PROTECTIVE_SHIELDS.items():
+        rows.append([_btn(
+            f"🛡 {fa_num(spec['hours'])} ساعت | 💎 {fa_num(spec['gems'])} جم",
+            f"shop:shield:{key}", SUCCESS,
+        )])
+    rows.append([_btn("🔙 بخش‌های شاپ", "menu:shop", PRIMARY)])
+    return InlineKeyboardMarkup(rows)
+
+
+def shield_confirm_kb(key: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([[
+        _btn("✅ خرید سپر", f"cf:shop:shield:{key}", SUCCESS),
+        _btn("❌ لغو", "shop:sec:shield", DANGER),
+    ]])
+
+
 def shop_labmat_kb() -> InlineKeyboardMarkup:
-    """بخش مواد اولیه آزمایشگاه، خرید دونه‌ای مثل چوب/آهن (راند ۴۳)"""
+    """بخش مواد اولیه آزمایشگاه، خرید دونه‌ای مثل چوب/آهن."""
     rows = []
     for key, r in config.LAB_MATERIALS.items():
         rows.append([_btn(
@@ -1088,25 +1108,45 @@ def lab_confirm_kb(action: str, key: str) -> InlineKeyboardMarkup:
     ]])
 
 
-def lab_workers_kb(user: User, workers: list) -> InlineKeyboardMarkup:
-    """دکمه استخدام هر نوع کارگر + اخراج کارگرهای آزاد فعلی"""
-    from services import lab as lab_svc
+def lab_workers_menu_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [_btn("👷 کارگران استخدام‌شده", "lab:employed", PRIMARY)],
+        [_btn("➕ استخدام کارگر جدید", "lab:hirelist", SUCCESS)],
+        [_btn("🔙 آزمایشگاه", "menu:lab", PRIMARY)],
+    ])
+
+
+def lab_employed_kb(workers: list) -> InlineKeyboardMarkup:
     rows: list[list[InlineKeyboardButton]] = []
-    free_workers = [w for w in workers if not w.busy_until]
-    if free_workers:
-        for w in free_workers:
+    for w in workers:
+        if not w.busy_until:
             cfg = config.LAB_WORKERS[w.worker_key]
             rows.append([_btn(f"❌ اخراج {cfg['emoji']} {cfg['name']}", f"lab:fire:{w.id}", DANGER)])
-    if len(workers) < lab_svc.worker_slots(user):
+    rows.append([_btn("➕ استخدام کارگر جدید", "lab:hirelist", SUCCESS)])
+    rows.append([_btn("🔙 بخش کارگران", "lab:workers", PRIMARY)])
+    return InlineKeyboardMarkup(rows)
+
+
+def lab_hire_list_kb(user: User, workers: list) -> InlineKeyboardMarkup:
+    from services import lab as lab_svc
+    rows: list[list[InlineKeyboardButton]] = []
+    if len(workers) >= lab_svc.worker_slots(user):
+        rows.append([_btn("👷 همه اسلات‌ها پر هستند", "noop:labbusy", DANGER)])
+    else:
         for key in config.LAB_WORKER_ORDER:
             cfg = config.LAB_WORKERS[key]
-            locked = (getattr(user, "level", None) or 1) < cfg["min_level"]
-            if locked:
-                rows.append([_btn(f"🔒 {cfg['name']} | سطح {fa_num(cfg['min_level'])}", "noop:lablock", DANGER)])
+            if user.level < cfg["min_level"]:
+                rows.append([_btn(f"🔒 {cfg['name']} | لول {fa_num(cfg['min_level'])}", "noop:lablock", DANGER)])
             else:
                 rows.append([_btn(f"➕ استخدام {cfg['emoji']} {cfg['name']}", f"lab:hire:{key}", SUCCESS)])
-    rows.append([_btn("🔙 بازگشت", "menu:lab", PRIMARY)])
+    rows.append([_btn("👷 کارگران استخدام‌شده", "lab:employed", PRIMARY)])
+    rows.append([_btn("🔙 بخش کارگران", "lab:workers", PRIMARY)])
     return InlineKeyboardMarkup(rows)
+
+
+def lab_workers_kb(user: User, workers: list) -> InlineKeyboardMarkup:
+    """سازگاری نسخه قبل؛ صفحه استخدام را برمی‌گرداند."""
+    return lab_hire_list_kb(user, workers)
 
 
 def lab_products_kb(user: User) -> InlineKeyboardMarkup:
@@ -1125,14 +1165,14 @@ def lab_products_kb(user: User) -> InlineKeyboardMarkup:
 def lab_hire_confirm_kb(worker_key: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([[
         _btn("✅ استخدام", f"cf:lab:hire:{worker_key}", SUCCESS),
-        _btn("❌ لغو", "lab:workers", DANGER),
+        _btn("❌ لغو", "lab:hirelist", DANGER),
     ]])
 
 
 def lab_fire_confirm_kb(worker_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([[
         _btn("✅ اخراج", f"cf:lab:fire:{worker_id}", DANGER),
-        _btn("❌ لغو", "lab:workers", PRIMARY),
+        _btn("❌ لغو", "lab:employed", PRIMARY),
     ]])
 
 

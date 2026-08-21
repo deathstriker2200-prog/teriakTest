@@ -24,7 +24,7 @@ PV_PANEL_TEXT = (
     "🎯 با شروع حمله، یک بازیکن نزدیک به سطح خودت به‌صورت شانسی پیدا میشه\n\n"
     "👀 قبل از حمله می‌تونی پیش‌نمایش حریف رو ببینی؛ اگر مناسب نبود، امکان تغییر هدف داری\n\n"
     "🕵️ با جاسوسی، اطلاعات بیشتری از حریف مثل مقدار پول و قدرت کلیش به دست میاری\n\n"
-    "💪 نتیجه نبرد بر اساس قدرت کلی (قدرت حمله + قدرت دفاع) محاسبه میشه؛ بازیکنی که قدرت بیشتری داشته باشه، پیروز میشه\n\n"
+    "💪 نتیجه با قدرت کل حساب میشه؛ تا اختلاف 40، قوی‌تر 75٪ و ضعیف‌تر 25٪ شانس برد داره؛ اختلاف بیشتر از 40 برد قوی‌تر قطعیه\n\n"
     "🛡️ بعد از هر حمله، حریف برای مدتی وارد حالت محافظت میشه و امکان حمله دوباره بهش وجود نداره\n\n"
     "⚔️ توجه: نبردهای واقعی همراه با سیستم HP فقط داخل گروه‌ها فعال هستند"
 )
@@ -210,8 +210,13 @@ async def _run_attack(update: Update, context, target_id: int, break_shield: boo
             return await _own_shield_view(update, target_id, own_sl, break_shield)
         if own_sl:
             user.shield_until = None
+            user.paid_shield_until = None  # حمله کردن هر نوع سپر خودی، حتی سپر جمی، را می‌شکند
 
         name = users.display_name(victim)
+        paid_sl = pvattack.paid_shield_left(victim)
+        if paid_sl:
+            await s.commit()
+            return await pv_panel(update, alert=f"🛡 سپر جمی حریف فعاله و {fa_dur(paid_sl)} دیگه قابل حمله نیست")
         sl = pvattack.shield_left(victim)
         if sl and not break_shield:
             await s.commit()

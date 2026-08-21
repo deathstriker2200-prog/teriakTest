@@ -18,14 +18,8 @@ async def render_lab(update: Update, alert: str | None = None) -> None:
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
         users.apply_energy_regen(user)
-        got = await lab_svc.collect_all(s, user)
+        # تحویل فقط با دکمه اختصاصی انجام می‌شود تا کاربر دقیقاً نتیجه و علت عدم تحویل را ببیند
         text = await lab_svc.lab_home_text(s, user)
-        if got:
-            parts_txt = " + ".join(
-                f"{fa_num(amt)} {config.LAB_PRODUCTS[k]['emoji']} {config.LAB_PRODUCTS[k]['name']}"
-                for k, amt in got
-            )
-            text += f"\n\n📥 تحویل داده شد: {parts_txt}"
         markup = kb.lab_home_kb(user)
         await s.commit()
     await respond(update, text, markup, alert=alert)
@@ -111,12 +105,36 @@ async def lab_upgrade_execute(update: Update, context: ContextTypes.DEFAULT_TYPE
 # ───────── کارگرها ─────────
 
 async def lab_workers_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """هاب دوشاخه کارگران: استخدام‌شده‌ها و استخدام جدید کاملاً جدا هستند."""
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
-        await lab_svc.collect_all(s, user)
-        text = await lab_svc.lab_workers_text(s, user)
         workers = await lab_svc.get_workers(s, user.id)
-        markup = kb.lab_workers_kb(user, workers)
+        busy = sum(1 for w in workers if w.busy_until)
+        text = (
+            "<b>👷 بخش کارگران آزمایشگاه</b>\n\n"
+            f"👥 استخدام‌شده: {fa_num(len(workers))} از {fa_num(lab_svc.worker_slots(user))}\n"
+            f"🟢 مشغول یا آماده تحویل: {fa_num(busy)}\n\n"
+            "یکی از دو بخش پایین را انتخاب کن."
+        )
+        await s.commit()
+    await respond(update, text, kb.lab_workers_menu_kb())
+
+
+async def lab_employed_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    async with session_scope() as s:
+        user, _ = await users.get_or_create(s, update.effective_user)
+        workers = await lab_svc.get_workers(s, user.id)
+        text = await lab_svc.lab_employed_text(s, user)
+        await s.commit()
+    await respond(update, text, kb.lab_employed_kb(workers))
+
+
+async def lab_hire_list_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    async with session_scope() as s:
+        user, _ = await users.get_or_create(s, update.effective_user)
+        workers = await lab_svc.get_workers(s, user.id)
+        text = await lab_svc.lab_hire_catalog_text(s, user)
+        markup = kb.lab_hire_list_kb(user, workers)
         await s.commit()
     await respond(update, text, markup)
 
@@ -137,9 +155,9 @@ async def lab_hire_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     if not active:
         return await render_lab(update, alert="🧪 اول آزمایشگاه رو بساز")
     if level < cfg["min_level"]:
-        return await lab_workers_cb(update, context)
+        return await lab_hire_list_cb(update, context)
     if len(workers) >= slots:
-        return await render_lab(update, alert="👷 اسلات کارگرت پره")
+        return await lab_hire_list_cb(update, context)
     text = (
         f"<b>➕ استخدام {cfg['emoji']} {cfg['name']}</b>\n\n"
         f"⚡ سرعت: ×{cfg['speed_mult']:g}\n"
@@ -157,9 +175,9 @@ async def lab_hire_execute(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
         ok, msg = await lab_svc.hire_worker(s, user, worker_key)
-        text = await lab_svc.lab_workers_text(s, user)
         workers = await lab_svc.get_workers(s, user.id)
-        markup = kb.lab_workers_kb(user, workers)
+        text = await lab_svc.lab_hire_catalog_text(s, user)
+        markup = kb.lab_hire_list_kb(user, workers)
         await s.commit()
     await respond(update, text, markup, alert=msg)
 
@@ -188,9 +206,9 @@ async def lab_fire_execute(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
         ok, msg = await lab_svc.fire_worker(s, user, int(worker_id))
-        text = await lab_svc.lab_workers_text(s, user)
         workers = await lab_svc.get_workers(s, user.id)
-        markup = kb.lab_workers_kb(user, workers)
+        text = await lab_svc.lab_employed_text(s, user)
+        markup = kb.lab_employed_kb(workers)
         await s.commit()
     await respond(update, text, markup, alert=msg)
 
@@ -200,7 +218,6 @@ async def lab_fire_execute(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 async def lab_products_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
-        await lab_svc.collect_all(s, user)
         text = await lab_svc.lab_products_text(s, user)
         markup = kb.lab_products_kb(user)
         await s.commit()
@@ -214,7 +231,6 @@ async def lab_start_pick_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         return await render_lab(update, alert="❌ همچین محصولی نیست")
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
-        await lab_svc.collect_all(s, user)
         if lab_svc.product_locked(user, product_key):
             await s.commit()
             return await render_lab(update, alert="🔒 این محصول هنوز باز نشده")
@@ -271,13 +287,30 @@ async def lab_start_execute(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 # ───────── تحویل، انبار و ارسال محموله ─────────
 
 async def lab_collect_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await render_lab(update)
+    """تحویل واقعی با گزارش روشن؛ این تنها مسیری است که تولید آماده را تسویه می‌کند."""
+    async with session_scope() as s:
+        user, _ = await users.get_or_create(s, update.effective_user)
+        report = await lab_svc.collection_report(s, user)
+        await s.commit()
+    if report["got"]:
+        got_text = " + ".join(
+            f"{fa_num(amount)} {config.LAB_PRODUCTS[key]['emoji']} {config.LAB_PRODUCTS[key]['name']}"
+            for key, amount in report["got"]
+        )
+        alert = f"📥 تحویل شد: {got_text}"
+    elif report["waiting_pay"]:
+        need = min(upkeep for _w, upkeep in report["waiting_pay"])
+        alert = f"🪙 تولید آماده‌ست ولی حداقل {money(need)} برای دستمزد لازم داری"
+    elif report["waiting_room"]:
+        alert = "📦 تولید آماده‌ست ولی انبار محصول جا نداره؛ اول محموله بفرست"
+    else:
+        alert = "⏳ فعلاً تولید آماده‌ای برای تحویل نداری"
+    await render_lab(update, alert=alert)
 
 
 async def lab_warehouse_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
-        await lab_svc.collect_all(s, user)
         text = await lab_svc.lab_warehouse_text(s, user)
         stock = await lab_svc.get_products(s, user.id)
         from services import smuggle as smg

@@ -194,7 +194,7 @@ async def _user_card_text(session, target) -> str:
         f"🆔 {uname} | <code>{target.telegram_id}</code>\n"
         f"⭐ لول {fa_num(target.level)} | ✨ {fa_num(target.xp)} از {fa_num(economy.xp_need(target.level))}\n"
         f"💵 نقدی {money(target.cash)}\n"
-        f"💎 جم {fa_num(target.gems or 0)}\n"
+        f"💎 جم {fa_num(target.gems or 0)} | 🔹 فرگمنت {fa_num(getattr(target, 'boss_fragments', 0) or 0)}\n"
         f"💪 حمله {fa_num(atk30)} | 🛡 دفاع {fa_num(dfn30)}\n"
         f"🔫 {wname30}\n"
         f"🦺 {aname30}\n"

@@ -836,15 +836,8 @@ async def _caravan_settle(session: AsyncSession, chat_id: int, killed: bool) -> 
     if not damages:
         return []
 
-    # 💎 جم کاروان: فقط موقع غارت کامل (کشتن کاروان)، به همه ضربه‌زنا بین ۵ تا ۵۰ (راند ۲۷، درخواست کارفرما)
+    # جم از کاروان حذف شده؛ تنها منبع عادی جم، باس‌ها هستند
     gem_gains: dict[int, int] = {}
-    if killed:
-        for uid in damages:
-            g = random.randint(config.GEM_DROP_MIN, config.GEM_DROP_MAX)
-            gu = await session.get(User, uid)
-            if gu is not None:
-                gu.gems = (gu.gems or 0) + g
-                gem_gains[uid] = g
 
     ranked = sorted(damages.items(), key=lambda kv: -kv[1])[: config.CARAVAN_TOP_REWARDS]
     out: list[dict] = []

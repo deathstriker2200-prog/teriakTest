@@ -155,6 +155,15 @@ async def purchase(
         need_parts = 0
     if need_parts and int(getattr(user, "legendary_parts", 0) or 0) < need_parts:
         return False, f"{config.LEGENDARY_PART_NAME} ×{fa_num(need_parts)} می‌خواد و {fa_num(int(getattr(user, 'legendary_parts', 0) or 0))} تا داری"
+    if kind == "weap":
+        need_fragments = config.SPECIAL_WEAPON_FRAGMENTS.get(key, 0)
+    elif kind == "arm":
+        need_fragments = config.SPECIAL_ARMOR_FRAGMENTS.get(key, 0)
+    else:
+        need_fragments = 0
+    have_fragments = int(getattr(user, "boss_fragments", 0) or 0)
+    if need_fragments and have_fragments < need_fragments:
+        return False, f"{config.BOSS_FRAGMENT_NAME} ×{fa_num(need_fragments)} می‌خواد و {fa_num(have_fragments)} تا داری"
 
     # بذر افسانه‌ای قابل خرید نیس، فقط از جستجو/کاروان/ایونت
     if kind == "seed" and item.get("legendary"):
@@ -173,6 +182,8 @@ async def purchase(
         user.iron -= need_iron
     if need_parts:
         user.legendary_parts = int(getattr(user, "legendary_parts", 0) or 0) - need_parts
+    if need_fragments:
+        user.boss_fragments = have_fragments - need_fragments
 
     if kind in ("weap", "arm"):
         ammo = None
