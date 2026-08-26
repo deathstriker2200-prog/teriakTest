@@ -15,7 +15,6 @@ from telegram.ext import ContextTypes
 import config
 from database import session_scope
 from keyboards import keyboards as kb
-from models import User
 from services import battle as battle_svc
 from services import boss as boss_svc
 from services import combat
@@ -114,8 +113,15 @@ async def boss_hit_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         user_team = await team_svc.get_team_of(s, user.id)
         team_b = team_svc.atk_bonus(user_team) if user_team else 0.0
         atk, _ = combat.combat_stats(user, items, dogs, atk_extra=team_b, ammo=ammo)
-        # هر ضربه یه تیر (درخواست کارفرما راند ۲۹) و جواب باس از دفاع زره کم میشه
+        # روی NPC فقط سهم مستقیم دمیج/نفوذ قابلیت تفنگ اعمال می‌شود، نه سم/درین/کنترل.
         wkey = combat.weapon_choice(user, items, ammo)
+        from utils import now_iran
+        _h = now_iran().hour
+        atk = int(atk * (1 + combat.pve_weapon_damage_bonus(
+            wkey, items.get(wkey, 1) if wkey else 1,
+            _h >= config.SHADOW_NIGHT_FROM or _h < config.SHADOW_NIGHT_TO,
+        )))
+        # هر ضربه یه تیر و جواب باس از دفاع زره کم میشه
         armor_def = combat.armor_defense(user, items)
 
         ammo_note = ""
@@ -245,3 +251,5 @@ async def admin_boss_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             st["message_id"] = msg.message_id
         await query.answer(f"🚨 {boss['name']} اسپون شد", show_alert=True)
         return
+
+

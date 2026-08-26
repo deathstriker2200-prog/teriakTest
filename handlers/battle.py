@@ -321,3 +321,5 @@ async def heal_buy_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         return await render_heal(update, alert="🤷 همچین آیتمی نداریم")
 
     await render_heal(update, alert=f"❤️ نوش جون، {fa_num(gain)} HP برگشت")
+
+

@@ -325,3 +325,5 @@ async def upgrade_plot(session: AsyncSession, user: User, plot: Plot) -> tuple[b
     user.wood -= wood
     plot.level += 1
     return True, f"⬆️ زمین رفت رو لول {fa_num(plot.level)}"
+
+

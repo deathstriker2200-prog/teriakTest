@@ -76,3 +76,5 @@ async def rank_tab_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await update.callback_query.answer()
         return
     await rank_cb(update, context, tab=tgt)
+
+

@@ -15,7 +15,7 @@ from telegram.ext import Application, CallbackQueryHandler, ChatMemberHandler, C
 
 import config
 
-from handlers import admin, attack, backup, bank, battle, boss, cartelwar, common, company, dogs, dquests, energy, farm, gate, gear, lab, market, mine, mines, pending, power, profile, rank, seen, shop, skills, smuggle, snitch, start, team, textcmd, world  # راند ۳۱: raid حذف شد | راند ۴۳: lab اضافه شد
+from handlers import admin, attack, backup, bank, battle, boss, cartelwar, common, company, dogs, dquests, energy, farm, gambling, gate, gear, lab, market, mine, mines, pending, power, profile, rank, seen, shop, skills, smuggle, snitch, start, team, textcmd, world  # راند ۳۱: raid حذف شد | راند ۴۳: lab اضافه شد
 
 ZWNJ = "‌"
 S = rf"[\s{ZWNJ}]"  # فاصله یا نیم‌فاصله
@@ -90,7 +90,7 @@ TEXT_HANDLERS: list[tuple[str, str, object]] = [
     ("shelter", rf"{T}پناهگاه!?$|{T}مخفیگاه!?$|{TP}انبار!?$|{TP}انبار{S}+و{S}+پناهگاه!?$", world.shelter_cmd),  # «انبار» بدون پیشوند هم جواب میده
     ("company", rf"{TP}شرکت!?$|{TP}کارخانه!?$", company.company_cb),
     ("dogrename", rf"{T}اسم{S}+سگ{S}+(.+)$", dogs.dog_rename_text),
-    ("casino_hub", rf"{T}قمارخانه!?$|{T}قمار!?$", mines.mines_hub_cmd),  # راند ۲۸: بازی مین، تاسی حذف شد
+    ("casino_hub", rf"{T}قمارخانه!?$|{T}قمار!?$", gambling.gambling_hub_cmd),  # تاس رسمی + دونفره؛ مین زیر تک‌نفره حفظ شده
     ("mines", rf"{T}مین!?(?:{S}+[\d,٬]+)?$", mines.mines_text_cmd),  # راند ۲۸ دستور مستقیم با شرط
     # ── بانک شخصی، «بانک» بدون پیشوند هم باز میشه + دستورهای «بانک واریز/برداشت» و «انتقال n کد» ──
     ("banktrf", rf"{TP}انتقال{S}+(.+)$", bank.transfer_text),
@@ -227,6 +227,7 @@ def register_handlers(app: Application) -> None:
 
     # ── منوی اصلی ──
     app.add_handler(CallbackQueryHandler(start.menu_cb, pattern=r"^menu:home$"))
+    app.add_handler(CallbackQueryHandler(gambling.gambling_hub_cmd, pattern=r"^menu:casino$"))
     app.add_handler(CallbackQueryHandler(profile.profile_cb, pattern=r"^menu:profile$"))
     app.add_handler(CallbackQueryHandler(farm.farm_cb, pattern=r"^menu:farm$"))
     app.add_handler(CallbackQueryHandler(shop.shop_cb, pattern=r"^menu:shop$"))
@@ -396,7 +397,8 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CallbackQueryHandler(world.resource_sell_cb, pattern=r"^shelter:sell$"))
     app.add_handler(CallbackQueryHandler(world.sellres_execute, pattern=r"^cf:sellres:(?:wood|iron):\d+$"))
     app.add_handler(CallbackQueryHandler(world.sellres_cancel, pattern=r"^cl:sellres$"))
-    app.add_handler(CallbackQueryHandler(mines.mines_cb, pattern=r"^mn:"))  # راند ۲۸ بازی مین
+    app.add_handler(CallbackQueryHandler(gambling.gambling_cb, pattern=r"^gm:"))  # قمار تاسی رسمی و لابی دونفره
+    app.add_handler(CallbackQueryHandler(mines.mines_cb, pattern=r"^mn:"))  # بازی مین زیرمجموعه تک‌نفره
     app.add_handler(CallbackQueryHandler(team.team_chat_cb, pattern=r"^tc:(?:page|send|ref|back)$"))
     app.add_handler(CallbackQueryHandler(world.caravan_hit_cb, pattern=r"^cv:hit$"))  # دکمه جمعی
     app.add_handler(CallbackQueryHandler(boss.boss_hit_cb, pattern=r"^bsh:hit$"))     # دکمه جمعی باس (راند ۲۳)
@@ -439,3 +441,5 @@ def register_handlers(app: Application) -> None:
     # ── عمومی ──
     app.add_handler(CallbackQueryHandler(start.cancel_cb, pattern=r"^cl$"))
     app.add_handler(CallbackQueryHandler(start.noop_cb, pattern=r"^noop:"))
+
+

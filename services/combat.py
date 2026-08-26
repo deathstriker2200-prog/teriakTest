@@ -5,6 +5,7 @@
 import config
 from models import User
 from services import dogs as dog_svc, economy, energy as energy_svc, users
+from utils import now_utc
 
 
 # ───────── استت‌ها ─────────
@@ -122,6 +123,13 @@ def combat_boost_pcts(user: User, item_keys, dogs: list,
     atk_p = dog_svc.trait_atk_pct(dogs) + (users.artifact_atk_mult(artis) - 1) + skill_pct(user, "power")
     def_p = dog_svc.trait_def_pct(dogs) + (users.artifact_def_mult(artis) - 1) + skill_pct(user, "defense")
     atk_p += energy_svc.drink_atk_boost(user)  # بمب انرژی (راند ۱۳): بوست موقت فقط روی حمله، پس تو پی‌وی فقط مهاجم سود می‌بره
+    poison = getattr(user, "poison_until", None)
+    if poison and poison > now_utc():
+        atk_p -= config.POISON_CUT
+        def_p -= config.POISON_CUT  # سم افعی در همه نبردهای بازیکنی حمله و دفاع را با هم می‌کاهد
+    suppressed = getattr(user, "suppressed_until", None)
+    if suppressed and suppressed > now_utc():
+        atk_p -= 0.10  # سرکوب کلاشنیکف؛ در پروفایل و همه نبردهای بازیکنی یکسان دیده می‌شود
     return atk_p + team_atk, def_p + team_def
 
 
@@ -179,6 +187,78 @@ def best_weapon_name(item_keys: list[str]) -> str | None:
     return config.WEAPONS[key]["name"] if key else None
 
 
+def pvp_weapon_ability_bonus(key: str | None, level: int = 1, night: bool = False) -> float:
+    """معادل ارزش انتظاری قابلیت سلاح در نبرد باینری پی‌وی/کارتل (بدون HP و راند ضربه)."""
+    ability = (config.WEAPONS.get(key) or {}).get("ability") if key else None
+    if not ability:
+        return 0.0
+    kind = ability.get("kind")
+    val = economy.gear_ability_value
+    if kind == "quickdraw":
+        return val(ability, "chance", level)
+    if kind in ("burst", "barrage"):
+        return val(ability, "chance", level) * float(ability.get("bonus", 0.0))
+    if kind in ("buckshot", "blast", "sunlance", "worldbreaker"):
+        return val(ability, "pierce", level) * 0.55
+    if kind == "headshot":
+        return val(ability, "chance", level) * (float(ability.get("mult", 1.0)) - 1)
+    if kind == "suppress":
+        return val(ability, "chance", level) * float(ability.get("cut", 0.10))
+    if kind == "sniper":
+        return val(ability, "crit_bonus", level) * 0.10
+    if kind == "poison":
+        return val(ability, "chance", level) * float(ability.get("cut", 0.15))
+    if kind == "hellfire":
+        return val(ability, "bonus", level) * 0.50
+    if kind == "vampire":
+        return val(ability, "leech", level) * 0.25
+    if kind == "shadow":
+        return val(ability, "bonus", level) + (val(ability, "night_bonus", level) if night else 0.0)
+    if kind == "oblivion":
+        return 0.08 + val(ability, "double_chance", level) * 0.08
+    if kind == "storm":
+        return val(ability, "chance", level) * (float(ability.get("bonus", 0.25)) + 0.10)
+    if kind == "dragonburn":
+        return val(ability, "maxhp_damage", level)
+    if kind == "judgment":
+        return val(ability, "chance", level) * (float(ability.get("mult", 1.5)) - 1)
+    return 0.0
+
+
+def pve_weapon_damage_bonus(key: str | None, level: int = 1, night: bool = False) -> float:
+    """فقط سهم مستقیم دمیج/نفوذ قابلیت برای باس و کاروان؛ کنترل، درمان و debuff روی NPC اعمال نمی‌شود."""
+    ability = (config.WEAPONS.get(key) or {}).get("ability") if key else None
+    if not ability or ability.get("kind") in ("poison", "vampire", "suppress"):
+        return 0.0
+    return pvp_weapon_ability_bonus(key, level, night)
+
+
+def pvp_armor_ability_bonus(key: str | None, level: int = 1) -> float:
+    """معادل ارزش دفاعی قابلیت زره ویژه در پی‌وی/جنگ کارتل."""
+    ability = (config.ARMORS.get(key) or {}).get("ability") if key else None
+    if not ability:
+        return 0.0
+    kind = ability.get("kind")
+    val = economy.gear_ability_value
+    if kind == "plasma":
+        return val(ability, "reflect", level) * 0.50
+    if kind == "void":
+        return val(ability, "chance", level)
+    if kind == "neutron":
+        return val(ability, "reduce", level)
+    if kind == "dragonward":
+        return val(ability, "crit_cut", level) * 0.20
+    if kind == "quantum":
+        return val(ability, "chance", level) * float(ability.get("reduce", 0.50))
+    if kind == "celestial":
+        return val(ability, "heal_pct", level)
+    if kind == "emperor":
+        return max(0.0, 0.30 - val(ability, "damage_cap_pct", level))
+    if kind == "godshield":
+        return val(ability, "revive_pct", level) * 0.25
+    return 0.0
+
+
 def armor_defense(user: User, item_keys) -> int:
     """عدد دفاع زره موثر با بونس لول (راند ۲۹: دمیج باس اول از این کم میشه)"""
     levels = _levels_map(item_keys)
@@ -194,3 +274,5 @@ def best_armor_name(item_keys: list[str]) -> str | None:
         return None
     best = max(owned, key=lambda k: config.ARMORS[k]["defense"])
     return config.ARMORS[best]["name"]
+
+

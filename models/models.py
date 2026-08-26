@@ -154,6 +154,8 @@ class User(Base):
 
     # 💀 سم Viper-X — تا این زمان حمله و دفاع کاربر کمتره
     poison_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # 🔻 سرکوب کلاشنیکف — تا این زمان قدرت حمله کاربر ۱۰٪ کمتر است
+    suppressed_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     last_heal_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)   # آخرین درمان، برای دیلی ۵ دقیقه‌ای (راند ۳۰)
 
     # ⚡ بوست انرژی‌زا (بمب انرژی) — تا این زمان قدرت حمله کاربر بیشتره، بعدش با جارو خبر پایان اثر میره پی‌وی
@@ -683,6 +685,79 @@ class BossPlan(Base):
     spawned: Mapped[int] = mapped_column(Integer, default=0)          # چندتاشون تا الان اسپون شدن
 
 
+class GambleSoloRound(Base):
+    """یک دست تاس تک‌نفره؛ رزرو و تسویه ماندگار تا ری‌استارت پول کاربر را نسوزاند."""
+    __tablename__ = "gamble_solo_rounds"
+    __table_args__ = (Index("ix_gamble_solo_user_status", "user_id", "status"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    chat_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    thread_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    emoji: Mapped[str] = mapped_column(String(8))
+    bet: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(16), default="reserved", index=True)
+    dice_value: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    payout: Mapped[int] = mapped_column(Integer, default=0)
+    dice_message_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
+    settled_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+
+
+class GambleMatch(Base):
+    """لابی و صندوق امانت مسابقه تاسی دونفره، ماندگار و قابل بازیابی بعد ری‌استارت."""
+    __tablename__ = "gamble_matches"
+    __table_args__ = (
+        Index("ix_gamble_match_chat_status", "chat_id", "status"),
+        Index("ix_gamble_match_expiry", "status", "expires_at"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    chat_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    thread_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    lobby_message_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    creator_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    opponent_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    bet_per_player: Mapped[int] = mapped_column(Integer)
+    emoji: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    rounds_total: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    current_round: Mapped[int] = mapped_column(Integer, default=1)
+    creator_score: Mapped[int] = mapped_column(Integer, default=0)
+    opponent_score: Mapped[int] = mapped_column(Integer, default=0)
+    creator_confirmed: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    opponent_confirmed: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    creator_escrow: Mapped[int] = mapped_column(Integer, default=0)
+    opponent_escrow: Mapped[int] = mapped_column(Integer, default=0)
+    status: Mapped[str] = mapped_column(String(24), default="waiting_opponent", index=True)
+    winner_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    payout_done: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+
+
+class GambleMatchRound(Base):
+    """هر تلاش رسمی sendDice در یک راند؛ تساوی attempt بعدی همان round_no را می‌سازد."""
+    __tablename__ = "gamble_match_rounds"
+    __table_args__ = (
+        UniqueConstraint("match_id", "round_no", "attempt_no", name="uq_gamble_round_attempt"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    match_id: Mapped[int] = mapped_column(ForeignKey("gamble_matches.id"), index=True)
+    round_no: Mapped[int] = mapped_column(Integer)
+    attempt_no: Mapped[int] = mapped_column(Integer, default=1)
+    creator_value: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    opponent_value: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    creator_dice_message_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    opponent_dice_message_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    winner_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    status: Mapped[str] = mapped_column(String(16), default="rolling", index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
 class CartelWar(Base):
     """
     Cartel War: درخواست وار یه کارتل به کارتل دیگه، جریان کامل تا رزولوشن نهایی
@@ -742,3 +817,5 @@ class WarAttackLog(Base):
     xp_gained: Mapped[int] = mapped_column(Integer, default=0)
     medals_gained: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc, index=True)
+
+

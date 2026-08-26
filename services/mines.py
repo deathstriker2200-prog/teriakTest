@@ -202,3 +202,5 @@ async def sweep_expired(session: AsyncSession, now: datetime | None = None) -> l
                     "msg_id": g.get("msg_id"), "name": g.get("name", "")})
         del MINES[tg]
     return out
+
+

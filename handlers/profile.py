@@ -166,3 +166,5 @@ async def profile_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
 # /profile همون نسخه عکس‌دار، بدون دکمه و متن اضافی زیرش
 profile_cmd = profile_photo_cmd
+
+

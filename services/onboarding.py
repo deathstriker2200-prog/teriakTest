@@ -202,3 +202,5 @@ async def menu_card(session: AsyncSession, user: User) -> str | None:
             mark = "☐"
         lines.append(f"{mark} {label}")
     return "\n".join(lines)
+
+

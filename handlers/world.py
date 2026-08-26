@@ -17,7 +17,7 @@ from services import battle as battle_svc
 from services import combat, dogs as dog_svc, farming, users
 from services import smuggle as smg
 from services import world as world_svc
-from utils import bar, esc, fa_dur, fa_num, money, money_tp, now_utc
+from utils import bar, esc, fa_dur, fa_num, money, now_utc
 import math
 
 
@@ -33,7 +33,6 @@ async def search_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
         users.apply_energy_regen(user)
-        dogs = await dog_svc.get_user_dogs(s, user.id)
         luck = 1.0  # شانس جستجو قبلاً از شخصیت سگ میومد، با حذف شخصیت برای همه خنثیه
         artis = users.artifact_keys(await users.get_item_keys(s, user.id))
         luck = max(luck, users.artifact_luck(artis))
@@ -427,8 +426,15 @@ async def caravan_hit_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         user_team = await team_svc.get_team_of(s, user.id)
         team_b = team_svc.atk_bonus(user_team) if user_team else 0.0
         atk, _ = combat.combat_stats(user, items, dogs, atk_extra=team_b, ammo=ammo)
-        # هر ضربه به کاروان یه تیر (درخواست کارفرما راند ۲۹)
+        # روی کاروان فقط سهم مستقیم دمیج/نفوذ قابلیت تفنگ اعمال می‌شود.
         wkey_cv = combat.weapon_choice(user, items, ammo)
+        from utils import now_iran
+        _h = now_iran().hour
+        atk = int(atk * (1 + combat.pve_weapon_damage_bonus(
+            wkey_cv, items.get(wkey_cv, 1) if wkey_cv else 1,
+            _h >= config.SHADOW_NIGHT_FROM or _h < config.SHADOW_NIGHT_TO,
+        )))
+        # هر ضربه به کاروان یه تیر
         ammo_note = ""
         if wkey_cv and combat.is_gun(wkey_cv):
             _left_am = await users.consume_ammo(s, user.id, wkey_cv)
@@ -501,3 +507,5 @@ async def caravan_spawn_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     )
     if msg:
         cv["message_id"] = msg.message_id
+
+

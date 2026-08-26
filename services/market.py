@@ -222,3 +222,5 @@ async def gift_parts(session: AsyncSession, sender: User, recipient: User, n: in
 
 def money_of_price(row: MarketListing) -> str:
     return money(row.price)
+
+

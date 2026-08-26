@@ -31,3 +31,5 @@ async def log(session: AsyncSession, action: str) -> None:
     if random.random() < config.ACTION_LOG_PRUNE_CHANCE:
         cutoff = now_utc() - timedelta(hours=config.ACTION_LOG_KEEP_HOURS)
         await session.execute(delete(ActionEvent).where(ActionEvent.at < cutoff))
+
+

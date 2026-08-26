@@ -148,3 +148,5 @@ async def transfer_to(session: AsyncSession, sender: User, recipient: User, amou
     recipient.bank_balance += amount
     sender.last_trf_at = now_utc()
     return True, f"💳 {money(amount)} به حساب «{name}» واریز شد"
+
+

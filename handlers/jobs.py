@@ -284,7 +284,7 @@ async def smuggler_job(context: ContextTypes.DEFAULT_TYPE) -> None:
 
 # ───────── جاروی ورودی‌های معلق عددی ⏳ ─────────
 
-_NUMERIC_PENDING = ("bankdep", "bankwd", "resbuy", "labmatbuy", "smqty", "smcqty", "trf_to", "trf_amt")
+_NUMERIC_PENDING = ("bankdep", "bankwd", "resbuy", "labmatbuy", "smqty", "smcqty", "trf_to", "trf_amt", "gsolo", "gduel")
 
 
 async def pending_sweep_job(context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -339,6 +339,46 @@ async def pending_sweep_job(context: ContextTypes.DEFAULT_TYPE) -> None:
                 logger.warning("mines sweep edit failed: %s", e)
         if not edited:
             await _send(context, chat, text)
+
+
+# ───────── جاروی قمار تاسی 🎲 ─────────
+
+async def gambling_sweep_job(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """رزرو قطع‌شده را پس می‌دهد و لابی/راند بی‌پاسخ را منصفانه می‌بندد."""
+    from models import User as _User
+    from services import gambling as gambling_svc
+    from utils import esc, fa_num
+
+    payload: list[tuple[dict, str]] = []
+    async with session_scope() as s:
+        events = await gambling_svc.sweep_expired(s)
+        for ev in events:
+            if ev["kind"] == "solo_refund":
+                text = f"⌛ دست تاسی نیمه‌کاره موند؛ شرط {money(ev['bet'])} کامل برگشت جیبت"
+            elif ev["kind"] == "match_forfeit":
+                winner = await s.get(_User, ev["winner_id"])
+                name = esc(winner.first_name or winner.username or "برنده") if winner else "برنده"
+                text = (f"<b>🏆 مسابقه #{fa_num(ev['match_id'])} با باخت فنی تموم شد</b>\n\n"
+                        f"{name} تاس انداخت و حریفش غایب شد؛ {money(ev['payout'])} صندوق به برنده رسید")
+            else:
+                text = (f"⌛ <b>مسابقه #{fa_num(ev['match_id'])} منقضی شد</b>\n\n"
+                        f"هیچ برنده‌ای ثبت نشد و {money(ev['amount'])} از صندوق کامل پس داده شد")
+            payload.append((ev, text))
+        await s.commit()
+
+    for ev, text in payload:
+        edited = False
+        if ev.get("message_id"):
+            try:
+                await context.bot.edit_message_text(
+                    chat_id=ev["chat_id"], message_id=ev["message_id"], text=text,
+                    parse_mode="HTML", reply_markup=None,
+                )
+                edited = True
+            except Exception:
+                edited = False
+        if not edited:
+            await _send(context, ev["chat_id"], text)
 
 
 # ───────── جنگ کارتل‌ها ⚔️🏴 (راند ۳۹، درخواست کارفرما) ─────────
@@ -599,6 +639,7 @@ def register_jobs(app) -> None:
     jq.run_repeating(market_sweep_job, interval=config.MARKET_SWEEP_SECONDS, first=config.MARKET_SWEEP_SECONDS, name="market-sweep")
     jq.run_repeating(caravan_refresh_job, interval=config.CARAVAN_BOARD_REFRESH_SECONDS, first=60, name="caravan-board")
     jq.run_repeating(pending_sweep_job, interval=config.PENDING_SWEEP_SECONDS, first=45, name="pending-sweep")
+    jq.run_repeating(gambling_sweep_job, interval=config.GAMBLE_SWEEP_SECONDS, first=35, name="gambling-sweep")
     jq.run_repeating(shipment_job, interval=config.SHIPMENT_JOB_SECONDS, first=20, name="shipment")
     jq.run_repeating(boost_sweep_job, interval=config.ENERGY_BOOST_SWEEP_SECONDS, first=config.ENERGY_BOOST_SWEEP_SECONDS, name="boost-sweep")
     jq.run_repeating(smuggler_job, interval=config.SMUGGLER_TICK_SECONDS, first=40, name="smuggler")
@@ -629,3 +670,5 @@ def register_jobs(app) -> None:
         " | پلیس" if config.POLICE_ENABLED else "",
         " | لاگ ردیابی بازیکن" if config.ADMIN_LOG_CHAT_ID else "",
     )
+
+

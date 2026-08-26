@@ -212,3 +212,5 @@ def find_shop_item(query: str) -> tuple[str | None, str | None, dict | None]:
         if key:
             return kind, key, item
     return None, None, None
+
+

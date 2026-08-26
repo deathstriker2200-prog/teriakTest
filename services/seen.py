@@ -64,3 +64,5 @@ async def find_by_username(session: AsyncSession, username: str) -> SeenUser | N
 def cache_size() -> int:
     """اندازه کش، برای تست و مانیتورینگ"""
     return len(_CACHE)
+
+

@@ -182,3 +182,5 @@ async def bribe(session: AsyncSession, user: User) -> dict:
     user.jailed_until = None
     _jail_cache["map"].pop(user.telegram_id, None)  # کش گیت زندان هم فورا پاک شه
     return {"status": "ok", "cost": cost}
+
+

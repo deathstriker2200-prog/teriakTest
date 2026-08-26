@@ -580,20 +580,89 @@ WEAPON_ABILITY_TEXT = {
 }
 # راند ۴۱ (درخواست کارفرما): زیرخط شاعرانه هر سلاح ویژه، زیر خط قابلیت تو فروشگاه نشون داده میشه
 WEAPON_FLAVOR_TEXT = {
-    "poison": "زهر این سلاح به‌آرامی قدرت دشمن را تحلیل می‌برد",
+    "poison": "زهر این سلاح قدرت حمله و دفاع دشمن را تحلیل می‌برد",
     "hellfire": "هرچه دشمن به مرگ نزدیک‌تر شود، شعله‌های جهنمی خشن‌تر می‌شوند",
     "vampire": "با هر ضربه، بخشی از نیروی حیات دشمن را جذب می‌کند",
-    "shadow": "در تاریکی شب، قدرت واقعی این تیغه بیدار می‌شود",
-    "oblivion": "سلاحی مرموز که هر ضربه‌اش می‌تواند سرنوشت نبرد را تغییر دهد",
+    "shadow": "حتی روز هم بیدار است؛ شب که برسد قدرت واقعی‌اش آزاد می‌شود",
+    "oblivion": "هر ضربه‌اش می‌تواند چند سرنوشت متفاوت برای حریف بسازد",
+    "quickdraw": "سبک و سریع؛ برای کریت‌های ناگهانی ساخته شده",
+    "burst": "گاهی ماشه را ول نمی‌کند و یک رگبار اضافه می‌فرستد",
+    "buckshot": "ساچمه‌ها لابه‌لای صفحات زره راه خودشان را پیدا می‌کنند",
+    "headshot": "یک گلوله درست، از یک خشاب شلوغ خطرناک‌تر است",
+    "suppress": "رگبارش تمرکز و قدرت جواب‌دادن حریف را می‌گیرد",
+    "sniper": "هر کریت این تفنگ سنگین‌تر از کریت معمولی فرود می‌آید",
+    "barrage": "وقتی رگبار فعال شود، باران گلوله قطع نمی‌شود",
+    "blast": "موج انفجار از بخشی از دفاع حریف عبور می‌کند",
+    "storm": "شوک الکتریکی هم دمیج می‌زند هم انرژی حریف را می‌کشد",
+    "sunlance": "پرتوی متمرکز، دفاع و سپر را سوراخ می‌کند",
+    "dragonburn": "آتش اژدها بخشی از جان کامل حریف را می‌سوزاند",
+    "worldbreaker": "برای شکستن خود زره و قابلیت محافظش ساخته شده",
+    "judgment": "ضربه داوری نه زره می‌شناسد، نه بخشش",
+}
+
+# تعریف یکپارچه قابلیت همه تفنگ‌های گرم؛ مقدارها با هر لول آیتم پله‌ای رشد می‌کنند.
+# field_step یعنی افزایش در هر لول بعد از ۱ و field_cap سقف امن آن مقدار است.
+WEAPON_ABILITIES = {
+    "colt": {"kind": "quickdraw", "chance": 0.03, "chance_step": 0.01, "chance_cap": 0.07},
+    "uzi": {"kind": "burst", "chance": 0.10, "chance_step": 0.02, "chance_cap": 0.18, "bonus": 0.35, "extra_ammo": 1},
+    "shotgun": {"kind": "buckshot", "pierce": 0.08, "pierce_step": 0.02, "pierce_cap": 0.16},
+    "deagle": {"kind": "headshot", "chance": 0.05, "chance_step": 0.01, "chance_cap": 0.09, "mult": 1.75},
+    "ak47": {"kind": "suppress", "chance": 0.10, "chance_step": 0.02, "chance_cap": 0.18, "cut": 0.10, "seconds": 300},
+    "svd": {"kind": "sniper", "crit_bonus": 0.30, "crit_bonus_step": 0.05, "crit_bonus_cap": 0.50},
+    "minigun": {"kind": "barrage", "chance": 0.10, "chance_step": 0.02, "chance_cap": 0.18, "bonus": 0.50, "extra_ammo": 2},
+    "rpg": {"kind": "blast", "pierce": 0.15, "pierce_step": 0.03, "pierce_cap": 0.27},
+    "viperx": {"kind": "poison", "chance": 0.12, "chance_step": 0.02, "chance_cap": 0.20, "cut": 0.15, "seconds": 600},
+    "hellfire": {"kind": "hellfire", "bonus": 0.15, "bonus_step": 0.03, "bonus_cap": 0.27, "threshold": 0.35},
+    "vampire": {"kind": "vampire", "leech": 0.12, "leech_step": 0.02, "leech_cap": 0.20},
+    "shadowfang": {"kind": "shadow", "bonus": 0.05, "bonus_step": 0.01, "bonus_cap": 0.09,
+                   "night_bonus": 0.10, "night_bonus_step": 0.02, "night_bonus_cap": 0.18},
+    "oblivion": {"kind": "oblivion", "double_chance": 0.00, "double_chance_step": 0.05, "double_chance_cap": 0.20},
+    "stormbringer": {"kind": "storm", "chance": 0.12, "chance_step": 0.02, "chance_cap": 0.20,
+                     "bonus": 0.25, "energy_drain": 10},
+    "sunlance": {"kind": "sunlance", "pierce": 0.18, "pierce_step": 0.03, "pierce_cap": 0.30},
+    "dragonbreath": {"kind": "dragonburn", "maxhp_damage": 0.03, "maxhp_damage_step": 0.01,
+                     "maxhp_damage_cap": 0.07, "damage_cap": 90},
+    "worldbreaker": {"kind": "worldbreaker", "chance": 0.12, "chance_step": 0.02, "chance_cap": 0.20,
+                     "pierce": 0.20, "pierce_step": 0.03, "pierce_cap": 0.32},
+    "judgment": {"kind": "judgment", "chance": 0.08, "chance_step": 0.02, "chance_cap": 0.16, "mult": 1.50},
+}
+for _weapon_key, _ability in WEAPON_ABILITIES.items():
+    WEAPONS[_weapon_key]["ability"] = _ability
+
+WEAPON_ABILITY_TEXT = {
+    "quickdraw": "🎯 شانس کریت اضافه؛ از 3٪ در لول 1 تا 7٪ در لول 5",
+    "burst": "💥 شانس رگبار اضافه با 35٪ دمیج بیشتر و مصرف 1 تیر اضافه",
+    "buckshot": "🛡 نادیده‌گرفتن 8٪ تا 16٪ دفاع حریف",
+    "headshot": "🎯 شانس هدشات با دمیج ×1.75",
+    "suppress": "🔻 شانس کم‌کردن 10٪ حمله حریف برای 5 دقیقه",
+    "sniper": "🎯 کریت‌های 30٪ تا 50٪ قوی‌تر",
+    "barrage": "🔥 شانس 50٪ دمیج بیشتر با مصرف 2 تیر اضافه",
+    "blast": "🚀 نادیده‌گرفتن 15٪ تا 27٪ دفاع حریف",
+    "poison": "💀 شانس سم؛ حمله و دفاع حریف 15٪ کمتر برای 10 دقیقه",
+    "hellfire": "🔥 زیر 35٪ سلامت، 15٪ تا 27٪ دمیج بیشتر",
+    "vampire": "🩸 برگرداندن 12٪ تا 20٪ دمیج به سلامت خودت",
+    "shadow": "🌑 5٪ تا 9٪ دمیج همیشگی + بونس اضافه شب",
+    "oblivion": "👑 قابلیت‌های ویژه قبلی را تصادفی اجرا می‌کند؛ لول بالا شانس قابلیت دوم دارد",
+    "storm": "⚡ شانس شوک؛ 25٪ دمیج بیشتر و 10 انرژی کمتر برای حریف",
+    "sunlance": "☀️ نفوذ 18٪ تا 30٪ در دفاع حریف",
+    "dragonburn": "🐉 سوزاندن 3٪ تا 7٪ سلامت کامل حریف با سقف امن",
+    "worldbreaker": "🌍 شانس شکستن قابلیت زره همان ضربه + نفوذ دفاع",
+    "judgment": "⚖️ شانس ضربه ×1.5 که قابلیت زره را نادیده می‌گیرد",
 }
 
 # ───────── ارتقای سلاح و زره ⬆️ ─────────
 # هر آیتم تا لول ۵ ارتقا داره | استت ×(۱ + ضریب×(لول-۱)) | هزینه = تی‌پوینت + آهن
 GEAR_UPG_MAX = 5
 GEAR_UPG_STAT_PER_LEVEL = 0.20    # هر لول ۲۰% استت پایه بیشتر
-GEAR_UPG_TP_PER_LEVEL = 0.50      # تی‌پوینت ارتقا به لول N = قیمت پایه × این × (N-1)
-GEAR_UPG_IRON_STEP = 4            # آهن ارتقا به لول N = آهن پایه آیتم + این × (N-2)
+GEAR_UPG_TP_PER_LEVEL = 0.50      # لگاسی؛ فرمول جدید از جدول پله‌ای پایین استفاده می‌کند
+# بالانس تأییدشده: مجموع چهار ارتقا ۳٫۵ برابر قیمت خرید (قبلاً ۵ برابر بود)
+GEAR_UPG_TP_STEPS = [0.40, 0.70, 1.00, 1.40]
+GEAR_UPG_IRON_STEP = 4            # لگاسی برای سازگاری تست/کد قدیمی
 GEAR_UPG_IRON_ARMOR_BASE = 2      # آهن پایه زره = این + رتبه زره (ارزان به گرون)
+# تفنگ: درصدی از آهن خرید + پله کوچک ثابت | زره: درصدی از پایه رتبه‌ای
+GEAR_UPG_WEAPON_IRON_RATIOS = [0.45, 0.60, 0.75, 0.90]
+GEAR_UPG_WEAPON_IRON_EXTRA = [0, 2, 4, 6]
+GEAR_UPG_ARMOR_IRON_RATIOS = [0.60, 0.80, 1.00, 1.20]
 GEAR_UPG_LEVELS = [2, 5, 9, 13]   # لول بازیکن لازم برای رفتن به لول ۲|۳|۴|۵
 
 # ───────── آرتیفکت‌ها 🧿 (آیتم‌های آخر بازی) ─────────
@@ -712,10 +781,42 @@ ARMOR_ABILITY_TEXT = {
 }
 # راند ۴۱ (درخواست کارفرما): زیرخط شاعرانه هر زره ویژه، زیر خط قابلیت تو فروشگاه نشون داده میشه
 ARMOR_FLAVOR_TEXT = {
-    "reflect": "انرژی ضربه را جذب می‌کند و بخشی از آن را به دشمن پس می‌فرستد",
+    "plasma": "انرژی ضربه را جذب می‌کند و بخشی از آن را به دشمن پس می‌فرستد",
     "void": "گاهی حمله دشمن را کاملاً می‌بلعد و اثری از آن باقی نمی‌گذارد",
-    "reduce": "چگالی ستاره‌ای آن فشار ضربه‌ها را خرد می‌کند",
-    "godshield": "در لحظه سقوط، نیروی خدایان دوباره تو را به میدان برمی‌گرداند",
+    "neutron": "چگالی ستاره‌ای آن فشار ضربه‌ها را خرد می‌کند",
+    "dragonward": "استخوان اژدها جلوی ضربه‌های مرگبار و آتش را می‌گیرد",
+    "quantum": "گاهی زره و سلاح دشمن را برای یک لحظه از فاز نبرد بیرون می‌اندازد",
+    "celestial": "نور آسمانی بعد هر ضربه بخشی از جان را ترمیم می‌کند",
+    "emperor": "هیچ ضربه‌ای اجازه ندارد از فرمان سقف دمیج عبور کند",
+    "godshield": "در لحظه سقوط، نیروی خدایان یک‌بار تو را به میدان برمی‌گرداند",
+}
+
+ARMOR_ABILITIES = {
+    "plasma": {"kind": "plasma", "reflect": 0.12, "reflect_step": 0.02, "reflect_cap": 0.20},
+    "void": {"kind": "void", "chance": 0.08, "chance_step": 0.015, "chance_cap": 0.14},
+    "neutron": {"kind": "neutron", "reduce": 0.10, "reduce_step": 0.02, "reduce_cap": 0.18},
+    "dragonbone": {"kind": "dragonward", "crit_cut": 0.25, "crit_cut_step": 0.05, "crit_cut_cap": 0.45,
+                   "burn_cut": 0.25, "burn_cut_step": 0.05, "burn_cut_cap": 0.45},
+    "quantum": {"kind": "quantum", "chance": 0.12, "chance_step": 0.02, "chance_cap": 0.20, "reduce": 0.50},
+    "celestial": {"kind": "celestial", "heal_pct": 0.04, "heal_pct_step": 0.01, "heal_pct_cap": 0.08,
+                  "hit_heal_cap": 0.30},
+    "emperor": {"kind": "emperor", "damage_cap_pct": 0.25, "damage_cap_pct_step": -0.02,
+                "damage_cap_pct_floor": 0.17},
+    "gods": {"kind": "godshield", "revive_pct": 0.25, "revive_pct_step": 0.0625, "revive_pct_cap": 0.50,
+             "charges": 1},
+}
+for _armor_key, _ability in ARMOR_ABILITIES.items():
+    ARMORS[_armor_key]["ability"] = _ability
+
+ARMOR_ABILITY_TEXT = {
+    "plasma": "🛡 بازتاب 12٪ تا 20٪ دمیج به مهاجم (غیرکشنده)",
+    "void": "🌑 شانس 8٪ تا 14٪ برای بلعیدن کامل ضربه",
+    "neutron": "☄️ کاهش همیشگی 10٪ تا 18٪ دمیج ورودی",
+    "dragonward": "🐉 مقاومت 25٪ تا 45٪ در برابر کریت و سوختگی",
+    "quantum": "💠 شانس 12٪ تا 20٪ برای نصف‌کردن ضربه و خنثی‌کردن قابلیت سلاح",
+    "celestial": "🌌 ترمیم 4٪ تا 8٪ HP کامل بعد از ضربه، با سقف امن",
+    "emperor": "🏛 سقف هر ضربه از 25٪ تا 17٪ HP کامل",
+    "godshield": "👑 یک احیا در هر زندگی؛ 25٪ تا 50٪ HP با ارتقا",
 }
 
 # ───────── سگ‌ها (فروشگاه 🐕) ─────────
@@ -995,6 +1096,32 @@ MINES_BETS = [1000, 5000, 25000] # میزهای شرط (لیست حفظ‌شده
 MINES_TTL_SECONDS = 120          # مهلت کل بازی مین؛ بگذره شرط برمی‌گرده (مدل استرداد قبلی حفظ شد)
 MINES_COOLDOWN_SECONDS = 30      # فاصله بین دو بازی مین (همون کولدان قبلی)
 MINES_MULTS = [0.25, 0.50, 0.75, 1.0, 1.5, 2.0, 2.5, 4.0]  # خونه امن ۱ تا ۸ (قطعی کارفرما)
+
+# ═════════ قمار تاسی رسمی تلگرام ═════════
+# هاب اول فقط دو مسیر دارد؛ بازی مین داخل مسیر تک‌نفره حفظ شده است.
+GAMBLE_MIN_LEVEL = MINES_MIN_LEVEL
+GAMBLE_SOLO_MIN_BET = 1_000
+GAMBLE_SOLO_MAX_BET = 250_000
+GAMBLE_DUEL_MIN_BET = 1_000
+GAMBLE_DUEL_MAX_BET = 1_000_000
+GAMBLE_COOLDOWN_SECONDS = 30
+GAMBLE_DICE_ANIMATION_SECONDS = 4.0
+GAMBLE_SOLO_RESERVE_SECONDS = 120
+GAMBLE_LOBBY_SECONDS = 600
+GAMBLE_CONFIG_SECONDS = 300
+GAMBLE_CONFIRM_SECONDS = 300
+GAMBLE_ROUND_SECONDS = 120
+GAMBLE_SWEEP_SECONDS = 20
+GAMBLE_DUEL_ROUNDS = (1, 3, 5)
+GAMBLE_DICE = {
+    "dice": {"emoji": "🎲", "max": 6, "win_min": 4, "payout": 1.90, "name": "تاس"},
+    "dart": {"emoji": "🎯", "max": 6, "win_min": 4, "payout": 1.90, "name": "دارت"},
+    "bowl": {"emoji": "🎳", "max": 6, "win_min": 4, "payout": 1.90, "name": "بولینگ"},
+    "basket": {"emoji": "🏀", "max": 5, "win_min": 4, "payout": 2.375, "name": "بسکتبال"},
+    "foot": {"emoji": "⚽", "max": 5, "win_min": 4, "payout": 2.375, "name": "فوتبال"},
+    "slot": {"emoji": "🎰", "max": 64, "win_min": 49, "payout": 3.80, "name": "اسلات"},
+}
+GAMBLE_EMOJI_TO_KEY = {v["emoji"]: k for k, v in GAMBLE_DICE.items()}
 
 # ───────── پناهگاه 🏚 ─────────
 SHELTER_MAX_LEVEL = 10
@@ -1361,3 +1488,5 @@ PV_REROLL_MAX_COST = _hard_cost(PV_REROLL_MAX_COST)
 PV_SPY_MIN_COST = _hard_cost(PV_SPY_MIN_COST)
 PV_SPY_MAX_COST = _hard_cost(PV_SPY_MAX_COST)
 PV_ATTACK_SHIELD_BREAK_COST = _hard_cost(PV_ATTACK_SHIELD_BREAK_COST)
+
+

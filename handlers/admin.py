@@ -1190,3 +1190,5 @@ async def _fj_kb():
         st = await fj_svc.get_settings(s)
         await s.commit()
     return kb.admin_fj_kb(st)
+
+

@@ -107,3 +107,5 @@ async def skill_reset_execute(update: Update, context: ContextTypes.DEFAULT_TYPE
     if not ok:
         return await respond(update, text, markup, alert=str(res))
     await respond(update, text, markup, alert=f"♻️ مهارت‌ها ریست شدن و {fa_num(res)} امتیاز برگشت")
+
+

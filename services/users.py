@@ -111,6 +111,7 @@ async def wipe_account(session: AsyncSession, user: User) -> None:
         setattr(user, f"skill_{_k}", 0)
     user.equipped_weapon = user.equipped_armor = None
     user.poison_until = None
+    user.suppressed_until = None
 
     from services import battle as battle_svc
     # بعد ریست هم زمین هدیه نمیشه، مثل ثبت‌نام تازه خودش رایگان می‌خره
@@ -462,3 +463,5 @@ def add_xp(user: User, amount: int) -> list[str]:
         notes.append(note)
 
     return notes
+
+

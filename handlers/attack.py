@@ -284,6 +284,9 @@ async def _run_attack(update: Update, context, target_id: int, break_shield: boo
             _parts.append(f"⛏️ {fa_num(_il)} آهن")
         text += "\n🏴‍☠️ از انبارش هم قاپیدی: " + " و ".join(_parts)
 
+    if result.get("ability_notes"):
+        text += "\n" + "\n".join(result["ability_notes"])
+
     # راند ۲۹: مهمات مونده تفنگ مهاجم آخر کارت نتیجه
     wkey = result.get("weapon")
     _al = result.get("ammo_left", -1)
@@ -337,3 +340,5 @@ async def ownshield_hit_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 async def ownshield_break_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """✅ تایید شکستن سپر خودی + سپر قربانی و اجرای حمله"""
     await _run_attack(update, context, int(parts(update)[2]), break_shield=True, own_shield_ok=True)
+
+

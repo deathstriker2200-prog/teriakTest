@@ -189,3 +189,5 @@ async def power_gate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             except Exception:
                 pass
         raise ApplicationHandlerStop()
+
+

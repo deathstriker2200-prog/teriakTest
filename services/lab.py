@@ -601,3 +601,5 @@ async def lab_warehouse_text(session: AsyncSession, user: User) -> str:
         lines += ["", "🚚 محموله‌های آزمایشگاه در راه:"]
         lines.extend(smg.shipment_line(sh) for sh in ongoing)
     return "\n".join(lines)
+
+

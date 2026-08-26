@@ -162,3 +162,5 @@ async def track(session: AsyncSession, user: User, kind: str, n: int = 1) -> tup
     if touched:
         _save(user, quests)
     return completed, remaining(quests)
+
+

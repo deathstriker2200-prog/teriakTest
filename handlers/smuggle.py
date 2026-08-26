@@ -327,3 +327,5 @@ async def announce_caravan(context: ContextTypes.DEFAULT_TYPE, cv: dict) -> None
             for gid, mid in sent:
                 await smg.note_caravan_message(s, gid, mid)
             await s.commit()
+
+

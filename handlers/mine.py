@@ -203,3 +203,5 @@ async def mine_upg_execute(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
 async def mine_upg_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await mine_home_cb(update, context)
+
+

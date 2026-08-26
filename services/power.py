@@ -79,3 +79,5 @@ async def set_group_off(session: AsyncSession, chat_id: int, off: bool) -> None:
         ids.discard(chat_id)
     await _meta_set(session, "off_groups", ",".join(str(x) for x in sorted(ids)))
     invalidate()
+
+

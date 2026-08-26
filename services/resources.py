@@ -151,3 +151,5 @@ def mine_loot(user: User) -> dict:
             iron = max(1, int(iron * tool_amount_mult(user, "pick")))
 
     return {"cash": cash, "xp": xp, "wood": wood, "iron": iron, "rare": rare}
+
+

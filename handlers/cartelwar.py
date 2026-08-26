@@ -447,3 +447,5 @@ async def war_hit_target_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
     text = result["message"] if result["ok"] else f"⚠️ <b>نشد</b>\n\n{result['message']}"
     await respond(update, text, kb.cartel_war_back_kb())
+
+

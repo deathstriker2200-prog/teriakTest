@@ -373,3 +373,5 @@ def parse_dog_query(query: str):
     # مچ جزئی روی اسم
     key, cfg = find_dog(q)
     return key, cfg, None
+
+

@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 import config
 from models import User
-from services import actionlog, combat
+from services import actionlog, combat, economy
 from services import dogs as dog_svc
 from services import users as user_svc
 from utils import now_utc
@@ -141,10 +141,18 @@ async def total_powers(session: AsyncSession, attacker: User, target: User) -> t
     wkey, wpct, _ = await world_svc.weather_state(session)
     watk, wdef = world_svc.weather_combat_mods(wkey, wpct)
 
-    # راند ۳۸ (اصلاح درخواست کارفرما): «قدرت کل» یعنی حمله مهاجم منهای دفاع هدف، هرچی موند تقسیم بر ۴
-    # (نه حمله و دفاع خودِ هر نفر با هم، وگرنه مهاجم‌های دفاع‌بالا مصنوعی قوی می‌شدن)
-    a_raw = (a_atk0 - t_def0) * (1 + a_ap + watk)
-    t_raw = (t_atk0 - a_def0) * (1 + t_dp + wdef)
+    # قابلیت تجهیزات در سیستم باینری پی‌وی/کارتل به ارزش انتظاری هم‌ارز تبدیل می‌شود؛
+    # قابلیت‌های راندی HP (مثل reflect/void) اینجا هم اثر واقعی و قابل پیش‌بینی دارند.
+    from utils import now_iran
+    _night = now_iran().hour >= config.SHADOW_NIGHT_FROM or now_iran().hour < config.SHADOW_NIGHT_TO
+    a_wkey = combat.weapon_choice(attacker, a_items, a_ammo)
+    t_akey = combat.armor_choice(target, t_items)
+    a_gear = combat.pvp_weapon_ability_bonus(a_wkey, a_items.get(a_wkey, 1) if a_wkey else 1, _night)
+    t_gear = combat.pvp_armor_ability_bonus(t_akey, t_items.get(t_akey, 1) if t_akey else 1)
+
+    # راند ۳۸: قدرت رقابتی = (حمله مهاجم - دفاع هدف) / ۴؛ قابلیت فعال هم روی نقش خودش سوار می‌شود.
+    a_raw = (a_atk0 - t_def0) * (1 + a_ap + watk + a_gear)
+    t_raw = (t_atk0 - a_def0) * (1 + t_dp + wdef + t_gear)
     a_total = int(a_raw / 4)
     t_total = int(t_raw / 4)
 
@@ -156,13 +164,14 @@ async def total_powers(session: AsyncSession, attacker: User, target: User) -> t
     t_tb_def = team_svc.def_bonus(t_team) if t_m else 0.0
     a_atk_disp, a_def_disp = combat.combat_stats(attacker, a_items, a_dogs, a_tb_atk, a_tb_def, a_ammo)
     t_atk_disp, t_def_disp = combat.combat_stats(target, t_items, t_dogs, t_tb_atk, t_tb_def, t_ammo)
-    a_display = a_atk_disp + a_def_disp
-    t_display = t_atk_disp + t_def_disp
+    a_display = int((a_atk_disp + a_def_disp) * (1 + a_gear))
+    t_display = int((t_atk_disp + t_def_disp) * (1 + t_gear))
 
     return a_total, t_total, {
         "a_atk0": a_atk0, "a_def0": a_def0,
         "t_atk0": t_atk0, "t_def0": t_def0, "weather": wkey,
         "a_display": a_display, "t_display": t_display,
+        "weapon_ability_bonus": a_gear, "armor_ability_bonus": t_gear,
     }
 
 
@@ -293,6 +302,17 @@ async def execute(session: AsyncSession, attacker: User, victim: User) -> dict:
         weapon_key = w_try
         ammo_left = await user_svc.consume_ammo(session, attacker.id, w_try)
 
+    # debuffهای واقعی تفنگ در پی‌وی هم اعمال می‌شوند؛ بقیه قابلیت‌های راندی با ارزش انتظاری در total_powers حساب شده‌اند.
+    ability_notes: list[str] = []
+    wabil = (config.WEAPONS.get(w_try) or {}).get("ability") if w_try else None
+    wlvl = a_lvls2.get(w_try, 1) if w_try else 1
+    if wabil and wabil.get("kind") == "poison" and random.random() < economy.gear_ability_value(wabil, "chance", wlvl):
+        victim.poison_until = now_utc() + timedelta(seconds=int(wabil.get("seconds", 600)))
+        ability_notes.append("💀 حریف مسموم شد")
+    if wabil and wabil.get("kind") == "suppress" and random.random() < economy.gear_ability_value(wabil, "chance", wlvl):
+        victim.suppressed_until = now_utc() + timedelta(seconds=int(wabil.get("seconds", 300)))
+        ability_notes.append("🔻 حمله حریف 5 دقیقه سرکوب شد")
+
     # مصونیت قربانی بعد از حمله، تو برد و باخت هر دو
     victim.shield_until = now_utc() + timedelta(seconds=config.PV_ATTACK_SHIELD_SECONDS)
 
@@ -358,4 +378,7 @@ async def execute(session: AsyncSession, attacker: User, victim: User) -> dict:
         "ammo_left": ammo_left,
         "wood_loot": wood_loot,
         "iron_loot": iron_loot,
+        "ability_notes": ability_notes,
     }
+
+

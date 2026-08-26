@@ -433,3 +433,5 @@ async def gift_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         )
     except Exception:
         pass
+
+

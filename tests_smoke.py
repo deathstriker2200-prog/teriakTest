@@ -142,21 +142,21 @@ async def main() -> None:
     world_svc.roll_quality = _orig_quality
 
     # ── بالانس آیتم‌های آخر بازی و زره‌ها ──
-    check("زره‌های آخر بازی دفاعشون باف شده",
-          config.ARMORS["legend"]["defense"] == 110 and config.ARMORS["titan"]["defense"] == 90
-          and config.ARMORS["nano"]["defense"] == 70 and config.ARMORS["swat"]["defense"] == 46)
+    check("زره‌های آخر بازی بعد از باف ۳۰٪ روی مقدار جدیدن",
+          config.ARMORS["legend"]["defense"] == 143 and config.ARMORS["titan"]["defense"] == 117
+          and config.ARMORS["nano"]["defense"] == 91 and config.ARMORS["swat"]["defense"] == 60)
     check("پلاسما پاک شده و گاتلینگ و آرپی‌جی رفتن تو گرمی با یه لول زودتر",
           "plasma" not in config.WEAPONS
           and config.WEAPONS["minigun"]["sec"] == "hot" and config.WEAPONS["minigun"]["min_level"] == 12
           and config.WEAPONS["rpg"]["sec"] == "hot" and config.WEAPONS["rpg"]["min_level"] == 14
-          and config.WEAPONS["minigun"]["price"] == 60000 and config.WEAPONS["rpg"]["price"] == 95000)
-    check("پنج سلاح ویژه لول 16 تا 20، چهارتای اول 250 و Oblivion با باف راند ۳۰ رفت رو 305 (درخواست کارفرما)",
+          and config.WEAPONS["minigun"]["price"] == 90000 and config.WEAPONS["rpg"]["price"] == 142500)
+    check("پنج سلاح ویژه لول 16 تا 20 قدرت پله‌ای و قابلیت مستقل دارن",
           [(k, w["min_level"], w["attack"], w["sec"], w["ability"]["kind"]) for k, w in
            [(x, config.WEAPONS[x]) for x in ("viperx", "hellfire", "vampire", "shadowfang", "oblivion")]]
           == [("viperx", 16, 250, "special", "poison"),
-              ("hellfire", 17, 250, "special", "hellfire"),
-              ("vampire", 18, 250, "special", "vampire"),
-              ("shadowfang", 19, 250, "special", "shadow"),
+              ("hellfire", 17, 265, "special", "hellfire"),
+              ("vampire", 18, 280, "special", "vampire"),
+              ("shadowfang", 19, 292, "special", "shadow"),
               ("oblivion", 20, 305, "special", "oblivion")])
     check("ترتیب قیمت و قدرت سلاح‌ها بعد از گرونی محفوظه",
           config.WEAPONS["minigun"]["price"] < config.WEAPONS["rpg"]["price"] < config.WEAPONS["viperx"]["price"]
@@ -169,8 +169,8 @@ async def main() -> None:
     check("راند ۱۹: قابلیت زره افسانه‌ای پاک شد و اسمش آدامانتیوم (درخواست کارفرما)",
           legends == [] and config.ARMORS["legend"]["name"] == "زره آدامانتیوم 👑"
           and config.ARMORS["legend"]["sec"] == "normal" and "ability" not in config.ARMORS["legend"])
-    check("دفاع آدامانتیوم و لولش مثل افسانه‌ای سابق مونده",
-          config.ARMORS["legend"]["defense"] == 110 and config.ARMORS["legend"]["min_level"] == 14)
+    check("آدامانتیوم معمولیه، لول ۱۴ و با دفاع باف‌شده",
+          config.ARMORS["legend"]["defense"] == 143 and config.ARMORS["legend"]["min_level"] == 14)
 
     rares = [k for k, d in config.DOGS.items() if d.get("rare")]
     check("فقط یه سگ کمیاب هست", len(rares) == 1, str(rares))
@@ -186,7 +186,8 @@ async def main() -> None:
     needs = [economy.xp_need(l) for l in range(1, config.MAX_LEVEL + 1)]
     check("منحنی xp صعودیه", needs == sorted(needs), str(needs[:6]))
     diffs = [b - a for a, b in zip(needs, needs[1:])]
-    check("سختی تدریجی زیاد میشه (محدب)", diffs == sorted(diffs), str(diffs[:6]))
+    check("سختی در هر بازه ۱-۲۰ و ۲۱-۳۰ تدریجی زیاد میشه (منحنی توسعه لول)",
+          diffs[:19] == sorted(diffs[:19]) and diffs[20:] == sorted(diffs[20:]), str(diffs))
     check("لول‌های اول سریعه", economy.xp_need(1) <= 100 and economy.xp_need(2) <= 300, f"1={economy.xp_need(1)} 2={economy.xp_need(2)}")
 
     # ═══ اقتصاد ═══
@@ -227,11 +228,12 @@ async def main() -> None:
     _k47, _ = find_by_name(config.WEAPONS, "کلاشنیکف")
     check("ak47 اسمش کلاشنیکفه و با اسم فارسی پیدا میشه",
           _k47 == "ak47" and config.WEAPONS["ak47"]["name"] == "کلاشنیکف 🔫")
-    check("12 تا زره داریم (راند ۱۹: ۸ معمولی + ۴ ویژه)", len(config.ARMORS) == 12, str(len(config.ARMORS)))
+    check("16 تا زره داریم: ۸ معمولی + ۸ ویژه پله‌ای", len(config.ARMORS) == 16, str(len(config.ARMORS)))
     sp19 = [k for k, a in config.ARMORS.items() if a.get("sec") == "special"]
-    check("چهار زره ویژه جدید با قابلیت مخصوص خودشون",
-          sp19 == ["plasma", "void", "neutron", "gods"] and all(config.ARMORS[k].get("ability") for k in sp19)
-          and all(config.ARMORS[k]["defense"] == 130 for k in sp19), str(sp19))
+    check("هشت زره ویژه هرکدوم قابلیت مستقل خودشون رو دارن",
+          sp19 == ["plasma", "void", "neutron", "dragonbone", "quantum", "celestial", "emperor", "gods"]
+          and all(config.ARMORS[k].get("ability") for k in sp19)
+          and [config.ARMORS[k]["defense"] for k in sp19] == [169, 185, 205, 240, 275, 315, 350, 390], str(sp19))
     check("کِولار و تیتانیومی هست", "kevlar" in config.ARMORS and "titan" in config.ARMORS)
     check("شوکر از کلت ضعیف‌تر و ارزون‌تره (اسلحه قوی‌تره)",
           config.WEAPONS["shocker"]["attack"] < config.WEAPONS["colt"]["attack"]
@@ -3696,9 +3698,9 @@ async def main() -> None:
     check("هلپ کنده‌کاری (بخش جدید)",
           all(x in HS["mine"] for x in ["⛏ کنده‌کاری", "«تریاکی کنده کاری»", "«کنده کاری»", "60 ثانیه",
                                         "🪓 تبر", "⛏️ کلنگ", "لول 5", "«شکار کمیاب»"]))
-    check("هلپ قمارخانه بازی مین (راند ۲۸: تاسی حذف و مین جایگزین شد)",
-          all(x in HS["casino"] for x in ["🎰 قمارخانه | بازی مین", "«تریاکی قمارخانه»", "لول 7", "×0.25",
-                                          "هر 8 خونه = ×4 خودکار", "2 دقیقه", "«تریاکی مین 5000»", "لغو"]))
+    check("هلپ قمارخانه دو مسیر تک‌نفره/دونفره و مین تو در تو را توضیح می‌دهد",
+          all(x in HS["casino"] for x in ["🎰 قمارخانه تریاکی", "لول 7", "🤖 تک‌نفره", "تاس با ربات",
+                                          "بازی مین", "⚔️ دونفره", "best-of-1/3/5", "sendDice رسمی", "امانت"]))
     check("هلپ بانک (بخش جدید)",
           all(x in HS["bank"] for x in ["🏦 بانک", "«تریاکی بانک»", "ظرفیت", "حداقل لول کاراکتر"]))
     check("هلپ ماموریت روزانه (بخش جدید)",
@@ -15837,3 +15839,5 @@ async def main() -> None:
 
 
 asyncio.run(main())
+
+

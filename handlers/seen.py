@@ -21,3 +21,5 @@ async def track(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             await s.commit()
     except Exception:
         return
+
+

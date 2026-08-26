@@ -528,3 +528,5 @@ async def merge_sqlite_bytes(data: bytes, notify=None) -> tuple[bool, str]:
         except Exception:
             pass   # چت ادمین در دسترس نبود، خلاصه تو لاگ هس
     return ok, msg
+
+

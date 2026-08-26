@@ -159,3 +159,5 @@ async def fj_member_event(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     else:  # left | kicked | restricted، دسترسی همین لحظه بسته میشه
         await fj.mark_left(user.id)
         logger.info("عضویت اجباری: %s لفت/کیک شد (%s)، دسترسیش قطع شد", user.id, status)
+
+

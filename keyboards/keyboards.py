@@ -70,7 +70,8 @@ def main_menu_kb() -> InlineKeyboardMarkup:
          _btn("⚔️ حمله", "menu:attack", PRIMARY)],
         [_btn("🎒 انبار", "menu:shelter", PRIMARY),
          _btn("⛏️ کنده‌کاری", "menu:mine", PRIMARY)],
-        [_btn("🏦 بانک", "menu:bank", PRIMARY)],
+        [_btn("🏦 بانک", "menu:bank", PRIMARY),
+         _btn("🎰 قمارخانه", "menu:casino", PRIMARY)],
         [_btn("⭐️ مهارت", "menu:skills", PRIMARY),
          _btn("🛡 تجهیزات", "menu:gear", PRIMARY)],
         [_btn("🐕 سگ‌ها", "menu:dogs", PRIMARY),
@@ -1370,14 +1371,96 @@ def buylabmat_confirm_kb(mat: str, qty: int) -> InlineKeyboardMarkup:
     ]])
 
 
-# ───────── بازی مین 💣 (راند ۲۸، جایگزین قمار تاسی حذف‌شده) ─────────
+# ───────── قمار تاسی رسمی تلگرام 🎲 ─────────
+
+def gamble_hub_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [_btn("🤖 تک‌نفره", "gm:solo", SUCCESS), _btn("⚔️ مسابقه دونفره", "gm:duel", DANGER)],
+        [_btn("🏠 منوی اصلی", "menu:home", PRIMARY)],
+    ])
+
+
+def gamble_solo_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [_btn("🎲 تاس با ربات", "gm:solo:bet", SUCCESS)],
+        [_btn("💣 بازی مین", "gm:mine", PRIMARY)],
+        [_btn("🔙 قمارخانه", "gm:h", PRIMARY)],
+    ])
+
+
+def gamble_back_kb(data: str = "gm:h") -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([[_btn("❌ لغو و برگشت", data, DANGER)]])
+
+
+def gamble_dice_kb(mode: str, bet: int = 0, match_id: int = 0) -> InlineKeyboardMarkup:
+    rows = []
+    keys = list(config.GAMBLE_DICE)
+    for i in range(0, len(keys), 3):
+        row = []
+        for code in keys[i:i + 3]:
+            spec = config.GAMBLE_DICE[code]
+            data = f"gm:sc:{code}:{bet}" if mode == "solo" else f"gm:de:{match_id}:{code}"
+            row.append(_btn(f"{spec['emoji']} {spec['name']}", data, PRIMARY))
+        rows.append(row)
+    rows.append([_btn("❌ لغو", "gm:solo" if mode == "solo" else f"gm:dx:{match_id}", DANGER)])
+    return InlineKeyboardMarkup(rows)
+
+
+def gamble_solo_confirm_kb(code: str, bet: int, tg_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [_btn("🎲 بنداز!", f"gm:sr:{code}:{bet}:{tg_id}", SUCCESS)],
+        [_btn("🔙 عوض‌کردن تاس", "gm:solo:bet", PRIMARY), _btn("❌ لغو", "gm:solo", DANGER)],
+    ])
+
+
+def gamble_solo_result_kb(code: str, bet: int, tg_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [_btn(f"🔁 همین شرط ({money_tp(bet)})", f"gm:sc:{code}:{bet}", SUCCESS)],
+        [_btn("🤖 تک‌نفره", "gm:solo", PRIMARY), _btn("🎰 قمارخانه", "gm:h", PRIMARY)],
+    ])
+
+
+def gamble_lobby_wait_kb(match_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [_btn("⚔️ قبول چالش", f"gm:da:{match_id}", SUCCESS)],
+        [_btn("❌ لغو لابی", f"gm:dx:{match_id}", DANGER)],
+    ])
+
+
+def gamble_duel_emoji_kb(match_id: int) -> InlineKeyboardMarkup:
+    return gamble_dice_kb("duel", match_id=match_id)
+
+
+def gamble_duel_rounds_kb(match_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [_btn(f"best-of-{n}", f"gm:dr:{match_id}:{n}", SUCCESS) for n in config.GAMBLE_DUEL_ROUNDS],
+        [_btn("❌ لغو مسابقه", f"gm:dx:{match_id}", DANGER)],
+    ])
+
+
+def gamble_duel_confirm_kb(match_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [_btn("✅ تأیید و گذاشتن شرط", f"gm:dc:{match_id}", SUCCESS)],
+        [_btn("❌ لغو مسابقه", f"gm:dx:{match_id}", DANGER)],
+    ])
+
+
+def gamble_duel_roll_kb(match_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([[_btn("🎲 پرتاب تاس من", f"gm:roll:{match_id}", SUCCESS)]])
+
+
+def gamble_finished_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([[_btn("🎰 قمارخانه", "gm:h", PRIMARY)]])
+
+
+# ───────── بازی مین 💣 (راند ۲۸، حالا زیرمجموعه تک‌نفره) ─────────
 
 def mines_bets_kb() -> InlineKeyboardMarkup:
     """انتخاب میز شرط بازی مین"""
     rows = []
     for bet in config.MINES_BETS:
         rows.append([_btn(f"💣 میز {money_tp(bet)}", f"mn:b:{bet}", SUCCESS)])
-    rows.append([_btn("🏠 منوی اصلی", "menu:home", PRIMARY)])
+    rows.append([_btn("🤖 بازی‌های تک‌نفره", "gm:solo", PRIMARY)])
     return InlineKeyboardMarkup(rows)
 
 
@@ -1416,7 +1499,7 @@ def mines_result_kb(revealed: set, bomb: int, bet: int) -> InlineKeyboardMarkup:
         rows.append(row)
     rows.append([
         _btn(f"🔁 همین میز ({money_tp(bet)})", f"mn:b:{bet}", SUCCESS),
-        _btn("💣 قمارخانه", "mn:h", PRIMARY),
+        _btn("🤖 تک‌نفره", "gm:solo", PRIMARY),
     ])
     return InlineKeyboardMarkup(rows)
 
@@ -1615,3 +1698,5 @@ def cartel_war_target_kb(target_id: int) -> InlineKeyboardMarkup:
 
 def cartel_war_back_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([[_btn("🔙 بازگشت", "cw:panel", PRIMARY)]])
+
+

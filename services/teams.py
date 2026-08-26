@@ -1176,3 +1176,5 @@ async def chat_page(session: AsyncSession, team) -> str:
         lines.append(f"{em}‌ {esc(r.name)}{tag}: {esc(r.text)}")
     lines += ["", "✉️ برای فرستادن پیام دکمه «ارسال پیام» رو بزن"]
     return "\n".join(lines)
+
+

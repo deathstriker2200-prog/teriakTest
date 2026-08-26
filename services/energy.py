@@ -80,3 +80,5 @@ async def process_expired_boosts(session: AsyncSession) -> list[int]:
         tgs.append(u.telegram_id)
         u.boost_until = None
     return tgs
+
+

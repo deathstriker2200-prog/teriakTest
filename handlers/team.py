@@ -1442,3 +1442,5 @@ async def team_chat_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             update,
             "✉️ پیامتو همینجا بنویس و بفرست، میره تو چت کارتل\n«لغو» هم کنسلش می‌کنه",
         )
+
+

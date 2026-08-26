@@ -382,3 +382,5 @@ async def lab_sell_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
 async def lab_sell_execute(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await render_lab(update, alert="📦 فروش مستقیم حذف شده؛ از انبار آزمایشگاه محموله بفرست")
+
+

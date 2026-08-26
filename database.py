@@ -164,6 +164,7 @@ _NEW_COLUMNS = {
         ("equipped_weapon", "VARCHAR(32)"),
         ("equipped_armor", "VARCHAR(32)"),
         ("poison_until", "DATETIME"),
+        ("suppressed_until", "DATETIME"),
         ("last_heal_at", "DATETIME"),
         ("boost_until", "DATETIME"),
         ("skill_stamina", "INTEGER NOT NULL DEFAULT 0"),
@@ -347,3 +348,5 @@ async def session_scope():
             logger.error("گیت اسکیما ۶۰ ثانیه باز نشد؛ سشن بدون گیت باز میشه (مهاجرت هنوز جریان داره؟)")
     async with SessionLocal() as session:
         yield session
+
+

@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 import config
 from models import User
-from services import actionlog, combat
+from services import actionlog, combat, economy
 from services import dogs as dog_svc
 from services import users as user_svc
 from utils import fa_num, now_utc
@@ -121,12 +121,10 @@ async def battle_powers(session: AsyncSession, attacker: User, target: User) -> 
     a_extra = tbuff + watk
     d_extra = tbuff_def + wdef - def_cut
 
-    # 💀 سم Viper-X: هر طرفی که مسمومه حمله و دفاعش کمتره
+    # 💀 سم Viper-X از combat_boost_pcts روی حمله و دفاع همه مودهای بازیکنی اعمال می‌شود؛ اینجا فقط فلگ متن را نگه می‌داریم.
     if _poisoned(attacker):
-        a_extra -= config.POISON_CUT
         info["poison_self"] = True
     if _poisoned(target):
-        d_extra -= config.POISON_CUT
         info["poison_target"] = True
 
     _a_ammo = await user_svc.get_ammo_map(session, attacker.id)
@@ -264,103 +262,208 @@ async def execute_hit(session: AsyncSession, attacker: User, target: User) -> di
         _al30 = await user_svc.consume_ammo(session, attacker.id, wkey)
         if _al30 >= 0:
             ammo_shot = (wkey, _al30)
-    # ── قابلیت زره ویژه 🛡 (زره‌های بخش ویژه، با لول ارتقای زره رشد می‌کنن) ──
-    armor_lines: list[str] = []
-    t_levels19 = await user_svc.get_item_levels(session, target.id)
-    akey19 = combat.armor_choice(target, t_levels19)
-    aabil = ((config.ARMORS.get(akey19) or {}).get("ability") if akey19 else None)
-    aname19 = ((config.ARMORS.get(akey19) or {}).get("name", "") if akey19 else "")
-    agrowth19 = 1 + config.SPECIAL_ABILITY_GROWTH * max(0, (t_levels19.get(akey19, 1) or 1) - 1)
-    # 🌑 زره خلأ: حمله گاهی کامل بلعیده میشه
-    if dmg > 0 and aabil and aabil["kind"] == "void" and random.random() < config.VOID_CHANCE * agrowth19:
-        armor_lines.append(f"{aname19} حمله رو قورت داد، اثری ازش نیس")
-        dmg = 0
-    # ☄️ زره نواترون: دمیج ورودی همیشه کمتر (رشد با لول تا سقف 90%)
-    if dmg > 0 and aabil and aabil["kind"] == "reduce":
-        cut19 = min(0.9, config.NEUTRON_CUT * agrowth19)
-        dmg = max(0, round(dmg * (1 - cut19)))
-        armor_lines.append(f"{aname19} ضربه رو له کرد، {fa_num(int(round(cut19 * 100)))}% دمیج کمتر")
-    if dmg <= 0:
-        return {"ok": True, "nodmg": True, "a_pow": atk, "d_pow": dfn, "info": info,
-                "armor_lines": armor_lines, "wkey": wkey, "ammo_left": (ammo_shot[1] if ammo_shot else None)}
-
-    # ── قابلیت سلاح ویژه 🌟 (سلاح‌های لول ۱۶ به بعد، با لول ارتقای سلاح رشد می‌کنن) ──
+    # ── موتور یکپارچه قابلیت تفنگ و زره ──
     abil_lines: list[str] = []
+    armor_lines: list[str] = []
     wcfg = config.WEAPONS.get(wkey) if wkey else None
-    abil = (wcfg or {}).get("ability")
+    base_abil = (wcfg or {}).get("ability")
     wlvl = (a_levels.get(wkey, 1) if wkey else 1) or 1
-    growth = 1 + config.SPECIAL_ABILITY_GROWTH * max(0, wlvl - 1)
-    wname = (wcfg or {}).get("name", "")
-    kind = abil.get("kind") if abil else None
+    wname = (wcfg or {}).get("name", "سلاح")
+    pre_weapon_dmg = dmg  # برای زره کوانتومی که باید همه اثرهای قابلیت سلاح را برگرداند
 
     def _pc(x: float) -> str:
         return fa_num(int(round(x * 100)))
 
-    def _aline(emoji: str, txt: str) -> None:
-        # اسم سلاح‌های ویژه خودشون ایموجی شروع دارن، پس دوباره ایموجی نمی‌زنیم اولشون
-        if abil and abil.get("kind") == "oblivion":
-            abil_lines.append(f"{wname} این بار: {emoji} {txt}")
-        else:
-            abil_lines.append(f"{wname} {txt}")
+    def _wline(text: str) -> None:
+        abil_lines.append(f"{wname} {text}")
 
-    if kind == "oblivion":
-        # راند ۳۰ (درخواست کارفرما): قدرت شب Shadow Fang وقتی شب نیس برای Oblivion اصلا فعال نمیشه
-        pool = ("poison", "hellfire", "vampire", "shadow") if _is_night() else ("poison", "hellfire", "vampire")
-        kind = random.choice(pool)
+    # Oblivion یکی از چهار قابلیت قبلی را می‌گیرد و در لول بالا ممکن است دوتا بگیرد.
+    effects: list[dict] = []
+    if base_abil and base_abil.get("kind") == "oblivion":
+        pool_keys = ["viperx", "hellfire", "vampire"] + (["shadowfang"] if _is_night() else [])
+        count = 2 if random.random() < economy.gear_ability_value(base_abil, "double_chance", wlvl) else 1
+        for key in random.sample(pool_keys, k=min(count, len(pool_keys))):
+            effects.append(config.WEAPONS[key]["ability"])
+        _wline("این بار " + " + ".join(config.WEAPONS[k]["name"] for k in pool_keys if config.WEAPONS[k]["ability"] in effects))
+    elif base_abil:
+        effects = [base_abil]
 
-    # Hellfire و Shadow روی دمیج قبل از کم شدن HP و غارت اثر می‌ذارن
-    if kind == "hellfire" and (target.hp or 0) < config.HELLFIRE_THRESHOLD * hp_max:
-        bonus = config.HELLFIRE_BONUS * growth
-        dmg = max(1, round(dmg * (1 + bonus)))
-        _aline("🔥", "حریف نیمه‌جان رو گرفت، %s%% دمیج بیشتر" % _pc(bonus))
-    if kind == "shadow" and _is_night():
-        bonus = config.SHADOW_BONUS * growth
-        dmg = max(1, round(dmg * (1 + bonus)))
-        _aline("🌑", f"تو تاریکی شب {_pc(bonus)}% دمیج بیشتر زد")
+    # زره فعال هدف و لولش
+    t_levels19 = await user_svc.get_item_levels(session, target.id)
+    akey19 = combat.armor_choice(target, t_levels19)
+    acfg19 = config.ARMORS.get(akey19) if akey19 else None
+    aabil = (acfg19 or {}).get("ability")
+    alvl19 = (t_levels19.get(akey19, 1) if akey19 else 1) or 1
+    aname19 = (acfg19 or {}).get("name", "زره")
+
+    # جهان‌شکن و داوری ممکن است قابلیت زره را در همین ضربه خاموش کنند.
+    bypass_armor = False
+    judgment_mult = 1.0
+    for effect in effects:
+        ek = effect.get("kind")
+        if ek == "worldbreaker" and random.random() < economy.gear_ability_value(effect, "chance", wlvl):
+            bypass_armor = True
+            _wline("قابلیت زره حریف رو برای این ضربه شکست")
+        elif ek == "judgment" and random.random() < economy.gear_ability_value(effect, "chance", wlvl):
+            bypass_armor = True
+            judgment_mult = float(effect.get("mult", 1.5))
+            _wline(f"ضربه داوری ×{judgment_mult:g} فعال کرد و از قابلیت زره رد شد")
+
+    # نفوذ دفاع به‌صورت اضافه‌دمیج متناظر با همان فرمول power-gap اعمال می‌شود.
+    pierce = max((economy.gear_ability_value(e, "pierce", wlvl) for e in effects if "pierce" in e), default=0.0)
+    if pierce > 0 and dmg > 0:
+        pierce_gain = dfn * pierce * config.BATTLE_DMG_PER_POWER
+        if crit:
+            pierce_gain *= config.BATTLE_CRIT_MULT
+        dmg += max(0, round(pierce_gain))
+        _wline(f"از {_pc(pierce)}% دفاع حریف رد شد")
+
+    weapon_cancelled = False
+    # کوانتومی قبل از سایر افکت‌ها تصمیم می‌گیرد؛ در صورت فاز، قابلیت سلاح خاموش و ضربه نصف می‌شود.
+    if (dmg > 0 and aabil and aabil.get("kind") == "quantum" and not bypass_armor
+            and random.random() < economy.gear_ability_value(aabil, "chance", alvl19)):
+        weapon_cancelled = True
+        dmg = max(0, round(pre_weapon_dmg * (1 - float(aabil.get("reduce", 0.50)))))
+        armor_lines.append(f"{aname19} وارد فاز شد؛ قابلیت سلاح خاموش و دمیج نصف شد")
+
+    # افکت‌های تهاجمی؛ همه مقدارهای درصدی از لول واقعی آیتم خوانده می‌شوند.
+    if not weapon_cancelled:
+        for effect in effects:
+            kind = effect.get("kind")
+            if kind == "quickdraw" and not crit and random.random() < economy.gear_ability_value(effect, "chance", wlvl):
+                crit = True
+                dmg = max(1, round(dmg * config.BATTLE_CRIT_MULT))
+                _wline("با نشونه‌گیری سریع یه کریت زد")
+            elif kind in ("burst", "barrage") and random.random() < economy.gear_ability_value(effect, "chance", wlvl):
+                extra = int(effect.get("extra_ammo", 0))
+                left = ammo_shot[1] if ammo_shot else -1
+                if left >= extra > 0:
+                    for _ in range(extra):
+                        left = await user_svc.consume_ammo(session, attacker.id, wkey)
+                    ammo_shot = (wkey, left)
+                    bonus = float(effect.get("bonus", 0.0))
+                    dmg = max(1, round(dmg * (1 + bonus)))
+                    _wline(f"رگبار فعال کرد؛ {_pc(bonus)}% دمیج بیشتر")
+            elif kind == "headshot" and random.random() < economy.gear_ability_value(effect, "chance", wlvl):
+                mult = float(effect.get("mult", 1.75))
+                dmg = max(1, round(dmg * mult))
+                _wline(f"هدشات ×{mult:g} زد")
+            elif kind == "sniper" and crit:
+                bonus = economy.gear_ability_value(effect, "crit_bonus", wlvl)
+                dmg = max(1, round(dmg * (1 + bonus)))
+                _wline(f"کریت تک‌تیر {_pc(bonus)}% قوی‌تر شد")
+            elif kind == "hellfire" and (target.hp or 0) < economy.gear_ability_value(effect, "threshold", wlvl, 0.35) * hp_max:
+                bonus = economy.gear_ability_value(effect, "bonus", wlvl)
+                dmg = max(1, round(dmg * (1 + bonus)))
+                _wline(f"حریف نیمه‌جان رو گرفت؛ {_pc(bonus)}% دمیج بیشتر")
+            elif kind == "shadow":
+                bonus = economy.gear_ability_value(effect, "bonus", wlvl)
+                if _is_night():
+                    bonus += economy.gear_ability_value(effect, "night_bonus", wlvl)
+                dmg = max(1, round(dmg * (1 + bonus)))
+                _wline(f"قدرت سایه {_pc(bonus)}% دمیج اضافه داد")
+            elif kind == "storm" and random.random() < economy.gear_ability_value(effect, "chance", wlvl):
+                bonus = float(effect.get("bonus", 0.25))
+                dmg = max(1, round(dmg * (1 + bonus)))
+                drain = min(int(target.energy or 0), int(effect.get("energy_drain", 10)))
+                target.energy = max(0, int(target.energy or 0) - drain)
+                _wline(f"شوک زد؛ {_pc(bonus)}% دمیج بیشتر و {fa_num(drain)} انرژی حریف کم شد")
+            elif kind == "dragonburn":
+                burn = min(int(effect.get("damage_cap", 90)), round(hp_max * economy.gear_ability_value(effect, "maxhp_damage", wlvl)))
+                if aabil and aabil.get("kind") == "dragonward" and not bypass_armor:
+                    burn = round(burn * (1 - economy.gear_ability_value(aabil, "burn_cut", alvl19)))
+                if burn > 0:
+                    dmg += burn
+                    _wline(f"{fa_num(burn)} دمیج سوختگی اژدها اضافه کرد")
+        if judgment_mult > 1:
+            dmg = max(1, round(dmg * judgment_mult))
+
+    # قابلیت‌های دفاعی بعد از افکت سلاح؛ bypass_armor همه‌شان را فقط برای همین ضربه خاموش می‌کند.
+    if dmg > 0 and aabil and not bypass_armor:
+        akind = aabil.get("kind")
+        if akind == "void" and random.random() < economy.gear_ability_value(aabil, "chance", alvl19):
+            armor_lines.append(f"{aname19} حمله رو کامل قورت داد")
+            dmg = 0
+        elif akind == "neutron":
+            cut = economy.gear_ability_value(aabil, "reduce", alvl19)
+            dmg = max(0, round(dmg * (1 - cut)))
+            armor_lines.append(f"{aname19} {_pc(cut)}% دمیج رو خرد کرد")
+        elif akind == "dragonward" and crit:
+            cut = economy.gear_ability_value(aabil, "crit_cut", alvl19)
+            dmg = max(1, round(dmg * (1 - cut * 0.5)))
+            armor_lines.append(f"{aname19} شدت کریت رو {_pc(cut)}% مهار کرد")
+        elif akind == "emperor":
+            cap_pct = economy.gear_ability_value(aabil, "damage_cap_pct", alvl19)
+            cap_dmg = max(1, round(hp_max * cap_pct))
+            if dmg > cap_dmg:
+                dmg = cap_dmg
+                armor_lines.append(f"{aname19} دمیج رو روی {fa_num(cap_dmg)} سقف کرد")
+
+    if dmg <= 0:
+        return {"ok": True, "nodmg": True, "a_pow": atk, "d_pow": dfn, "info": info,
+                "armor_lines": armor_lines, "abil_lines": [*armor_lines, *abil_lines],
+                "wkey": wkey, "ammo_left": (ammo_shot[1] if ammo_shot else None)}
 
     target.hp = max(0, (target.hp or 0) - dmg)
 
-    # 🛡️ زره پلاسمایی: بخشی از دمیج به خود مهاجم برمی‌گرده (کشنده نیس)
-    if aabil and aabil["kind"] == "reflect" and dmg > 0:
-        back19 = min(max(0, (attacker.hp or 1) - 1), max(0, round(dmg * config.PLASMA_REFLECT * agrowth19)))
-        if back19 > 0:
-            attacker.hp = (attacker.hp or 1) - back19
-            armor_lines.append(f"{aname19} داشت، {fa_num(back19)} دمیج به خودت برگشت")
+    # پلاسمایی بازتاب غیرکشنده دارد.
+    if aabil and aabil.get("kind") == "plasma" and not bypass_armor and dmg > 0:
+        reflect = economy.gear_ability_value(aabil, "reflect", alvl19)
+        back = min(max(0, (attacker.hp or 1) - 1), max(0, round(dmg * reflect)))
+        if back > 0:
+            attacker.hp = (attacker.hp or 1) - back
+            armor_lines.append(f"{aname19} {fa_num(back)} دمیج به خودت برگردوند")
 
-    # 👑 زره خدایان (راند ۲۳، درخواست کارفرما): ضربه‌ای که خون رو صفر می‌کنه، زره فعال میشه و نصف خون برمی‌گرده
-    # راند ۴۲: سقف فعال‌شدن با لول ارتقای زره بالا میره (تا لول ۵ سه بار)، بعد سقف دیگه فعال نمیشه
-    if target.hp <= 0 and aabil and aabil["kind"] == "godshield":
-        gods_lvl19 = t_levels19.get(akey19, 1) or 1
-        gods_cap19 = config.GODS_SHIELD_CHARGES_BY_LEVEL.get(gods_lvl19, 1)
-        if (target.gods_shield_charges or 0) < gods_cap19:
-            target.hp = max(1, round(config.GODS_REVIVE_PCT * hp_max))
-            target.gods_shield_charges = (target.gods_shield_charges or 0) + 1
+    # آسمانی بخشی از HP را بعد ضربه برمی‌گرداند، اما بیشتر از ۳۰٪ همان ضربه نه.
+    if aabil and aabil.get("kind") == "celestial" and not bypass_armor and target.hp > 0:
+        heal = min(
+            hp_max - target.hp,
+            round(hp_max * economy.gear_ability_value(aabil, "heal_pct", alvl19)),
+            round(dmg * float(aabil.get("hit_heal_cap", 0.30))),
+        )
+        if heal > 0:
+            target.hp += heal
+            dmg = max(0, dmg - heal)
+            armor_lines.append(f"{aname19} {fa_num(heal)} HP ترمیم کرد")
+
+    # زره خدایان فقط یک احیا در هر زندگی دارد و درصد احیا با لول رشد می‌کند.
+    if target.hp <= 0 and aabil and aabil.get("kind") == "godshield" and not bypass_armor:
+        charges = int(aabil.get("charges", 1))
+        if int(target.gods_shield_charges or 0) < charges:
+            revive = economy.gear_ability_value(aabil, "revive_pct", alvl19)
+            target.hp = max(1, round(revive * hp_max))
+            target.gods_shield_charges = int(target.gods_shield_charges or 0) + 1
             armor_lines.append(f"برکت {aname19} فعال شد و خونش به {fa_num(target.hp)} برگشت")
 
-    # 💀 سم: برای ضربه‌های بعدی حریف ضعیف‌تر میشه
-    if kind == "poison" and random.random() < config.POISON_CHANCE * growth:
-        target.poison_until = now_utc() + timedelta(seconds=config.POISON_SECONDS)
-        _aline("💀", f"نیش سمی اثر گرفت، تا {fa_num(config.POISON_SECONDS // 60)} دقیقه حریف {_pc(config.POISON_CUT)}% ضعیف‌تره")
+    # افکت‌های پس از ضربه
+    if not weapon_cancelled:
+        for effect in effects:
+            kind = effect.get("kind")
+            if kind == "poison" and random.random() < economy.gear_ability_value(effect, "chance", wlvl):
+                target.poison_until = now_utc() + timedelta(seconds=int(effect.get("seconds", 600)))
+                _wline(f"حریف رو برای {fa_num(int(effect.get('seconds', 600)) // 60)} دقیقه مسموم کرد")
+            elif kind == "suppress" and random.random() < economy.gear_ability_value(effect, "chance", wlvl):
+                target.suppressed_until = now_utc() + timedelta(seconds=int(effect.get("seconds", 300)))
+                _wline("حمله حریف رو برای 5 دقیقه 10% سرکوب کرد")
 
     steal, meta = steal_for_hit(
         dmg, hp_max, target.cash, info["a_dogs"], info["t_items"], info["t_dogs"],
         info["a_items"],
     )
     if steal:
-        steal = int(steal * (1 + combat.skill_pct(attacker, "loot")))  # مهارت 💰 غارت
+        steal = int(steal * (1 + combat.skill_pct(attacker, "loot")))
         target.cash -= steal
         attacker.cash += steal
 
-    # 🩸 Vampire: بخشی از دمیج به HP مهاجم برمی‌گرده
-    if kind == "vampire":
-        healed = min(
-            max_hp(attacker.level) - (attacker.hp or 0),
-            max(0, round(dmg * config.VAMPIRE_LEECH * growth)),
-        )
-        if healed > 0:
-            attacker.hp = (attacker.hp or 0) + healed
-            _aline("🩸", f"{fa_num(healed)} HP از حریف مکید و بهت برگردوند")
-
+    # خون‌آشام از دمیج نهاییِ واقعی جان می‌گیرد.
+    if not weapon_cancelled:
+        for effect in effects:
+            if effect.get("kind") == "vampire":
+                leech = economy.gear_ability_value(effect, "leech", wlvl)
+                healed = min(max_hp(attacker.level) - (attacker.hp or 0), max(0, round(dmg * leech)))
+                if healed > 0:
+                    attacker.hp = (attacker.hp or 0) + healed
+                    _wline(f"{fa_num(healed)} HP از حریف مکید")
     xp = xp_for_hit(dmg)
     xp = int(xp * dog_svc.battle_xp_mult(info["a_dogs"]))
     xp = int(xp * user_svc.artifact_xp_mult(user_svc.artifact_keys(info["a_items"])))
@@ -443,3 +546,5 @@ def apply_heal(user: User, key: str) -> tuple[bool, str, int]:
     user.cash -= item["price"]
     user.hp += gain
     return True, "ok", gain
+
+

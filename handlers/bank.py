@@ -323,3 +323,5 @@ async def bank_upgrade_execute(update: Update, context: ContextTypes.DEFAULT_TYP
     if ok:
         return await render_bank(update, alert="⬆️ بانک ارتقا پیدا کرد", extra=msg)
     await render_bank(update, alert=msg)
+
+

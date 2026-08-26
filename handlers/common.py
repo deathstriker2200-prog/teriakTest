@@ -34,7 +34,7 @@ _MESSAGE_OWNERS: dict[tuple[int, int], int] = {}
 _OWNER_CAP = 4000
 
 # دکمه‌های جمعی که مال همه‌ان، تو گارد مستثنی میشن (استخراج کارتلی و کاروان)
-_SHARED_OPEN = ("team:mine", "cv:hit", "csg:tjoin", "csg:tcancel", "bsh:hit")
+_SHARED_OPEN = ("team:mine", "cv:hit", "csg:tjoin", "csg:tcancel", "bsh:hit", "gm:")
 
 
 async def track_message(chat_id: int | None, message_id: int | None, owner_tg: int | None) -> None:
@@ -352,3 +352,5 @@ def proc_wrapper(process_update):
                 note_proc_time(time.monotonic() - t0)
 
     return _timed
+
+

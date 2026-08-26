@@ -150,6 +150,15 @@ async def capture(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
         action = user.pending_action
 
+        # ── مبلغ قمار تاسی تک‌نفره/دونفره ──
+        # خود هندلر قمار اعتبارسنجی و ساخت رزرو/لابی را در تراکنش جدا انجام می‌دهد.
+        if action in ("gsolo", "gduel"):
+            await s.commit()
+            from handlers import gambling as gambling_h
+            if await gambling_h.consume_pending_bet(update, context, action, text):
+                raise ApplicationHandlerStop()
+            return
+
         # ── چت کارتل (راند ۲۰): پیام طرف میره تو چت داخلی کارتلش ──
         if action == "teamchat":
             from services import teams as team_svc
@@ -690,3 +699,5 @@ async def capture(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 reply_markup=kb.team_create_confirm_kb(update.effective_user.id),
             )
             raise ApplicationHandlerStop()
+
+

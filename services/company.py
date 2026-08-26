@@ -225,3 +225,5 @@ def company_text(user: User, got: dict | None = None) -> str:
                 if (getattr(user, "level", None) or 1) < need_lvl:
                     lines.append(f"⭕️ ارتقای بعدی از لول بازیکن {fa_num(need_lvl)} باز میشه")
     return "\n".join(lines)
+
+

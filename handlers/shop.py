@@ -9,7 +9,7 @@ from database import session_scope
 from handlers import dogs as dogs_h
 from handlers.common import chat_id_of, parts, respond
 from keyboards import keyboards as kb
-from services import combat, dogs as dog_svc, economy, farming, lab as lab_svc, pvattack, resources as res_svc, shop_svc, users
+from services import dogs as dog_svc, economy, farming, lab as lab_svc, pvattack, resources as res_svc, shop_svc, users
 from utils import esc, fa_num, money, money_tp
 
 SEP = "━━━━━━━━━━━━━━"
@@ -274,12 +274,10 @@ def _gear_up_text(kind: str, owned_lvls: dict[str, int], user) -> str:
         abil = item.get("ability")
         if abil and kind == "weap":
             pct_now = economy.gear_ability_pct_now(abil, lv)
-            if pct_now:
-                lines.append(f"🎯 قابلیت الان: {config.WEAPON_ABILITY_TEXT.get(abil['kind'], '')} | واقعی الان: {fa_num(int(round(pct_now * 100)))}%")
+            lines.append(f"🎯 قابلیت الان: {config.WEAPON_ABILITY_TEXT.get(abil['kind'], '')} | واقعی الان: {fa_num(int(round(pct_now * 100)))}%")
         if abil and kind == "arm":
             pct_now = economy.gear_ability_pct_now(abil, lv)
-            if pct_now:
-                lines.append(f"🎯 قابلیت الان: {config.ARMOR_ABILITY_TEXT.get(abil['kind'], '')} | واقعی الان: {fa_num(int(round(pct_now * 100)))}%")
+            lines.append(f"🎯 قابلیت الان: {config.ARMOR_ABILITY_TEXT.get(abil['kind'], '')} | واقعی الان: {fa_num(int(round(pct_now * 100)))}%")
         if lv >= config.GEAR_UPG_MAX:
             lines.append("👑 لول مکس")
         else:
@@ -288,8 +286,7 @@ def _gear_up_text(kind: str, owned_lvls: dict[str, int], user) -> str:
             lines.append(f"⬆️ لول بعدی: {stat_name} {fa_num(economy.gear_stat(kind, key, lv + 1))}")
             if abil:
                 pct_next = economy.gear_ability_pct_now(abil, lv + 1)
-                if pct_next:
-                    lines.append(f"⬆️ قابلیت بعد ارتقا: {fa_num(int(round(pct_next * 100)))}%")
+                lines.append(f"⬆️ قابلیت بعد ارتقا: {fa_num(int(round(pct_next * 100)))}%")
             lines.append(f"🪙 هزینه: 💰 {money(tp)} + ⛏️ {fa_num(iron)} آهن")
             req = economy.gear_upg_min_level(lv)
             if user.level < req:
@@ -692,10 +689,15 @@ async def gear_up_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     iron = economy.gear_upg_iron(kind, key, lv)
     stat_name = "دمیج" if kind == "weap" else "دفاع"
     stat_emoji = "💥" if kind == "weap" else "🛡"
+    abil_now, abil_next = economy.gear_ability_change_text(item.get("ability"), lv)
+    ability_line = ""
+    if abil_now is not None and abil_next is not None:
+        ability_line = f"🎯 مقدار اصلی قابلیت: {fa_num(abil_now)}٪ ← {fa_num(abil_next)}٪\n"
     text = (
         f"<b>⬆️ ارتقای {esc(item['name'])}</b>\n\n"
         f"از لول {fa_num(lv)} به لول {fa_num(lv + 1)}\n"
         f"{stat_emoji} {stat_name} {fa_num(economy.gear_stat(kind, key, lv))} ← {fa_num(economy.gear_stat(kind, key, lv + 1))}\n"
+        f"{ability_line}"
         f"💸 تی‌پوینت {money(tp)}\n"
         f"⛏️ آهن {fa_num(iron)}\n\n"
         "انجامش بدیم؟"
@@ -714,19 +716,19 @@ async def gear_up_execute(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         )
         row = (await s.execute(q)).scalar_one_or_none()
         if not row:
-            ok, alert = False, "❌ اینو نداری"
+            alert = "❌ اینو نداری"
         elif row.level >= config.GEAR_UPG_MAX:
-            ok, alert = False, "👑 لول مکسه"
+            alert = "👑 لول مکسه"
         else:
             req = economy.gear_upg_min_level(row.level)
             tp = economy.gear_upg_tp(kind, key, row.level)
             iron = economy.gear_upg_iron(kind, key, row.level)
             if user.level < req:
-                ok, alert = False, f"🔒 لول {fa_num(req)} می‌خواد"
+                alert = f"🔒 لول {fa_num(req)} می‌خواد"
             elif user.cash < tp:
-                ok, alert = False, "❌ تی‌پوینتت کافی نیس"
+                alert = "❌ تی‌پوینتت کافی نیس"
             elif user.iron < iron:
-                ok, alert = False, f"⛏️ {fa_num(iron)} آهن می‌خواد و {fa_num(user.iron)} تا داری"
+                alert = f"⛏️ {fa_num(iron)} آهن می‌خواد و {fa_num(user.iron)} تا داری"
             else:
                 user.cash -= tp
                 user.iron -= iron
@@ -747,3 +749,5 @@ async def gear_up_execute(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 async def gear_up_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     _, kind = parts(update)
     await render_section(update, "wup" if kind == "weap" else "aup")
+
+

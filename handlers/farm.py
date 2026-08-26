@@ -355,3 +355,5 @@ async def upgrade_execute(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             _, alert = await farming.upgrade_plot(s, user, plot)
         await s.commit()
     await render_farm(update, alert=alert)
+
+

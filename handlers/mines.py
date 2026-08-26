@@ -253,3 +253,5 @@ async def mines_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     # boom | auto | out → میز نتیجه کامل‌نما
     await respond(update, result_text(res), kb.mines_result_kb(board["revealed"], board["bomb"], res["bet"]))
+
+

@@ -331,3 +331,5 @@ def summary_text(user: User, tr: TrackedUser, st: TrackedUserStats | None) -> st
 
     lines += ["", f"💰 خالص دوره: {money(tp_sum)} | ✨ {fa_num(xp_sum)} تجربه"]
     return "\n".join(lines)
+
+

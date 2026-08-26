@@ -204,3 +204,4 @@ def short_name(name: str, limit: int = 18) -> str:
     if len(name) <= limit:
         return name
     return name[:limit] + "...."
+

@@ -27,7 +27,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 import config
 from models import CartelWar, Team, TeamMember, User, WarAttackCooldown, WarAttackLog
-from services import pvattack
+from services import economy, pvattack
+from services import combat as combat_svc
 from services import teams as team_svc
 from services import users as user_svc
 from utils import fa_num, iran_today, money, now_utc
@@ -395,6 +396,22 @@ async def attack(session: AsyncSession, attacker: User, war: CartelWar) -> dict:
     a_total, t_total, _ = await pvattack.total_powers(session, attacker, target)
     success = pvattack.decide_win(a_total, t_total)
 
+    # تفنگ این حمله یک تیر مصرف می‌کند؛ سم/سرکوب هم مثل پی‌وی عادی روی بازیکن واقعی می‌ماند.
+    ability_note = ""
+    a_levels = await user_svc.get_item_levels(session, attacker.id)
+    a_ammo = await user_svc.get_ammo_map(session, attacker.id)
+    wkey = combat_svc.weapon_choice(attacker, a_levels, a_ammo)
+    if wkey and combat_svc.is_gun(wkey):
+        await user_svc.consume_ammo(session, attacker.id, wkey)
+    wabil = (config.WEAPONS.get(wkey) or {}).get("ability") if wkey else None
+    wlvl = a_levels.get(wkey, 1) if wkey else 1
+    if wabil and wabil.get("kind") == "poison" and random.random() < economy.gear_ability_value(wabil, "chance", wlvl):
+        target.poison_until = now_utc() + timedelta(seconds=int(wabil.get("seconds", 600)))
+        ability_note = "\n💀 قابلیت تفنگ: حریف مسموم شد"
+    elif wabil and wabil.get("kind") == "suppress" and random.random() < economy.gear_ability_value(wabil, "chance", wlvl):
+        target.suppressed_until = now_utc() + timedelta(seconds=int(wabil.get("seconds", 300)))
+        ability_note = "\n🔻 قابلیت تفنگ: حمله حریف 5 دقیقه سرکوب شد"
+
     medals_gain = config.CARTEL_WAR_HIT_MEDALS if success else config.CARTEL_WAR_MISS_MEDALS
     tp_gain = config.CARTEL_WAR_HIT_TP if success else 0
 
@@ -440,7 +457,7 @@ async def attack(session: AsyncSession, attacker: User, war: CartelWar) -> dict:
         "score_gained": score_gain_scaled,
         "medals_gained": medals_gain,
         "tp_gained": tp_gain,
-        "message": _attack_result_text(success, target, score_gain_scaled, medals_gain, tp_gain),
+        "message": _attack_result_text(success, target, score_gain_scaled, medals_gain, tp_gain) + ability_note,
     }
 
 
@@ -508,3 +525,5 @@ async def war_panel_data(session: AsyncSession, war: CartelWar) -> dict:
         "war": war, "attacker_team": a_team, "defender_team": d_team,
         "seconds_left": left,
     }
+
+

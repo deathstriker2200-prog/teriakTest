@@ -103,3 +103,5 @@ async def energy_buy_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     await announce_notes(update, [tq] if tq else [])
     from handlers import dquests
     await dquests.announce_completed(update, uname, dq_done, dq_left)
+
+

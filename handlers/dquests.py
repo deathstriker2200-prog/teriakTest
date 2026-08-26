@@ -88,3 +88,5 @@ async def announce_completed(update: Update, user_name: str, completed: list[dic
     # تبریک لول‌آپ جایزه تجربه، پیام جدا تو همون چت
     from handlers.common import announce_notes
     await announce_notes(update, notes_all)
+
+

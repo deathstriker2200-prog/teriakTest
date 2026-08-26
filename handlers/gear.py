@@ -140,6 +140,9 @@ def _gear_item_text(user, tab: str, key: str, lv: int, ammo_left: int | None) ->
     if abil:
         ability_texts = config.WEAPON_ABILITY_TEXT if kind == "weap" else config.ARMOR_ABILITY_TEXT
         lines.append(f"🎯 قابلیت ویژه: {ability_texts.get(abil['kind'], '')}")
+        cur, _ = economy.gear_ability_change_text(abil, lv)
+        if cur is not None:
+            lines.append(f"📈 مقدار اصلی قابلیت در این لول: {fa_num(cur)}٪")
     if combat.is_gun(key):
         cap = combat.ammo_cap(key, lv)
         left = cap if ammo_left is None else ammo_left
@@ -335,11 +338,15 @@ async def gear_item_upg_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     iron_need = economy.gear_upg_iron(kind, key, lv)
     stat_name = "دمیج" if kind == "weap" else "دفاع"
     stat_emoji = "💥" if kind == "weap" else "🛡"
+    abil_now, abil_next = economy.gear_ability_change_text(item.get("ability"), lv)
+    ability_line = ""
+    if abil_now is not None and abil_next is not None:
+        ability_line = f"🎯 مقدار اصلی قابلیت: {fa_num(abil_now)}٪ ← {fa_num(abil_next)}٪\n"
     text = (
-        # راند ۳۱ (قالب دقیق کارفرما): لول ساده + «دمیج از X میشه Y» + دارایی دو خطی
         f"<b>⬆️ ارتقای {esc(item['name'])}</b>\n\n"
         f"لول {fa_num(lv)} ← لول {fa_num(lv + 1)}\n"
         f"{stat_emoji} {stat_name} از {fa_num(economy.gear_stat(kind, key, lv))} میشه {fa_num(economy.gear_stat(kind, key, lv + 1))}\n"
+        f"{ability_line}"
         f"💸 تی‌پوینت {money(tp)}\n"
         f"⛏️ آهن {fa_num(iron_need)}\n\n"
         f"💵 دارایی:\n"
@@ -348,3 +355,5 @@ async def gear_item_upg_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         "انجامش بدیم؟"
     )
     await respond(update, text, kb.gear_item_upg_kb(tab, key))
+
+

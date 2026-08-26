@@ -128,19 +128,22 @@ def gear_stat(kind: str, key: str, level: int) -> int:
 
 
 def gear_upg_tp(kind: str, key: str, from_level: int) -> int:
-    """تی‌پوینت ارتقا از لول فعلی به بعدی، بسته به ارزش خود آیتم"""
+    """هزینه پله‌ای ارتقا؛ مجموع لول ۱ تا ۵ برابر ۳٫۵ قیمت خرید است."""
     price = gear_catalog(kind)[key]["price"]
-    return int(price * config.GEAR_UPG_TP_PER_LEVEL * from_level)
+    idx = min(max(int(from_level or 1) - 1, 0), len(config.GEAR_UPG_TP_STEPS) - 1)
+    return int(round(price * config.GEAR_UPG_TP_STEPS[idx]))
 
 
 def gear_upg_iron(kind: str, key: str, from_level: int) -> int:
-    """آهن ارتقا از لول فعلی به بعدی"""
+    """آهن ارتقا با مسیر سبک‌تر؛ تفنگ از آهن خرید و زره از رتبه آیتم مقیاس می‌گیرد."""
+    idx = min(max(int(from_level or 1) - 1, 0), config.GEAR_UPG_MAX - 2)
     if kind == "weap":
-        base = gear_catalog(kind)[key].get("iron", 0)
-    else:
-        rank = list(gear_catalog(kind).keys()).index(key)
-        base = config.GEAR_UPG_IRON_ARMOR_BASE + rank * 2
-    return base + config.GEAR_UPG_IRON_STEP * max(0, from_level - 1)
+        base = int(gear_catalog(kind)[key].get("iron", 0) or 0)
+        ratio = config.GEAR_UPG_WEAPON_IRON_RATIOS[idx]
+        return max(1, int(round(base * ratio)) + config.GEAR_UPG_WEAPON_IRON_EXTRA[idx])
+    rank = list(gear_catalog(kind).keys()).index(key)
+    base = config.GEAR_UPG_IRON_ARMOR_BASE + rank * 2
+    return max(1, int(round(base * config.GEAR_UPG_ARMOR_IRON_RATIOS[idx])))
 
 
 def gear_upg_min_level(from_level: int) -> int:
@@ -158,7 +161,48 @@ def mine_roll() -> int:
     return random.randint(config.MINE_COMMON_MAX + 1, config.MINE_MAX)
 
 
+def gear_ability_value(ability: dict | None, field: str, level: int, default: float = 0.0) -> float:
+    """مقدار واقعی یک فیلد قابلیت در لول فعلی با step و cap/floor مستقل."""
+    if not ability or field not in ability:
+        return float(default)
+    value = float(ability.get(field, default))
+    value += float(ability.get(f"{field}_step", 0.0)) * max(0, int(level or 1) - 1)
+    cap = ability.get(f"{field}_cap")
+    floor = ability.get(f"{field}_floor")
+    if cap is not None:
+        value = min(value, float(cap))
+    if floor is not None:
+        value = max(value, float(floor))
+    return value
+
+
+def gear_ability_primary(ability: dict | None) -> str | None:
+    """فیلد اصلی قابل نمایش قابلیت؛ برای کارت ارتقا و تست‌ها."""
+    if not ability:
+        return None
+    for field in (
+        "chance", "pierce", "leech", "bonus", "crit_bonus", "reflect", "reduce",
+        "crit_cut", "heal_pct", "damage_cap_pct", "revive_pct", "maxhp_damage",
+        "double_chance",
+    ):
+        if field in ability:
+            return field
+    return None
+
+
 def gear_ability_pct_now(ability: dict, level: int) -> float:
-    """درصد مؤثر قابلیت ویژه سلاح/زره در لول فعلی (با رشد SPECIAL_ABILITY_GROWTH)"""
-    base = ability.get("pct") or ability.get("chance") or ability.get("bonus") or ability.get("leech") or 0.0
-    return base * (1 + config.SPECIAL_ABILITY_GROWTH * max(0, (level or 1) - 1))
+    """سازگاری UI قدیمی: درصد اصلی قابلیت را از موتور پله‌ای جدید برمی‌گرداند."""
+    field = gear_ability_primary(ability)
+    return gear_ability_value(ability, field, level) if field else 0.0
+
+
+def gear_ability_change_text(ability: dict | None, level: int) -> tuple[int | None, int | None]:
+    """درصد اصلی الان و لول بعد برای نمایش «الان ← بعد»."""
+    field = gear_ability_primary(ability)
+    if not field:
+        return None, None
+    now = int(round(gear_ability_value(ability, field, level) * 100))
+    nxt = int(round(gear_ability_value(ability, field, min(config.GEAR_UPG_MAX, level + 1)) * 100))
+    return now, nxt
+
+

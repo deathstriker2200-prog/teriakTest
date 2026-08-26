@@ -958,3 +958,5 @@ def caravan_end_text(rewards: list[dict], killed: bool) -> str:
         lines.append(f"🏆 نفر اول {esc(str(rewards[0]['name']))} بیشترین جایزه رو گرفت")
     lines.append(f"📢 فقط {fa_num(config.CARAVAN_TOP_REWARDS)} نفر برتر جایزه دریافت می‌کنن")
     return "\n".join(lines)
+
+
