@@ -345,24 +345,18 @@ async def pending_sweep_job(context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def gambling_sweep_job(context: ContextTypes.DEFAULT_TYPE) -> None:
     """رزرو قطع‌شده را پس می‌دهد و لابی/راند بی‌پاسخ را منصفانه می‌بندد."""
-    from models import User as _User
     from services import gambling as gambling_svc
-    from utils import esc, fa_num
+    from utils import fa_num
 
     payload: list[tuple[dict, str]] = []
     async with session_scope() as s:
         events = await gambling_svc.sweep_expired(s)
         for ev in events:
             if ev["kind"] == "solo_refund":
-                text = f"⌛ دست تاسی نیمه‌کاره موند؛ شرط {money(ev['bet'])} کامل برگشت جیبت"
-            elif ev["kind"] == "match_forfeit":
-                winner = await s.get(_User, ev["winner_id"])
-                name = esc(winner.first_name or winner.username or "برنده") if winner else "برنده"
-                text = (f"<b>🏆 مسابقه #{fa_num(ev['match_id'])} با باخت فنی تموم شد</b>\n\n"
-                        f"{name} تاس انداخت و حریفش غایب شد؛ {money(ev['payout'])} صندوق به برنده رسید")
+                text = f"⌛ بازی تک‌نفره نیمه‌کاره موند؛ شرط {money(ev['bet'])} کامل برگشت جیبت"
             else:
-                text = (f"⌛ <b>مسابقه #{fa_num(ev['match_id'])} منقضی شد</b>\n\n"
-                        f"هیچ برنده‌ای ثبت نشد و {money(ev['amount'])} از صندوق کامل پس داده شد")
+                text = (f"⌛ <b>مسابقه #{fa_num(ev['match_id'])} بسته شد</b>\n\n"
+                        f"بازی ۱۰ دقیقه ادامه پیدا نکرد؛ {money(ev['amount'])} از صندوق کامل به هر دو نفر برگشت")
             payload.append((ev, text))
         await s.commit()
 
@@ -596,7 +590,7 @@ async def daily_backup_job(context: ContextTypes.DEFAULT_TYPE) -> None:
     import io
     from telegram import InputFile
     from services import backup as backup_svc
-    from utils import fa_num, now_iran
+    from utils import now_iran
 
     try:
         payload = await backup_svc.make_upload_payload()

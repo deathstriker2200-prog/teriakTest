@@ -31,9 +31,9 @@ def _bet_error(code: str, mode: str, cash: int = 0, cd: int = 0) -> str:
         "low": f"کمترین شرط {money(lo)}ـه",
         "high": f"بیشترین شرط این حالت {money(hi)}ـه",
         "poor": f"💸 پولت به این شرط نمی‌رسه؛ نقدت {money(cash)}ـه",
-        "cooldown": f"⏳ یکم دست نگه دار؛ {fa_dur(cd)} دیگه دوباره تاس بنداز",
-        "busy": "🎲 یه بازی باز داری؛ اول همونو تموم کن",
-        "bad_dice": "❌ این تاس پشتیبانی نمیشه",
+        "cooldown": f"⏳ یکم دست نگه دار؛ {fa_dur(cd)} دیگه دوباره بازی کن",
+        "busy": "🎮 یه بازی باز داری؛ اول همونو تموم کن",
+        "bad_dice": "❌ این بازی پشتیبانی نمیشه",
     }.get(code, "❌ نشد؛ دوباره امتحان کن")
 
 
@@ -43,50 +43,56 @@ def hub_text(cash: int) -> str:
         f"💵 نقدت: {money(cash)}\n\n"
         "کدوم مدل رو می‌خوای؟\n\n"
         "🤖 <b>تک‌نفره</b>\n"
-        "با ربات تاس رسمی تلگرام می‌ندازی؛ بازی مین هم داخل همین بخشه.\n\n"
+        "تاس، دارت، بولینگ، بسکتبال، فوتبال، اسلات و بازی مین؛ هرکدوم بخش و قانون خودش رو داره.\n\n"
         "⚔️ <b>مسابقه دونفره</b>\n"
-        "تو گروه لابی بساز، حریف بگیر و سر تعداد راند و نوع تاس رقابت کن.\n\n"
-        "تمام نتیجه‌های تاسی مستقیم از خود تلگرام میان؛ عدد دستی توی کار نیس."
+        "تو گروه لابی بساز، حریف بگیر و بازی رسمی تلگرام رو انتخاب کن.\n\n"
+        "نتیجه همه بازی‌های متحرک مستقیم از خود تلگرام میاد؛ عدد دستی توی کار نیس."
     )
 
 
 def solo_text(cash: int) -> str:
     return (
-        "<b>🤖 قمار تک‌نفره</b>\n\n"
+        "<b>🤖 بازی‌های تک‌نفره</b>\n\n"
         f"💵 نقدت: {money(cash)}\n\n"
-        "🎲 تاس با ربات: مبلغ دلخواه می‌دی و یکی از 6 تاس رسمی تلگرام رو انتخاب می‌کنی.\n"
-        "💣 بازی مین: همون میز 9 خونه‌ای قبلیه.\n\n"
-        f"شرط تاس از {money(config.GAMBLE_SOLO_MIN_BET)} تا {money(config.GAMBLE_SOLO_MAX_BET)}"
+        "هر بازی صفحه، حرکت و قانون برد خودش رو داره؛ یکی رو انتخاب کن.\n"
+        f"محدوده شرط: {money(config.GAMBLE_SOLO_MIN_BET)} تا {money(config.GAMBLE_SOLO_MAX_BET)}"
     )
 
 
-def solo_rules(code: str) -> str:
+def solo_game_text(code: str, cash: int) -> str:
     spec = gsvc.dice_spec(code) or {}
-    maxv, win_min = int(spec.get("max", 0)), int(spec.get("win_min", 0))
-    return f"برد: عدد {fa_num(win_min)} تا {fa_num(maxv)} | پرداخت برد: ×{float(spec.get('payout', 0)):g}"
+    return (
+        f"<b>{spec.get('emoji', '🎮')} {spec.get('name', 'بازی')}</b>\n\n"
+        f"🎯 {spec.get('rule', '')}\n\n"
+        f"💵 نقدت: {money(cash)}\n"
+        f"💰 شرط: {money(config.GAMBLE_SOLO_MIN_BET)} تا {money(config.GAMBLE_SOLO_MAX_BET)}\n\n"
+        "نتیجه حرکت رو خود تلگرام مشخص می‌کنه."
+    )
 
 
 def solo_confirm_text(code: str, bet: int, cash: int) -> str:
     spec = gsvc.dice_spec(code) or {}
     return (
-        f"<b>{spec.get('emoji', '🎲')} تاس با ربات</b>\n\n"
+        f"<b>{spec.get('emoji', '🎮')} {spec.get('name', 'بازی')}</b>\n\n"
         f"💰 شرط: {money(bet)}\n"
-        f"🎯 {solo_rules(code)}\n"
+        f"🎯 {spec.get('rule', '')}\n"
         f"💵 نقدت: {money(cash)}\n\n"
-        "تأیید کنی، شرط قفل میشه و خود تلگرام تاس رو می‌اندازه."
+        f"تأیید کنی، شرط قفل میشه و {spec.get('action', 'حرکت بازی')} با انیمیشن رسمی تلگرام انجام میشه."
     )
 
 
 def solo_result_text(res: dict) -> str:
     if res["won"]:
         return (
-            f"<b>🏆 بردی! {res['emoji']} عدد {fa_num(res['value'])}</b>\n\n"
+            f"<b>🏆 بردی! {res['emoji']} {res['outcome']}</b>\n\n"
+            f"🎁 ضریب این برد: ×{res['multiplier']:g}\n"
             f"💰 پرداخت: {money(res['payout'])}\n"
             f"📈 سود خالص: {money(res['net'])}\n"
             f"💵 نقدت: {money(res['cash'])}"
         )
     return (
-        f"<b>💸 این دست باختی {res['emoji']} عدد {fa_num(res['value'])}</b>\n\n"
+        f"<b>💸 این دست باختی</b>\n\n"
+        f"{res['emoji']} {res['outcome']}\n"
         f"شرط {money(res['bet'])} سوخت\n"
         f"💵 نقدت: {money(res['cash'])}"
     )
@@ -104,21 +110,24 @@ async def gambling_hub_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     await respond(update, hub_text(cash), kb.gamble_hub_kb())
 
 
-async def _start_solo_amount(update: Update) -> None:
+async def _start_solo_amount(update: Update, code: str) -> None:
+    spec = gsvc.dice_spec(code)
+    if not spec:
+        return await respond(update, "❌ این بازی پیدا نشد")
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
         if user.level < config.GAMBLE_MIN_LEVEL:
             await s.commit()
             return await respond(update, f"🔒 قمارخانه از لول {fa_num(config.GAMBLE_MIN_LEVEL)} باز میشه")
-        users.set_pending(user, "gsolo", chat_id=chat_id_of(update))
+        users.set_pending(user, "gsolo", value=code, chat_id=chat_id_of(update))
         cash = int(user.cash or 0)
         await s.commit()
     await respond(
         update,
-        "<b>🎲 شرط تاس با ربات</b>\n\n"
+        f"<b>{spec['emoji']} شرط {spec['name']}</b>\n\n"
         f"یه مبلغ بین {money(config.GAMBLE_SOLO_MIN_BET)} تا {money(config.GAMBLE_SOLO_MAX_BET)} بفرست.\n"
         f"💵 نقدت: {money(cash)}\n\nبرای بی‌خیال‌شدن بنویس «لغو»",
-        kb.gamble_back_kb("gm:solo"),
+        kb.gamble_back_kb(f"gm:game:{code}"),
     )
 
 
@@ -171,13 +180,19 @@ async def consume_pending_bet(update: Update, context: ContextTypes.DEFAULT_TYPE
             await s.commit()
             await update.effective_message.reply_html(_bet_error(why, mode, cash))
             return True
+        game_code = user.pending_value if mode == "solo" else None
         users.set_pending(user, None)
         if mode == "solo":
+            spec = gsvc.dice_spec(game_code or "")
+            if not spec:
+                await s.commit()
+                await update.effective_message.reply_html("❌ بازی انتخاب‌شده پیدا نشد؛ دوباره از قمارخانه انتخابش کن")
+                return True
             cash = int(user.cash or 0)
             await s.commit()
             await update.effective_message.reply_html(
-                f"<b>🎲 شرط {money(amount)}</b>\n\nحالا نوع تاس رسمی تلگرام رو انتخاب کن:",
-                reply_markup=kb.gamble_dice_kb("solo", amount),
+                solo_confirm_text(game_code, amount, cash),
+                reply_markup=kb.gamble_solo_confirm_kb(game_code, amount, update.effective_user.id),
             )
             return True
         match, why = await gsvc.create_match(s, user, chat_id_of(update), _thread_id(update), amount)
@@ -198,12 +213,12 @@ async def consume_pending_bet(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 def _lobby_wait_text(match_id: int, creator_name: str, bet: int) -> str:
     return (
-        f"<b>⚔️ لابی تاسی #{fa_num(match_id)}</b>\n\n"
+        f"<b>⚔️ لابی بازی رسمی #{fa_num(match_id)}</b>\n\n"
         f"👑 سازنده: {creator_name}\n"
         f"💰 شرط هر نفر: {money(bet)}\n"
         f"🏆 صندوق نهایی: {money(bet * 2)}\n\n"
         f"یه نفر تا {fa_dur(config.GAMBLE_LOBBY_SECONDS)} فرصت داره چالش رو قبول کنه.\n"
-        "پول بعد از تأیید جداگانه هر دو نفر وارد صندوق میشه."
+        "پول بعد از تأیید جداگانه هر دو نفر وارد صندوق میشه. هر مرحله ۱۰ دقیقه بی‌حرکت بمونه، بازی بسته و پول هر دو پس داده میشه."
     )
 
 
@@ -226,13 +241,14 @@ def _config_emoji_text(row, v: dict) -> str:
         f"<b>⚔️ مسابقه #{fa_num(row.id)}</b>\n\n"
         f"👑 {v['creator_name']}  VS  {v['opponent_name']}\n"
         f"💰 شرط هر نفر: {money(row.bet_per_player)}\n\n"
-        "سازنده باید نوع تاس رو انتخاب کنه:"
+        "سازنده باید بازی رسمی تلگرام رو انتخاب کنه:"
     )
 
 
 def _config_rounds_text(row, v: dict) -> str:
+    spec = gsvc.dice_spec(gsvc.dice_code(row.emoji or "") or "") or {}
     return (
-        f"<b>{row.emoji} تنظیم مسابقه #{fa_num(row.id)}</b>\n\n"
+        f"<b>{row.emoji} {spec.get('name', 'بازی')} | تنظیم مسابقه #{fa_num(row.id)}</b>\n\n"
         f"👑 {v['creator_name']}  VS  {v['opponent_name']}\n"
         f"💰 شرط هر نفر: {money(row.bet_per_player)}\n\n"
         "حالا تعداد راند رو انتخاب کن؛ مسابقه به شکل best-of برگزار میشه:"
@@ -242,29 +258,40 @@ def _config_rounds_text(row, v: dict) -> str:
 def _confirm_text(row, v: dict) -> str:
     c = "✅" if row.creator_confirmed else "⏳"
     o = "✅" if row.opponent_confirmed else "⏳"
+    spec = gsvc.dice_spec(gsvc.dice_code(row.emoji or "") or "") or {}
     return (
-        f"<b>{row.emoji} تأیید مسابقه #{fa_num(row.id)}</b>\n\n"
+        f"<b>{row.emoji} تأیید {spec.get('name', 'مسابقه')} #{fa_num(row.id)}</b>\n\n"
         f"💰 شرط هر نفر: {money(row.bet_per_player)}\n"
         f"🏆 صندوق: {money(row.bet_per_player * 2)}\n"
         f"🎮 تعداد: best-of-{fa_num(row.rounds_total)}\n\n"
         f"{c} {v['creator_name']}\n{o} {v['opponent_name']}\n\n"
-        "هر نفر تأیید کنه سهم خودش همون لحظه امانت میشه؛ شروع نشه کامل پس می‌گیره."
+        "هر نفر تأیید کنه سهم خودش همون لحظه امانت میشه. هر مرحله ۱۰ دقیقه ادامه پیدا نکنه، بازی بسته و سهم هر دو کامل پس داده میشه."
     )
+
+
+def _duel_roll_kb(row):
+    return kb.gamble_duel_roll_kb(row.id, gsvc.dice_code(row.emoji or ""))
+
+
+def _duel_result_label(code: str, value: int) -> str:
+    return f"{gsvc.outcome_text(code, value)} — امتیاز رسمی {fa_num(value)}"
 
 
 def _round_text(row, v: dict, note: str | None = None) -> str:
     rnd = v.get("round")
     cv = getattr(rnd, "creator_value", None)
     ov = getattr(rnd, "opponent_value", None)
+    spec = gsvc.dice_spec(gsvc.dice_code(row.emoji or "") or "") or {}
+    action = spec.get("action", "حرکت بازی")
     lines = [
-        f"<b>{row.emoji} مسابقه #{fa_num(row.id)} | راند {fa_num(row.current_round)}</b>", "",
+        f"<b>{row.emoji} {spec.get('name', 'مسابقه')} #{fa_num(row.id)} | راند {fa_num(row.current_round)}</b>", "",
         f"🏁 امتیاز: {v['creator_name']} {fa_num(row.creator_score)} - {fa_num(row.opponent_score)} {v['opponent_name']}",
-        f"👑 {v['creator_name']}: " + (f"عدد {fa_num(cv)} ✅" if cv is not None else "منتظر پرتاب ⏳"),
-        f"⚔️ {v['opponent_name']}: " + (f"عدد {fa_num(ov)} ✅" if ov is not None else "منتظر پرتاب ⏳"),
+        f"👑 {v['creator_name']}: " + (f"{action} انجام شد؛ امتیاز {fa_num(cv)} ✅" if cv is not None else f"منتظر {action} ⏳"),
+        f"⚔️ {v['opponent_name']}: " + (f"{action} انجام شد؛ امتیاز {fa_num(ov)} ✅" if ov is not None else f"منتظر {action} ⏳"),
     ]
     if note:
         lines += ["", note]
-    lines += ["", f"هر نفر {fa_dur(config.GAMBLE_ROUND_SECONDS)} برای پرتاب وقت داره."]
+    lines += ["", "اگر تا ۱۰ دقیقه بازی ادامه پیدا نکنه، مسابقه بسته و پول هر دو کامل پس داده میشه."]
     return "\n".join(lines)
 
 
@@ -301,8 +328,17 @@ async def gambling_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         if level < config.GAMBLE_MIN_LEVEL:
             return await q.answer(f"🔒 لول {config.GAMBLE_MIN_LEVEL} می‌خواد", show_alert=True)
         return await respond(update, solo_text(cash), kb.gamble_solo_kb())
-    if data == "gm:solo:bet":
-        return await _start_solo_amount(update)
+    if len(p) == 3 and p[1] == "game" and gsvc.dice_spec(p[2]):
+        code = p[2]
+        async with session_scope() as s:
+            user, _ = await users.get_or_create(s, update.effective_user)
+            if user.pending_action in ("gsolo", "gduel"):
+                users.set_pending(user, None)
+            cash = int(user.cash or 0)
+            await s.commit()
+        return await respond(update, solo_game_text(code, cash), kb.gamble_game_kb(code))
+    if len(p) == 3 and p[1] == "gb" and gsvc.dice_spec(p[2]):
+        return await _start_solo_amount(update, p[2])
     if data == "gm:mine":
         from handlers import mines
         return await mines.mines_hub_cmd(update, context)
@@ -357,7 +393,8 @@ async def _solo_roll(update: Update, context, code: str, bet: int) -> None:
             await s.commit()
         if row is None:
             return await q.answer(_bet_error(why, "solo", cash, cd), show_alert=True)
-        await q.answer("🎲 تاس افتاد...", show_alert=False)
+        spec = gsvc.dice_spec(code) or {}
+        await q.answer(f"{spec.get('emoji', '🎮')} {spec.get('action', 'حرکت بازی')} شروع شد...", show_alert=False)
         try:
             msg = await context.bot.send_dice(
                 chat_id=chat_id_of(update), emoji=gsvc.dice_spec(code)["emoji"],
@@ -368,7 +405,7 @@ async def _solo_roll(update: Update, context, code: str, bet: int) -> None:
             async with session_scope() as s:
                 await gsvc.refund_solo(s, row.id, "telegram_error")
                 await s.commit()
-            return await respond(update, f"❌ تلگرام تاس رو نفرستاد؛ شرط {money(bet)} کامل برگشت جیبت", kb.gamble_solo_kb())
+            return await respond(update, f"❌ تلگرام حرکت بازی رو نفرستاد؛ شرط {money(bet)} کامل برگشت جیبت", kb.gamble_game_kb(code))
         await asyncio.sleep(config.GAMBLE_DICE_ANIMATION_SECONDS)
         async with session_scope() as s:
             res = await gsvc.settle_solo(s, row.id, value, getattr(msg, "message_id", None))
@@ -437,7 +474,7 @@ async def _duel_confirm(update, context, match_id: int) -> None:
         return await q.answer(msg, show_alert=True)
     await q.answer("✅ سهمت رفت تو صندوق" if not started else "🔥 مسابقه شروع شد")
     if started:
-        await _edit_match(context, view_row, _round_text(view_row, v), kb.gamble_duel_roll_kb(match_id))
+        await _edit_match(context, view_row, _round_text(view_row, v), _duel_roll_kb(view_row))
     else:
         await _edit_match(context, view_row, _confirm_text(view_row, v), kb.gamble_duel_confirm_kb(match_id))
 
@@ -446,21 +483,24 @@ async def _duel_roll(update, context, match_id: int) -> None:
     q = update.callback_query
     async with session_scope() as s:
         actor, _ = await users.get_or_create(s, update.effective_user)
-        row, rnd, why = await gsvc.check_roll(s, match_id, actor)
+        row, _rnd, why = await gsvc.check_roll(s, match_id, actor)
         emoji = row.emoji if row else None
         chat_id = row.chat_id if row else None
         thread_id = row.thread_id if row else None
         await s.commit()
+    code = gsvc.dice_code(emoji or "") or ""
+    spec = gsvc.dice_spec(code) or {}
+    action = spec.get("action", "حرکت بازی")
     if why:
-        msg = {"already": "تاس این راندتو انداختی", "stranger": "این مسابقه مال تو نیس",
+        msg = {"already": f"{action} این راندت رو انجام دادی", "stranger": "این مسابقه مال تو نیس",
                "closed": "مسابقه بسته شده"}.get(why, "راند آماده نیس")
         return await q.answer(msg, show_alert=True)
-    await q.answer("🎲 تاس تو افتاد...")
+    await q.answer(f"{emoji or '🎮'} {action} شروع شد...")
     try:
         msg = await context.bot.send_dice(chat_id=chat_id, emoji=emoji, message_thread_id=thread_id)
         value = int(msg.dice.value)
     except (TelegramError, AttributeError, TypeError, ValueError):
-        return await q.answer("تلگرام تاس رو نفرستاد؛ دوباره بزن", show_alert=True)
+        return await respond(update, f"❌ تلگرام {action} رو نفرستاد؛ دوباره دکمه رو بزن")
     await asyncio.sleep(config.GAMBLE_DICE_ANIMATION_SECONDS)
     async with session_scope() as s:
         actor = await users.get_by_tg(s, update.effective_user.id)
@@ -471,22 +511,23 @@ async def _duel_roll(update, context, match_id: int) -> None:
     if not res.get("ok"):
         return
     if not res.get("resolved"):
-        note = f"{esc(users.display_name(actor))} عدد {fa_num(value)} آورد؛ منتظر تاس حریفیم."
-        return await _edit_match(context, view_row, _round_text(view_row, v, note), kb.gamble_duel_roll_kb(match_id))
+        note = (f"{esc(users.display_name(actor))}: {_duel_result_label(code, value)}؛ "
+                f"منتظر {action} حریفیم.")
+        return await _edit_match(context, view_row, _round_text(view_row, v, note), _duel_roll_kb(view_row))
     if res.get("tie"):
-        note = f"🤝 هر دو {fa_num(res['creator_value'])} آوردن؛ همین راند دوباره تکرار میشه."
-        return await _edit_match(context, view_row, _round_text(view_row, v, note), kb.gamble_duel_roll_kb(match_id))
+        note = f"🤝 امتیاز رسمی هر دو {fa_num(res['creator_value'])} شد؛ همین راند دوباره تکرار میشه."
+        return await _edit_match(context, view_row, _round_text(view_row, v, note), _duel_roll_kb(view_row))
     if res.get("finished"):
         wname = esc(users.display_name(winner)) if winner else "برنده"
         text = (
-            f"<b>🏆 {wname} مسابقه #{fa_num(match_id)} رو برد!</b>\n\n"
-            f"🎲 تاس آخر: {fa_num(res['creator_value'])} - {fa_num(res['opponent_value'])}\n"
+            f"<b>🏆 {wname} مسابقه {spec.get('name', '')} #{fa_num(match_id)} رو برد!</b>\n\n"
+            f"🎮 امتیاز حرکت آخر: {fa_num(res['creator_value'])} - {fa_num(res['opponent_value'])}\n"
             f"🏁 نتیجه نهایی: {fa_num(view_row.creator_score)} - {fa_num(view_row.opponent_score)}\n"
             f"💰 جایزه صندوق: {money(res['payout'])}"
         )
         return await _edit_match(context, view_row, text, kb.gamble_finished_kb())
-    note = f"✅ نتیجه راند: {fa_num(res['creator_value'])} - {fa_num(res['opponent_value'])}"
-    await _edit_match(context, view_row, _round_text(view_row, v, note), kb.gamble_duel_roll_kb(match_id))
+    note = f"✅ امتیاز رسمی راند: {fa_num(res['creator_value'])} - {fa_num(res['opponent_value'])}"
+    await _edit_match(context, view_row, _round_text(view_row, v, note), _duel_roll_kb(view_row))
 
 
 async def _duel_cancel(update, context, match_id: int) -> None:

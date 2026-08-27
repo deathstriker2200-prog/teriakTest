@@ -1106,20 +1106,52 @@ GAMBLE_DUEL_MIN_BET = 1_000
 GAMBLE_DUEL_MAX_BET = 1_000_000
 GAMBLE_COOLDOWN_SECONDS = 30
 GAMBLE_DICE_ANIMATION_SECONDS = 4.0
-GAMBLE_SOLO_RESERVE_SECONDS = 120
+# هر مرحله با ۱۰ دقیقه بی‌فعالیتی بسته می‌شود؛ در دونفره escrow هر دو کامل پس داده می‌شود.
+GAMBLE_SOLO_RESERVE_SECONDS = 600
 GAMBLE_LOBBY_SECONDS = 600
-GAMBLE_CONFIG_SECONDS = 300
-GAMBLE_CONFIRM_SECONDS = 300
-GAMBLE_ROUND_SECONDS = 120
+GAMBLE_CONFIG_SECONDS = 600
+GAMBLE_CONFIRM_SECONDS = 600
+GAMBLE_ROUND_SECONDS = 600
 GAMBLE_SWEEP_SECONDS = 20
 GAMBLE_DUEL_ROUNDS = (1, 3, 5)
+# اسم «Dice» فقط اصطلاح Bot API است؛ در UI هر انیمیشن بازی مستقل خودش را دارد.
+# wins برای بردهای تک‌ضریبی و payouts برای اسلات چندجایزه‌ای است.
 GAMBLE_DICE = {
-    "dice": {"emoji": "🎲", "max": 6, "win_min": 4, "payout": 1.90, "name": "تاس"},
-    "dart": {"emoji": "🎯", "max": 6, "win_min": 4, "payout": 1.90, "name": "دارت"},
-    "bowl": {"emoji": "🎳", "max": 6, "win_min": 4, "payout": 1.90, "name": "بولینگ"},
-    "basket": {"emoji": "🏀", "max": 5, "win_min": 4, "payout": 2.375, "name": "بسکتبال"},
-    "foot": {"emoji": "⚽", "max": 5, "win_min": 4, "payout": 2.375, "name": "فوتبال"},
-    "slot": {"emoji": "🎰", "max": 64, "win_min": 49, "payout": 3.80, "name": "اسلات"},
+    "dice": {
+        "emoji": "🎲", "max": 6, "wins": (4, 5, 6), "payout": 1.80,
+        "name": "بازی تاس", "action": "انداختن تاس", "button": "🎲 تاس بنداز", "duel_button": "🎲 تاس من",
+        "rule": "اگه تاس روی ۴، ۵ یا ۶ بشینه، جایزه ×۱.۸ می‌گیری.",
+    },
+    "dart": {
+        "emoji": "🎯", "max": 6, "wins": (6,), "payout": 5.40,
+        "name": "دارت", "action": "پرتاب دارت", "button": "🎯 دارت پرت کن", "duel_button": "🎯 پرتاب دارت من",
+        "rule": "اگه دارت دقیقاً وسط خال بخوره، جایزه ×۵.۴ می‌گیری.",
+    },
+    "bowl": {
+        "emoji": "🎳", "max": 6, "wins": (6,), "payout": 5.40,
+        "name": "بولینگ", "action": "پرتاب توپ بولینگ", "button": "🎳 توپ رو بنداز", "duel_button": "🎳 توپ بولینگ من",
+        "rule": "اگه استرایک کنی و همه پین‌ها بریزن، جایزه ×۵.۴ می‌گیری.",
+    },
+    "basket": {
+        "emoji": "🏀", "max": 5, "wins": (4, 5), "payout": 2.25,
+        "name": "بسکتبال", "action": "پرتاب توپ بسکتبال", "button": "🏀 توپ رو پرتاب کن", "duel_button": "🏀 پرتاب توپ من",
+        "rule": "اگه توپ بره تو سبد، جایزه ×۲.۲۵ می‌گیری.",
+    },
+    "foot": {
+        "emoji": "⚽", "max": 5, "wins": (4, 5), "payout": 2.25,
+        "name": "فوتبال", "action": "شوت‌کردن توپ", "button": "⚽ شوت کن", "duel_button": "⚽ شوت من",
+        "rule": "اگه شوتت گل بشه، جایزه ×۲.۲۵ می‌گیری.",
+    },
+    "slot": {
+        "emoji": "🎰", "max": 64, "name": "ماشین اسلات", "action": "چرخاندن اسلات",
+        "button": "🎰 دستگاه رو بچرخون", "duel_button": "🎰 چرخوندن دستگاه من",
+        "payouts": {
+            64: 20.0,                         # 7-7-7
+            1: 8.0, 22: 8.0, 43: 8.0,       # سه نماد یکسان به‌جز 777
+            16: 4.0, 32: 4.0, 48: 4.0,      # دو 7 در دو خانه اول
+        },
+        "rule": "۷۷۷ جایزه ×۲۰؛ سه نماد یکسان ×۸؛ دو تا ۷ در دو خانه اول ×۴.",
+    },
 }
 GAMBLE_EMOJI_TO_KEY = {v["emoji"]: k for k, v in GAMBLE_DICE.items()}
 

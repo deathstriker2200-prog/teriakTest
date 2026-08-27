@@ -46,14 +46,31 @@ def test_config_and_source() -> None:
     }
     check("شش ایموجی رسمی و بازه صحیح Telegram ثبت شده",
           {k: (v["emoji"], v["max"]) for k, v in config.GAMBLE_DICE.items()} == expected)
-    check("برد و پرداخت تک‌نفره برای تاس‌های ۶/۵/۶۴ مقداری درسته",
-          gambling.solo_outcome("dice", 10_000, 4) == (True, 19_000)
-          and gambling.solo_outcome("basket", 10_000, 5) == (True, 23_750)
-          and gambling.solo_outcome("slot", 10_000, 64) == (True, 38_000)
-          and gambling.solo_outcome("slot", 10_000, 48) == (False, 0))
+    check("برد و پرداخت تک‌نفره بر اساس اتفاق واقعی هر انیمیشن درسته",
+          gambling.solo_outcome("dice", 10_000, 4) == (True, 18_000)
+          and gambling.solo_outcome("basket", 10_000, 5) == (True, 22_500)
+          and gambling.solo_outcome("foot", 10_000, 3) == (False, 0)
+          and gambling.solo_outcome("dart", 10_000, 6) == (True, 54_000)
+          and gambling.solo_outcome("bowl", 10_000, 5) == (False, 0)
+          and gambling.solo_outcome("slot", 10_000, 64) == (True, 200_000)
+          and gambling.solo_outcome("slot", 10_000, 48) == (True, 40_000)
+          and gambling.solo_outcome("slot", 10_000, 50) == (False, 0))
+    check("نتیجه‌ها با گل، سبد، خال، استرایک و ترکیب اسلات تعریف می‌شوند نه کسر شانس",
+          "سبد" in gambling.outcome_text("basket", 5)
+          and "گل شد" in gambling.outcome_text("foot", 4)
+          and "وسط خال" in gambling.outcome_text("dart", 6)
+          and "استرایک" in gambling.outcome_text("bowl", 6)
+          and "جک‌پات" in gambling.outcome_text("slot", 64))
+    check("هر مرحله دونفره دقیقاً ۱۰ دقیقه مهلت بی‌فعالیتی دارد",
+          config.GAMBLE_LOBBY_SECONDS == config.GAMBLE_CONFIG_SECONDS == config.GAMBLE_CONFIRM_SECONDS
+          == config.GAMBLE_ROUND_SECONDS == 600)
 
     src = Path(__file__).with_name("handlers").joinpath("gambling.py").read_text(encoding="utf-8")
     svc_src = inspect.getsource(gambling)
+    keyboard_src = Path(__file__).with_name("keyboards").joinpath("keyboards.py").read_text(encoding="utf-8")
+    check("شش بازی تک‌نفره هرکدام بخش مستقل دارند و زیر یک دکمه تاس جمع نشده‌اند",
+          all(f"gm:game:{code}" in keyboard_src for code in expected)
+          and "gm:solo:bet" not in keyboard_src)
     check("هندلر هر دو حالت فقط send_dice رسمی صدا می‌زند", src.count("context.bot.send_dice(") == 2)
     check("نتیجه فقط از message.dice.value خوانده می‌شود", src.count("msg.dice.value") == 2)
     check("هر دو اعلام نتیجه تا پایان انیمیشن صبر می‌کنند",
@@ -118,11 +135,11 @@ async def test_gambling_service(Session) -> None:
         row, why = await gambling.reserve_solo(s, solo, -100, None, "dice", 10_000)
         check("رزرو تک‌نفره شرط را قبل sendDice کم می‌کند", row is not None and not why and solo.cash == 40_000)
         result = await gambling.settle_solo(s, row.id, 6, 7001)
-        check("تسویه تک‌نفره برد را طبق ضریب می‌پردازد",
-              result["ok"] and result["payout"] == 19_000 and solo.cash == 59_000)
+        check("تسویه تک‌نفره برد را طبق ضریب رویداد می‌پردازد",
+              result["ok"] and result["payout"] == 18_000 and solo.cash == 58_000)
         duplicate = await gambling.settle_solo(s, row.id, 1, 7002)
         check("تسویه تکراری پول دوباره تولید نمی‌کند",
-              duplicate.get("duplicate") is True and solo.cash == 59_000 and duplicate["value"] == 6)
+              duplicate.get("duplicate") is True and solo.cash == 58_000 and duplicate["value"] == 6)
 
         row2, why2 = await gambling.reserve_solo(s, refundee, -100, None, "slot", 5_000)
         refunded = await gambling.refund_solo(s, row2.id, "send_failed")
@@ -148,7 +165,7 @@ async def test_gambling_service(Session) -> None:
         r1 = await gambling.record_roll(s, match.id, creator, 4, 7101)
         duplicate_roll = await gambling.record_roll(s, match.id, creator, 5, 7102)
         tie = await gambling.record_roll(s, match.id, opponent, 4, 7103)
-        check("هر نفر هر تلاش فقط یک تاس دارد و تساوی همان راند را تکرار می‌کند",
+        check("هر نفر هر تلاش فقط یک حرکت رسمی دارد و تساوی همان راند را تکرار می‌کند",
               not r1["resolved"] and duplicate_roll["reason"] == "already"
               and tie["tie"] and match.current_round == 1)
 
@@ -205,9 +222,9 @@ async def test_gambling_service(Session) -> None:
         sr.expires_at = now_utc() - timedelta(seconds=1)
         forfeit_events = await gambling.sweep_expired(s)
         kinds = {e["kind"] for e in forfeit_events}
-        check("راند منقضی با فقط یک تاس باخت فنی و پرداخت یک‌باره دارد",
-              "match_forfeit" in kinds and fm.status == "finished" and fm.winner_id == fc.id
-              and fc.cash == 22_000 and fo.cash == 18_000)
+        check("راند منقضی با حرکت فقط یک نفر هم بازی را می‌بندد و پول هر دو را پس می‌دهد",
+              "match_refund" in kinds and "match_forfeit" not in kinds and fm.status == "expired"
+              and fc.cash == 20_000 and fo.cash == 20_000)
         check("رزرو تک‌نفره نیمه‌کاره در sweep کامل برمی‌گردد",
               "solo_refund" in kinds and stale_solo.cash == 20_000 and sr.status == "refunded")
         await s.commit()
@@ -269,7 +286,7 @@ async def test_fake_telegram_bot(Session) -> None:
         check("Fake Bot: هندلر دقیقاً dice.value برگشتی را ثبت و تسویه می‌کند",
               len(good_bot.calls) == 1 and good_bot.calls[0]["emoji"] == "🎲"
               and good_round.dice_value == 6 and good_round.dice_message_id == 88001
-              and good_user.cash == 59_000 and any("بردی" in text for text in rendered))
+              and good_user.cash == 58_000 and any("تاس روی 6 نشست" in text for text in rendered))
 
     failed_bot = DiceBot(None)
     rendered.clear()

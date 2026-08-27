@@ -543,7 +543,6 @@ def gear_up_kb(kind: str, owned_lvls: dict[str, int], user: User) -> InlineKeybo
     """لیست آیتم‌های قابل ارتقا (فقط مال خودت)، با قیمت و لول بعدی"""
     from services import economy
     catalog = economy.gear_catalog(kind)
-    emoji = "🔫" if kind == "weap" else "🛡"
     rows = []
     for key, lv in sorted(owned_lvls.items()):
         if key not in catalog:
@@ -1382,9 +1381,19 @@ def gamble_hub_kb() -> InlineKeyboardMarkup:
 
 def gamble_solo_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
-        [_btn("🎲 تاس با ربات", "gm:solo:bet", SUCCESS)],
-        [_btn("💣 بازی مین", "gm:mine", PRIMARY)],
+        [_btn("🎲 بازی تاس", "gm:game:dice", PRIMARY), _btn("🎯 دارت", "gm:game:dart", PRIMARY)],
+        [_btn("🎳 بولینگ", "gm:game:bowl", PRIMARY), _btn("🏀 بسکتبال", "gm:game:basket", PRIMARY)],
+        [_btn("⚽ فوتبال", "gm:game:foot", PRIMARY), _btn("🎰 ماشین اسلات", "gm:game:slot", PRIMARY)],
+        [_btn("💣 بازی مین", "gm:mine", SUCCESS)],
         [_btn("🔙 قمارخانه", "gm:h", PRIMARY)],
+    ])
+
+
+def gamble_game_kb(code: str) -> InlineKeyboardMarkup:
+    spec = config.GAMBLE_DICE.get(code) or {}
+    return InlineKeyboardMarkup([
+        [_btn(spec.get("button", "🎮 شروع بازی"), f"gm:gb:{code}", SUCCESS)],
+        [_btn("🔙 بازی‌های تک‌نفره", "gm:solo", PRIMARY)],
     ])
 
 
@@ -1407,16 +1416,19 @@ def gamble_dice_kb(mode: str, bet: int = 0, match_id: int = 0) -> InlineKeyboard
 
 
 def gamble_solo_confirm_kb(code: str, bet: int, tg_id: int) -> InlineKeyboardMarkup:
+    spec = config.GAMBLE_DICE.get(code) or {}
     return InlineKeyboardMarkup([
-        [_btn("🎲 بنداز!", f"gm:sr:{code}:{bet}:{tg_id}", SUCCESS)],
-        [_btn("🔙 عوض‌کردن تاس", "gm:solo:bet", PRIMARY), _btn("❌ لغو", "gm:solo", DANGER)],
+        [_btn(spec.get("button", "🎮 شروع"), f"gm:sr:{code}:{bet}:{tg_id}", SUCCESS)],
+        [_btn("🔙 عوض‌کردن مبلغ", f"gm:gb:{code}", PRIMARY), _btn("❌ لغو", f"gm:game:{code}", DANGER)],
     ])
 
 
 def gamble_solo_result_kb(code: str, bet: int, tg_id: int) -> InlineKeyboardMarkup:
+    spec = config.GAMBLE_DICE.get(code) or {}
     return InlineKeyboardMarkup([
-        [_btn(f"🔁 همین شرط ({money_tp(bet)})", f"gm:sc:{code}:{bet}", SUCCESS)],
-        [_btn("🤖 تک‌نفره", "gm:solo", PRIMARY), _btn("🎰 قمارخانه", "gm:h", PRIMARY)],
+        [_btn(f"🔁 دوباره {spec.get('name', 'بازی')} ({money_tp(bet)})", f"gm:sc:{code}:{bet}", SUCCESS)],
+        [_btn(f"{spec.get('emoji', '🎮')} بخش همین بازی", f"gm:game:{code}", PRIMARY),
+         _btn("🤖 تک‌نفره", "gm:solo", PRIMARY)],
     ])
 
 
@@ -1445,8 +1457,9 @@ def gamble_duel_confirm_kb(match_id: int) -> InlineKeyboardMarkup:
     ])
 
 
-def gamble_duel_roll_kb(match_id: int) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([[_btn("🎲 پرتاب تاس من", f"gm:roll:{match_id}", SUCCESS)]])
+def gamble_duel_roll_kb(match_id: int, code: str | None = None) -> InlineKeyboardMarkup:
+    spec = config.GAMBLE_DICE.get(code or "") or {}
+    return InlineKeyboardMarkup([[_btn(spec.get("duel_button", "🎮 حرکت من"), f"gm:roll:{match_id}", SUCCESS)]])
 
 
 def gamble_finished_kb() -> InlineKeyboardMarkup:

@@ -59,13 +59,62 @@ def cooldown_left(user: User) -> int:
     return max(0, left)
 
 
-def solo_outcome(code: str, bet: int, value: int) -> tuple[bool, int]:
+def slot_symbols(value: int) -> tuple[str, str, str]:
+    """ترکیب تصویری اسلات تلگرام از مقدار رسمی ۱ تا ۶۴."""
+    if value < 1 or value > 64:
+        raise ValueError("invalid Telegram slot value")
+    symbols = ("BAR", "🍇", "🍋", "7️⃣")
+    raw = value - 1
+    return symbols[raw % 4], symbols[(raw // 4) % 4], symbols[(raw // 16) % 4]
+
+
+def solo_multiplier(code: str, value: int) -> float:
     spec = dice_spec(code)
     if not spec or value < 1 or value > int(spec["max"]):
         raise ValueError("invalid Telegram dice value")
-    won = value >= int(spec["win_min"])
-    payout = int(round(bet * float(spec["payout"]))) if won else 0
-    return won, payout
+    payouts = spec.get("payouts")
+    if payouts is not None:
+        return float(payouts.get(value, 0.0))
+    return float(spec.get("payout", 0.0)) if value in spec.get("wins", ()) else 0.0
+
+
+def solo_outcome(code: str, bet: int, value: int) -> tuple[bool, int]:
+    multiplier = solo_multiplier(code, value)
+    payout = int(round(bet * multiplier)) if multiplier else 0
+    return multiplier > 0, payout
+
+
+def outcome_text(code: str, value: int) -> str:
+    """توضیح نتیجه بر اساس اتفاق واقعی انیمیشن، نه نمایش شانس عددی."""
+    if code == "dice":
+        return f"تاس روی {value} نشست"
+    if code == "dart":
+        if value == 6:
+            return "دارت خورد وسط خال!"
+        if value == 1:
+            return "دارت به صفحه هم نخورد"
+        return "دارت به صفحه خورد، ولی وسط خال نبود"
+    if code == "bowl":
+        if value == 6:
+            return "استرایک! همه پین‌ها ریخت"
+        if value == 1:
+            return "توپ همه پین‌ها رو رد کرد"
+        return "چندتا پین افتاد، ولی استرایک نشد"
+    if code == "basket":
+        return "توپ رفت تو سبد!" if value in (4, 5) else "پرتاب وارد سبد نشد"
+    if code == "foot":
+        return "شوت گل شد!" if value in (4, 5) else "شوت گل نشد"
+    if code == "slot":
+        combo = " | ".join(slot_symbols(value))
+        mult = solo_multiplier(code, value)
+        if value == 64:
+            return f"{combo} — جک‌پات ۷۷۷!"
+        if mult == 8.0:
+            return f"{combo} — سه نماد یکسان!"
+        if mult == 4.0:
+            return f"{combo} — دو تا ۷ اول!"
+        return f"{combo} — ترکیب برنده نشد"
+    raise ValueError("unsupported dice code")
 
 
 async def _active_solo(session: AsyncSession, user_id: int) -> GambleSoloRound | None:
@@ -111,13 +160,17 @@ async def settle_solo(
         return {"ok": False, "reason": "missing"}
     if row.status == "settled":
         user = await session.get(User, row.user_id)
+        code = dice_code(row.emoji)
         return {"ok": True, "duplicate": True, "won": row.payout > 0, "payout": row.payout,
-                "bet": row.bet, "cash": user.cash if user else 0, "value": row.dice_value}
+                "bet": row.bet, "cash": user.cash if user else 0, "value": row.dice_value,
+                "emoji": row.emoji, "code": code,
+                "outcome": outcome_text(code, row.dice_value) if code and row.dice_value else ""}
     if row.status not in ("reserved", "rolled"):
         return {"ok": False, "reason": row.status}
     code = dice_code(row.emoji)
     if code is None:
         raise ValueError("unsupported stored dice emoji")
+    multiplier = solo_multiplier(code, value)
     won, payout = solo_outcome(code, row.bet, value)
     user = await session.get(User, row.user_id, with_for_update=True)
     if user is None:
@@ -133,7 +186,8 @@ async def settle_solo(
     net = payout - row.bet
     await tracklog.bump_casino(session, user.id, won, net)
     return {"ok": True, "won": won, "payout": payout, "bet": row.bet,
-            "net": net, "cash": user.cash, "value": value, "emoji": row.emoji}
+            "net": net, "cash": user.cash, "value": value, "emoji": row.emoji,
+            "code": code, "multiplier": multiplier, "outcome": outcome_text(code, value)}
 
 
 async def refund_solo(session: AsyncSession, round_id: int, reason: str = "failed") -> dict:
@@ -412,10 +466,6 @@ async def cancel_match(session: AsyncSession, match_id: int, actor: User) -> tup
     return row, "", refunded
 
 
-async def forfeit_match(session: AsyncSession, row: GambleMatch, winner_id: int) -> int:
-    return await _finish_match(session, row, winner_id)
-
-
 async def sweep_expired(session: AsyncSession) -> list[dict]:
     """استرداد رزروها/لابی‌ها و تعیین تکلیف راندهای بی‌پاسخ، با خروجی مناسب جاب پیام‌رسان."""
     now = now_utc()
@@ -441,16 +491,9 @@ async def sweep_expired(session: AsyncSession) -> list[dict]:
             events.append({"kind": "match_refund", "chat_id": row.chat_id, "message_id": row.lobby_message_id,
                            "match_id": row.id, "amount": amount})
             continue
-        rnd = await current_round(session, row)
-        cv = rnd.creator_value if rnd else None
-        ov = rnd.opponent_value if rnd else None
-        if cv is None and ov is None:
-            amount = await _refund_match(session, row, "expired")
-            events.append({"kind": "match_refund", "chat_id": row.chat_id, "message_id": row.lobby_message_id,
-                           "match_id": row.id, "amount": amount})
-        else:
-            winner_id = row.creator_id if cv is not None else int(row.opponent_id)
-            payout = await _finish_match(session, row, winner_id)
-            events.append({"kind": "match_forfeit", "chat_id": row.chat_id, "message_id": row.lobby_message_id,
-                           "match_id": row.id, "winner_id": winner_id, "payout": payout})
+        # قانون جدید: هر مرحله ۱۰ دقیقه ادامه پیدا نکند، حتی اگر فقط یک نفر حرکت کرده باشد،
+        # هیچ باخت فنی نداریم و کل escrow هر دو نفر پس داده می‌شود.
+        amount = await _refund_match(session, row, "expired")
+        events.append({"kind": "match_refund", "chat_id": row.chat_id, "message_id": row.lobby_message_id,
+                       "match_id": row.id, "amount": amount})
     return events
