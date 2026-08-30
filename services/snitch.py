@@ -32,9 +32,20 @@ def khaye_active(user) -> bool:
     return bool(until and until > now_utc())
 
 
+def liar_active(user) -> bool:
+    """لقب موقت دروغگو بعد گزارش انبار واقعاً خالی."""
+    until = getattr(user, "liar_until", None)
+    return bool(until and until > now_utc())
+
+
 def sell_mult(user) -> float:
-    """ضریب فروش محصول (محموله یا کاروان قاچاق)، لقب چاپلوس فروش رو KHAYE_SELL_MALUS کم می‌کنه (راند ۳۵)"""
-    return (1 - config.KHAYE_SELL_MALUS) if khaye_active(user) else 1.0
+    """افت فروش چاپلوس/دروغگو جمع نمی‌شود؛ شدیدترین جریمه فعال فقط یک‌بار اعمال می‌شود."""
+    malus = 0.0
+    if khaye_active(user):
+        malus = max(malus, config.KHAYE_SELL_MALUS)
+    if liar_active(user):
+        malus = max(malus, config.LIAR_SELL_MALUS)
+    return 1 - malus
 
 
 def jail_left(user: User) -> int:
@@ -109,6 +120,9 @@ async def snitch(session: AsyncSession, snitcher: User, target: User) -> dict:
     لو دادن طرف به پلیس، کولدان و شمارنده هفتگی از همون تلاش می‌خورن (حتی اگه انبارش خالی باشه)
     خروجی: {"status": "empty", khaye} یا {"status": "ok", seized, share, bonus, names, khaye}
     """
+    if int(snitcher.level or 1) < config.SNITCH_MIN_LEVEL:
+        return {"status": "level", "required": config.SNITCH_MIN_LEVEL}
+
     now = now_utc()
     snitcher.last_snitch_at = now
 
@@ -135,7 +149,16 @@ async def snitch(session: AsyncSession, snitcher: User, target: User) -> dict:
         ).limit(1)
     )).scalar_one_or_none() is not None
     if not has_products:
-        return {"status": "empty", "khaye": got_khaye}
+        snitcher.jailed_until = now + timedelta(minutes=config.SNITCH_JAIL_MINUTES)
+        snitcher.liar_until = now + timedelta(hours=config.LIAR_TITLE_HOURS)
+        await _jail_note(snitcher.telegram_id, snitcher.jailed_until)
+        return {
+            "status": "empty",
+            "khaye": got_khaye,
+            "jail_minutes": config.SNITCH_JAIL_MINUTES,
+            "liar_hours": config.LIAR_TITLE_HOURS,
+            "sell_malus": config.LIAR_SELL_MALUS,
+        }
 
     from services.world import shelter_dodge_chance
     hide_chance = shelter_dodge_chance(getattr(target, "shelter_level", 0) or 0)
@@ -148,7 +171,13 @@ async def snitch(session: AsyncSession, snitcher: User, target: User) -> dict:
 
     seized, names = await seize_all_products(session, target)
     if seized <= 0:
-        return {"status": "empty", "khaye": got_khaye}
+        snitcher.jailed_until = now + timedelta(minutes=config.SNITCH_JAIL_MINUTES)
+        snitcher.liar_until = now + timedelta(hours=config.LIAR_TITLE_HOURS)
+        await _jail_note(snitcher.telegram_id, snitcher.jailed_until)
+        return {"status": "empty", "khaye": got_khaye,
+                "jail_minutes": config.SNITCH_JAIL_MINUTES,
+                "liar_hours": config.LIAR_TITLE_HOURS,
+                "sell_malus": config.LIAR_SELL_MALUS}
 
     share = round(seized * config.SNITCH_REWARD_PCT)
     snitcher.cash += share + config.SNITCH_BONUS

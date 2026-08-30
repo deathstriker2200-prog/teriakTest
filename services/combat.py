@@ -87,8 +87,10 @@ def armor_choice(user: User, item_keys) -> str | None:
     """زره موثر نبرد: تجهیزشده اگه هنوز تو انباره، وگرنه قوی‌ترین"""
     levels = _levels_map(item_keys)
     eq = getattr(user, "equipped_armor", None)
-    if eq and eq in levels and eq in config.ARMORS:
-        return eq
+    if eq == "":  # انتخاب صریح «بدون زره» یا زرهی که همین الان شکسته
+        return None
+    if eq:
+        return eq if eq in levels and eq in config.ARMORS else None
     owned = [k for k in levels if k in config.ARMORS]
     if not owned:
         return None
@@ -233,8 +235,16 @@ def pve_weapon_damage_bonus(key: str | None, level: int = 1, night: bool = False
     return pvp_weapon_ability_bonus(key, level, night)
 
 
+def roll_mimic_armor() -> str:
+    """یک چهره تصادفی برای زره هزارچهره؛ خود زره هرگز داخل استخر نیست."""
+    import random
+    return random.choice(config.ARMOR_MIMIC_POOL)
+
+
 def pvp_armor_ability_bonus(key: str | None, level: int = 1) -> float:
     """معادل ارزش دفاعی قابلیت زره ویژه در پی‌وی/جنگ کارتل."""
+    if key == "mimic":
+        key = roll_mimic_armor()
     ability = (config.ARMORS.get(key) or {}).get("ability") if key else None
     if not ability:
         return 0.0

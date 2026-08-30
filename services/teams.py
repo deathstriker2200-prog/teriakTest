@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 import config
 from models import GameMeta, Team, TeamDaily, TeamMember, TeamRequest, User
-from utils import fa_num, iran_day_start_utc, iran_today, iran_week_key, iran_week_start_utc, money, normalize_fa, now_utc
+from utils import fa_dur, fa_num, iran_day_start_utc, iran_today, iran_week_key, iran_week_start_utc, money, normalize_fa, now_utc
 
 # ───────── سشن‌های کنده‌کاری کارتلی (درون حافظه، با ری‌استارت پاک میشن) ─────────
 # team_id → {chat_id, message_id, members(set of user_id), needed, member_count, expires_at}
@@ -155,8 +155,30 @@ async def member_count(session: AsyncSession, team_id: int) -> int:
 
 # ───────── ساخت و عضویت و ترک ─────────
 
+def cartel_cooldown_left(user: User) -> int:
+    until = getattr(user, "cartel_cooldown_until", None)
+    if not until:
+        return 0
+    return max(0, int((until - now_utc()).total_seconds()))
+
+
+def cartel_cooldown_text(user: User) -> str:
+    left = cartel_cooldown_left(user)
+    reason = getattr(user, "cartel_cooldown_reason", None)
+    why = "ترک کارتل" if reason in ("leave", "disband") else "اخراج از کارتل"
+    return f"⏳ بعد {why} باید {fa_dur(left)} صبر کنی تا دوباره کارتل بسازی یا عضو بشی"
+
+
+def set_cartel_cooldown(user: User, reason: str) -> None:
+    seconds = config.TEAM_KICK_COOLDOWN_SECONDS if reason == "kick" else config.TEAM_LEAVE_COOLDOWN_SECONDS
+    user.cartel_cooldown_until = now_utc() + timedelta(seconds=seconds)
+    user.cartel_cooldown_reason = reason
+
+
 async def can_create_team(session: AsyncSession, user: User) -> tuple[bool, str]:
     """چک‌های قبل از پرسیدن اسم کارتل"""
+    if cartel_cooldown_left(user):
+        return False, cartel_cooldown_text(user)
     if user.level < config.TEAM_CREATE_MIN_LEVEL:
         return False, f"🔒 ساخت کارتل لول {fa_num(config.TEAM_CREATE_MIN_LEVEL)} می‌خواد"
     if await get_membership(session, user.id):
@@ -199,6 +221,8 @@ async def create_team(session: AsyncSession, user: User, name: str) -> tuple[boo
     await session.flush()
     session.add(TeamMember(team_id=team.id, user_id=user.id, role="owner", join_medals=user.medals or 0))
     user.cartel_joined_at = now_utc()
+    user.cartel_cooldown_until = None
+    user.cartel_cooldown_reason = None
     return True, display
 
 
@@ -222,6 +246,8 @@ def can_kick(me: TeamMember, target: TeamMember) -> tuple[bool, str]:
 
 async def request_join(session: AsyncSession, user: User, name: str) -> tuple[bool, str]:
     """«جوین کارتل X» عضویت مستقیم نیس، فقط درخواست ثبت میشه تا مدیران تصمیم بگیرن"""
+    if cartel_cooldown_left(user):
+        return False, cartel_cooldown_text(user)
     if user.level < config.TEAM_JOIN_MIN_LEVEL:
         return False, f"🔒 عضویت تو کارتل لول {fa_num(config.TEAM_JOIN_MIN_LEVEL)} می‌خواد"
     if await get_membership(session, user.id):
@@ -287,7 +313,10 @@ async def find_request_by_query(session: AsyncSession, team_id: int, query: str)
 
 
 async def accept_request(session: AsyncSession, req: TeamRequest, target: User) -> tuple[bool, str]:
-    """قبول درخواست: ظرفیت و تک‌کارتلی بودن دوباره چک میشه و عضو عادی میشه"""
+    """قبول درخواست: ظرفیت، کولدان و تک‌کارتلی بودن دوباره چک میشه."""
+    if cartel_cooldown_left(target):
+        await session.delete(req)
+        return False, cartel_cooldown_text(target)
     if await get_membership(session, target.id):
         await session.delete(req)
         return False, "👤 طرف الان تو کارتل دیگه‌ای عضو شد، درخواستش پاک شد"
@@ -297,7 +326,9 @@ async def accept_request(session: AsyncSession, req: TeamRequest, target: User) 
         await session.delete(req)
         return False, "🏴 کارتل پر شده بود، درخواست پاک شد"
     session.add(TeamMember(team_id=req.team_id, user_id=target.id, role="member", join_medals=target.medals or 0))
-    target.cartel_joined_at = now_utc()  # Cartel War (راند ۳۹): مبنای گیت ۲۴ ساعته شرکت‌پذیری وار
+    target.cartel_joined_at = now_utc()  # مبنای گیت ۲۴ ساعته شرکت‌پذیری وار
+    target.cartel_cooldown_until = None
+    target.cartel_cooldown_reason = None
     await session.delete(req)
     return True, ""
 
@@ -363,6 +394,38 @@ async def toggle_admin(session: AsyncSession, owner_user: User, query: str) -> t
     return True, "", target, True
 
 
+async def transfer_ownership(session: AsyncSession, owner_user: User, member_id: int) -> tuple[bool, str, User | None]:
+    """انتقال اتمیک مالکیت به یکی از اعضای همان کارتل؛ مالک قبلی مدیر می‌شود."""
+    me = await get_membership(session, owner_user.id)
+    if not me or me.role != "owner":
+        return False, "👑 فقط رهبر می‌تونه مالکیت رو منتقل کنه", None
+    team = await session.get(Team, me.team_id)
+    if team is None:
+        return False, "🤷 کارتلی پیدا نشد", None
+    if team.pending_war_id:
+        from models import CartelWar
+        war = await session.get(CartelWar, team.pending_war_id)
+        if war and war.status in ("pending", "scheduled", "active"):
+            return False, "⚔️ تا جنگ فعلی تموم نشه نمی‌تونی مالکیت رو منتقل کنی", None
+        team.pending_war_id = None
+    target_m = await session.get(TeamMember, int(member_id))
+    if not target_m or target_m.team_id != team.id:
+        return False, "🤷 این عضو دیگه تو کارتل تو نیست", None
+    if target_m.user_id == owner_user.id or target_m.role == "owner":
+        return False, "😅 مالکیت همین الان دست خودته", None
+    target = await session.get(User, target_m.user_id)
+    if target is None:
+        return False, "🤷 حساب عضو پیدا نشد", None
+
+    # صفی که رهبر قبلی ساخته دیگر معتبر نیست؛ مالک جدید خودش می‌تواند دوباره استارت بزند.
+    from models import CartelWarQueue
+    await session.execute(delete(CartelWarQueue).where(CartelWarQueue.team_id == team.id))
+    me.role = "admin"
+    target_m.role = "owner"
+    team.owner_id = target.id
+    return True, team.name, target
+
+
 async def leave_team(session: AsyncSession, user: User) -> tuple[bool, str]:
     """عضو عادی خارج میشه، رهبر نمی‌تونه بره مگر کارتل رو منحل کنه"""
     m = await get_membership(session, user.id)
@@ -372,6 +435,7 @@ async def leave_team(session: AsyncSession, user: User) -> tuple[bool, str]:
         return False, "👑 تو رهبری، یا کارتل رو با «انحلال کارتل» منحل کن یا اول جانشین بذار ندارم 😅"
     team = await session.get(Team, m.team_id)
     name = team.name if team else "؟"
+    set_cartel_cooldown(user, "leave")
     await session.delete(m)
     return True, name
 
@@ -385,7 +449,10 @@ async def disband_team(session: AsyncSession, user: User) -> tuple[bool, str]:
     if not team:
         return False, "🤷 کارتلی نیس که"
     name = team.name
+    set_cartel_cooldown(user, "disband")
     TEAM_MINE_SESSIONS.pop(team.id, None)
+    from models import CartelWarQueue
+    await session.execute(delete(CartelWarQueue).where(CartelWarQueue.team_id == team.id))
     await session.execute(delete(TeamRequest).where(TeamRequest.team_id == team.id))  # درخواست‌های معلق هم پاک میشن
     await session.delete(team)  # memberها با cascade پاک میشن
     return True, name

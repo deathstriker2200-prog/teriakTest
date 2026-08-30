@@ -1,14 +1,14 @@
 """سرویس کاربر: ثبت‌نام | انرژی | آیتم | لول‌آپ | مدال‌ها 🎖️"""
 
-from datetime import timedelta
+import random
 
-from sqlalchemy import case, func, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import config
 from models import InventoryItem, Plot, User
 from services.economy import xp_need
-from utils import esc, fa_num, iran_today, iran_week_key, money, now_utc
+from utils import esc, fa_num, iran_today, iran_week_key, now_utc
 
 
 async def get_or_create(session: AsyncSession, tg_user) -> tuple[User, bool]:
@@ -54,7 +54,7 @@ async def wipe_account(session: AsyncSession, user: User) -> None:
     """
     from sqlalchemy import delete as sql_delete
 
-    from models import Dog, LabMaterial, LabProduct, LabWorker, SeedStock, TeamDaily, TeamMember, TeamRequest, Team
+    from models import CartelWarQueue, Dog, LabMaterial, LabProduct, LabWorker, SeedStock, TeamDaily, TeamRequest, Team
 
     # کارتل: رهبره → انحلال کامل | عضو ساده → حذف عضویت
     from services import teams as team_svc
@@ -63,6 +63,7 @@ async def wipe_account(session: AsyncSession, user: User) -> None:
         team = await session.get(Team, m.team_id)
         if m.role == "owner" and team:
             team_svc.TEAM_MINE_SESSIONS.pop(team.id, None)
+            await session.execute(sql_delete(CartelWarQueue).where(CartelWarQueue.team_id == team.id))
             await session.execute(sql_delete(TeamRequest).where(TeamRequest.team_id == team.id))
             await session.execute(sql_delete(TeamDaily).where(TeamDaily.team_id == team.id))
             await session.delete(team)  # memberها با cascade پاک میشن
@@ -112,6 +113,9 @@ async def wipe_account(session: AsyncSession, user: User) -> None:
     user.equipped_weapon = user.equipped_armor = None
     user.poison_until = None
     user.suppressed_until = None
+    user.liar_until = None
+    user.cartel_cooldown_until = None
+    user.cartel_cooldown_reason = None
 
     from services import battle as battle_svc
     # بعد ریست هم زمین هدیه نمیشه، مثل ثبت‌نام تازه خودش رایگان می‌خره
@@ -169,7 +173,9 @@ def display_name(user: User) -> str:
 
 def title_of(user: User) -> tuple[str, str]:
     """(ایموجی, اسم) لقب کاربر بر اساس لولش، بالاترین ردیافی که لول >= حداقلشه
-    لقب موقت «چاپلوس» (لو دادن، راند ۲۲؛ راند ۳۵ رینیم از خایه‌مال) تا وقتی فعاله جای لقب عادی رو می‌گیره"""
+    لقب‌های موقت «دروغگو» و «چاپلوس» تا وقتی فعال‌اند جای لقب عادی را می‌گیرند."""
+    if getattr(user, "liar_until", None) and user.liar_until > now_utc():
+        return "🤥", "دروغگو"
     if getattr(user, "khaye_until", None) and user.khaye_until > now_utc():
         return "🐀", "چاپلوس"
     emoji, name = "", ""
@@ -253,10 +259,118 @@ async def get_item_keys(session: AsyncSession, user_id: int) -> list[str]:
     return list((await session.execute(q)).scalars())
 
 
-async def get_item_levels(session: AsyncSession, user_id: int) -> dict[str, int]:
-    """کلید آیتم → لول ارتقاش (سلاح/زره)، پیش‌فرض ۱"""
+async def get_item_levels(session: AsyncSession, user_id: int, *, include_broken: bool = False) -> dict[str, int]:
+    """کلید آیتم → لول ارتقا؛ زره شکسته در محاسبات نبرد حذف می‌شود ولی برای UI قابل درخواست است."""
     q = select(InventoryItem.item_key, InventoryItem.level).where(InventoryItem.user_id == user_id)
+    if not include_broken:
+        armor_keys = tuple(config.ARMORS)
+        q = q.where(or_(
+            InventoryItem.item_key.not_in(armor_keys),
+            InventoryItem.durability.is_(None),
+            InventoryItem.durability > 0,
+        ))
     return {k: lv or 1 for k, lv in (await session.execute(q)).all()}
+
+
+def armor_max_durability(key: str, level: int = 1) -> int:
+    """سقف HP زره با رشد ۱۰٪ در هر لول ارتقا."""
+    base = int((config.ARMORS.get(key) or {}).get("durability", 0))
+    lv = max(1, int(level or 1))
+    return max(0, round(base * (1 + config.ARMOR_DURABILITY_LEVEL_BONUS * (lv - 1))))
+
+
+def armor_current_durability(key: str, level: int, stored: int | None) -> int:
+    """زره قدیمی با مقدار NULL سالم و پر است."""
+    maximum = armor_max_durability(key, level)
+    if stored is None:
+        return maximum
+    return min(maximum, max(0, int(stored)))
+
+
+async def get_inventory_item(session: AsyncSession, user_id: int, key: str) -> InventoryItem | None:
+    return (await session.execute(select(InventoryItem).where(
+        InventoryItem.user_id == user_id,
+        InventoryItem.item_key == key,
+    ))).scalar_one_or_none()
+
+
+async def get_armor_durability_map(session: AsyncSession, user_id: int) -> dict[str, tuple[int, int]]:
+    """کلید زره → (HP فعلی، HP سقف)."""
+    rows = list((await session.execute(select(InventoryItem).where(
+        InventoryItem.user_id == user_id,
+        InventoryItem.item_key.in_(tuple(config.ARMORS)),
+    ))).scalars())
+    return {
+        row.item_key: (
+            armor_current_durability(row.item_key, row.level or 1, row.durability),
+            armor_max_durability(row.item_key, row.level or 1),
+        )
+        for row in rows
+    }
+
+
+def armor_repair_cost(key: str, level: int, current: int | None) -> int:
+    """هزینه تعمیر کامل، متناسب با درصد خرابی و نوع زره."""
+    item = config.ARMORS.get(key)
+    maximum = armor_max_durability(key, level)
+    if not item or maximum <= 0:
+        return 0
+    cur = armor_current_durability(key, level, current)
+    missing = max(0, maximum - cur)
+    if missing <= 0:
+        return 0
+    if key == "mimic":
+        rate = config.ARMOR_REPAIR_MIMIC_RATE
+    elif item.get("sec", "normal") == "special":
+        rate = config.ARMOR_REPAIR_SPECIAL_RATE
+    else:
+        rate = config.ARMOR_REPAIR_NORMAL_RATE
+    full_cost = max(config.ARMOR_REPAIR_MIN_COST, round(int(item["price"]) * rate))
+    return max(config.ARMOR_REPAIR_MIN_COST, round(full_cost * missing / maximum))
+
+
+async def damage_armor(session: AsyncSession, user: User, key: str | None,
+                       *, loss: int | None = None) -> dict | None:
+    """استهلاک محدود ۱ تا ۳ واحدی برای زرهی که واقعاً در یک برخورد استفاده شده است."""
+    if not key or key not in config.ARMORS:
+        return None
+    row = await get_inventory_item(session, user.id, key)
+    if row is None:
+        return None
+    maximum = armor_max_durability(key, row.level or 1)
+    current = armor_current_durability(key, row.level or 1, row.durability)
+    if current <= 0:
+        return {"key": key, "loss": 0, "current": 0, "maximum": maximum, "broken": True}
+    if loss is None:
+        loss = random.choices(config.ARMOR_WEAR_VALUES, weights=config.ARMOR_WEAR_WEIGHTS, k=1)[0]
+    actual = min(current, max(1, int(loss)))
+    row.durability = current - actual
+    broken = row.durability <= 0
+    if broken:
+        user.equipped_armor = ""  # خودکار از تن درمی‌آید و فالبک، زره دیگری را بی‌اجازه جایش نمی‌پوشاند
+    return {"key": key, "loss": actual, "current": row.durability, "maximum": maximum, "broken": broken}
+
+
+async def repair_armor(session: AsyncSession, user: User, key: str) -> dict:
+    """تعمیر کامل و اتمیک زره؛ خروجی status/cost/current/maximum."""
+    row = (await session.execute(
+        select(InventoryItem).where(
+            InventoryItem.user_id == user.id,
+            InventoryItem.item_key == key,
+        ).with_for_update()
+    )).scalar_one_or_none()
+    if row is None or key not in config.ARMORS:
+        return {"status": "missing"}
+    maximum = armor_max_durability(key, row.level or 1)
+    current = armor_current_durability(key, row.level or 1, row.durability)
+    cost = armor_repair_cost(key, row.level or 1, row.durability)
+    if current >= maximum or cost <= 0:
+        return {"status": "full", "current": maximum, "maximum": maximum, "cost": 0}
+    if int(user.cash or 0) < cost:
+        return {"status": "broke", "current": current, "maximum": maximum, "cost": cost}
+    user.cash -= cost
+    row.durability = maximum
+    return {"status": "ok", "current": maximum, "maximum": maximum, "cost": cost}
 
 
 # ───────── مهمات 🔫 (راند ۲۹، درخواست کارفرما) ─────────

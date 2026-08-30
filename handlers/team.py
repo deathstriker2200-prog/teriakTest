@@ -24,7 +24,7 @@ from handlers.common import chat_id_of, has_prefix, parts, respond, strip_bot_cm
 from keyboards import keyboards as kb
 from models import Team, TeamMember, TeamRequest, User
 from services import combat, dogs as dog_svc, teams, users
-from utils import bar, esc, fa_dur, fa_num, jalali_str, money, money_tp, parse_amount
+from utils import esc, fa_dur, fa_num, jalali_str, money, money_tp, parse_amount
 
 
 # ───────── متن‌ها ─────────
@@ -507,7 +507,7 @@ async def leave_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     if role == "owner":
         return await respond(
             update,
-            "<b>👑 تو رهبر کارتلی</b>\n\nنمی‌تونی بری، باید کارتل رو منحل کنی\nاگه تصمیمت قطعیه «انحلال کارتل» رو بزن",
+            "<b>👑 تو رهبر کارتلی</b>\n\nاول از بخش مدیریت، مالکیت رو به یکی از اعضا منتقل کن؛ بعدش می‌تونی بدون منحل‌کردن کارتل خارج شی.",
         )
 
     text = (
@@ -552,7 +552,8 @@ async def team_confirm_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         user, _ = await users.get_or_create(s, update.effective_user)
         if action == "leave":
             ok, res = await teams.leave_team(s, user)
-            msg = f"🚪 از کارتل «{res}» خارج شدی" if ok else res
+            msg = (f"🚪 از کارتل «{res}» خارج شدی\n"
+                   f"⏳ تا {fa_dur(config.TEAM_LEAVE_COOLDOWN_SECONDS)} نمی‌تونی کارتل بسازی یا عضو بشی") if ok else res
         elif action == "rename":
             new_name = (context.user_data or {}).pop("pending_team_rename", None)
             if new_name is None:
@@ -988,11 +989,86 @@ async def render_manage(update: Update, alert: str | None = None) -> None:
         f"<b>👑 مدیریت کارتل «{esc(team.name)}»</b>\n\n"
         f"📨 {fa_num(n)} درخواست عضویت تو صفه"
     )
-    await respond(update, text, kb.team_manage_kb(), alert=alert)
+    await respond(update, text, kb.team_manage_kb(m.role == "owner"), alert=alert)
 
 
 async def team_manage_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await render_manage(update)
+
+
+async def team_owner_pick_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """لیست اعضای قابل انتخاب برای انتقال مالکیت."""
+    async with session_scope() as s:
+        user, _ = await users.get_or_create(s, update.effective_user)
+        me = await teams.get_membership(s, user.id)
+        if not me or me.role != "owner":
+            await s.commit()
+            return await render_manage(update, alert="👑 انتقال مالکیت فقط دست رهبره")
+        team = await s.get(Team, me.team_id)
+        members = await teams.get_members(s, me.team_id)
+        choices = []
+        for member in members:
+            if member.user_id == user.id:
+                continue
+            target = await s.get(User, member.user_id)
+            if target:
+                choices.append((member.id, users.display_name(target)))
+        await s.commit()
+    if not choices:
+        return await render_manage(update, alert="👤 هنوز عضوی نداری که مالکیت رو بهش بدی")
+    await respond(
+        update,
+        f"<b>👑 انتقال مالکیت «{esc(team.name)}»</b>\n\n"
+        "مالک جدید رو انتخاب کن. بعد انتقال، خودت مدیر می‌شی و اگر خواستی می‌تونی از کارتل خارج شی.",
+        kb.team_owner_pick_kb(choices),
+    )
+
+
+async def team_owner_ask_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    member_id = int(parts(update)[2])
+    async with session_scope() as s:
+        user, _ = await users.get_or_create(s, update.effective_user)
+        me = await teams.get_membership(s, user.id)
+        target_m = await s.get(TeamMember, member_id)
+        valid = bool(me and me.role == "owner" and target_m and target_m.team_id == me.team_id
+                     and target_m.user_id != user.id)
+        target = await s.get(User, target_m.user_id) if valid else None
+        team = await s.get(Team, me.team_id) if me else None
+        await s.commit()
+    if not valid or target is None or team is None:
+        return await render_manage(update, alert="❌ این انتخاب دیگه معتبر نیست")
+    await respond(
+        update,
+        f"<b>⚠️ انتقال مالکیت کارتل</b>\n\n"
+        f"🏴 کارتل: «{esc(team.name)}»\n"
+        f"👑 مالک جدید: {esc(users.display_name(target))}\n\n"
+        "بعد تأیید، اون رهبر می‌شه و خودت مدیر می‌شی. مطمئنی؟",
+        kb.team_owner_confirm_kb(member_id, update.effective_user.id),
+    )
+
+
+async def team_owner_execute_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    pz = parts(update)
+    member_id, owner_tg = int(pz[2]), int(pz[3])
+    if update.effective_user.id != owner_tg:
+        return await update.callback_query.answer()
+    async with session_scope() as s:
+        user, _ = await users.get_or_create(s, update.effective_user)
+        ok, result, target = await teams.transfer_ownership(s, user, member_id)
+        target_tg = target.telegram_id if target else None
+        target_name = users.display_name(target) if target else "؟"
+        await s.commit()
+    if not ok:
+        return await render_manage(update, alert=result)
+    await _dm(
+        context, target_tg,
+        f"<b>👑 مالکیت کارتل «{esc(result)}» به تو منتقل شد</b>\n\nاز الان رهبر جدید کارتلی.",
+    )
+    await respond(
+        update,
+        f"<b>✅ مالکیت منتقل شد</b>\n\n👑 {esc(target_name)} رهبر جدید شد و خودت مدیر کارتل شدی.",
+        kb.team_back_kb(),
+    )
 
 
 async def render_requests(update: Update, alert: str | None = None) -> None:
@@ -1216,11 +1292,17 @@ async def team_kick_execute(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         target_tg = target.telegram_id if target else None
         name = esc(users.display_name(target)) if target else "؟"
         tname = esc(team.name)
+        if target is not None:
+            teams.set_cartel_cooldown(target, "kick")
         await s.delete(mrow)
         await s.commit()
 
-    await _dm(context, target_tg, f"<b>👢 از کارتل «{tname}» اخراج شدی</b>")
-    await render_manage(update, alert=f"👢 «{name}» از کارتل اخراج شد")
+    await _dm(
+        context, target_tg,
+        f"<b>👢 از کارتل «{tname}» اخراج شدی</b>\n\n"
+        f"⏳ تا {fa_dur(config.TEAM_KICK_COOLDOWN_SECONDS)} نمی‌تونی عضو کارتل دیگه‌ای بشی",
+    )
+    await render_manage(update, alert=f"👢 «{name}» اخراج شد؛ محدودیت {fa_dur(config.TEAM_KICK_COOLDOWN_SECONDS)} فعال شد")
 
 
 async def team_kick_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

@@ -23,7 +23,7 @@ from models import User
 from services import actionlog, combat, economy
 from services import dogs as dog_svc
 from services import users as user_svc
-from utils import now_utc
+from utils import fa_num, now_utc
 
 
 # ───────── مصونیت قربانی 🛡 ─────────
@@ -147,8 +147,10 @@ async def total_powers(session: AsyncSession, attacker: User, target: User) -> t
     _night = now_iran().hour >= config.SHADOW_NIGHT_FROM or now_iran().hour < config.SHADOW_NIGHT_TO
     a_wkey = combat.weapon_choice(attacker, a_items, a_ammo)
     t_akey = combat.armor_choice(target, t_items)
+    mimic_source = combat.roll_mimic_armor() if t_akey == "mimic" else None
+    armor_effect_key = mimic_source or t_akey
     a_gear = combat.pvp_weapon_ability_bonus(a_wkey, a_items.get(a_wkey, 1) if a_wkey else 1, _night)
-    t_gear = combat.pvp_armor_ability_bonus(t_akey, t_items.get(t_akey, 1) if t_akey else 1)
+    t_gear = combat.pvp_armor_ability_bonus(armor_effect_key, t_items.get(t_akey, 1) if t_akey else 1)
 
     # راند ۳۸: قدرت رقابتی = (حمله مهاجم - دفاع هدف) / ۴؛ قابلیت فعال هم روی نقش خودش سوار می‌شود.
     a_raw = (a_atk0 - t_def0) * (1 + a_ap + watk + a_gear)
@@ -172,6 +174,7 @@ async def total_powers(session: AsyncSession, attacker: User, target: User) -> t
         "t_atk0": t_atk0, "t_def0": t_def0, "weather": wkey,
         "a_display": a_display, "t_display": t_display,
         "weapon_ability_bonus": a_gear, "armor_ability_bonus": t_gear,
+        "target_armor_key": t_akey, "mimic_armor_key": mimic_source,
     }
 
 
@@ -304,6 +307,17 @@ async def execute(session: AsyncSession, attacker: User, victim: User) -> dict:
 
     # debuffهای واقعی تفنگ در پی‌وی هم اعمال می‌شوند؛ بقیه قابلیت‌های راندی با ارزش انتظاری در total_powers حساب شده‌اند.
     ability_notes: list[str] = []
+    mimic_key = _info.get("mimic_armor_key")
+    if mimic_key:
+        ability_notes.append(f"🎭 هزارچهره این بار قدرت {config.ARMORS[mimic_key]['name']} رو گرفت")
+    wear = await user_svc.damage_armor(session, victim, _info.get("target_armor_key"))
+    if wear and wear["loss"]:
+        ability_notes.append(
+            f"🛡 دوام زره حریف {fa_num(wear['loss'])} تا کم شد؛ "
+            f"{fa_num(wear['current'])}/{fa_num(wear['maximum'])}"
+        )
+        if wear["broken"]:
+            ability_notes.append("💔 زره حریف شکست و خودکار از تنش دراومد")
     wabil = (config.WEAPONS.get(w_try) or {}).get("ability") if w_try else None
     wlvl = a_lvls2.get(w_try, 1) if w_try else 1
     if wabil and wabil.get("kind") == "poison" and random.random() < economy.gear_ability_value(wabil, "chance", wlvl):

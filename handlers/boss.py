@@ -125,7 +125,15 @@ async def boss_hit_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         armor_def = combat.armor_defense(user, items)
 
         ammo_note = ""
+        armor_note = ""
         res = await boss_svc.attack(s, chat_id, user, atk, armor_def=armor_def)
+        if res.get("status") in ("hit", "killed") and int(res.get("taken", 0)) > 0:
+            akey = combat.armor_choice(user, items)
+            wear = await users.damage_armor(s, user, akey)
+            if wear and wear["loss"]:
+                armor_note = f" | 🛡 {fa_num(wear['current'])}/{fa_num(wear['maximum'])}"
+                if wear["broken"]:
+                    armor_note += " 💔"
         if res.get("status") in ("hit", "killed") and wkey:
             left_ammo = await users.consume_ammo(s, user.id, wkey)
             if left_ammo >= 0:
@@ -140,7 +148,7 @@ async def boss_hit_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         return
 
     await query.answer(
-        f"⚔️ {fa_num(res['dmg'])} دمیج | 💰 {fa_num(res['cash'])}TP | 🩸 {fa_num(res['taken'])} خون رفت{ammo_note}",
+        f"⚔️ {fa_num(res['dmg'])} دمیج | 💰 {fa_num(res['cash'])}TP | 🩸 {fa_num(res['taken'])} خون رفت{ammo_note}{armor_note}",
         show_alert=True,
     )
 

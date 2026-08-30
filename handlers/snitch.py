@@ -105,6 +105,15 @@ async def snitch_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
     async with session_scope() as s:
         me, _ = await users.get_or_create(s, update.effective_user)
+        if int(me.level or 1) < config.SNITCH_MIN_LEVEL:
+            level_now = int(me.level or 1)
+            await s.commit()
+            return await respond(
+                update,
+                f"🔒 <b>لو دادن هنوز برات قفله</b>\n\n"
+                f"باید حداقل لول {fa_num(config.SNITCH_MIN_LEVEL)} باشی؛ الان لول {fa_num(level_now)}ی\n"
+                "این محدودیت نمی‌ذاره اکانت فیک پلیس‌بازی دربیاره 😏",
+            )
         tg_target, err = await _resolve_target(update, context, s)
         if err:
             return await respond(update, err)
@@ -129,12 +138,17 @@ async def snitch_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     src_men = f'<a href="tg://user?id={src_tg}">{esc(src_name)}</a>'
     tgt_men = f'<a href="tg://user?id={tgt_tg}">{esc(tgt_name)}</a>'
 
+    if res["status"] == "level":
+        return await respond(update, f"🔒 لو دادن از لول {fa_num(config.SNITCH_MIN_LEVEL)} باز میشه")
     if res["status"] == "empty":
         await respond(
             update,
-            f"🚔 پلیس رفت سراغ انبار {tgt_men} ولی محصولی پیدا نکرد، دست خالی برگشت\n\n"
-            f"لو دادنت سوخت، {fa_dur(config.SNITCH_COOLDOWN_SECONDS)} دیگه می‌تونی یکی دیگه رو لو بدی\n"
-            "ولی همین تلاشم تو شمارش هفتگی لقب چاپلوس حسابه",
+            f"🚔 پلیس رفت سراغ انبار {tgt_men} ولی هیچی پیدا نکرد\n\n"
+            f"🤥 گزارش دروغ از آب دراومد و این بار خود {src_men} دستگیر شد!\n"
+            f"⛓ زندان: {fa_num(res['jail_minutes'])} دقیقه\n"
+            f"🏷 لقب «دروغگو»: {fa_num(res['liar_hours'])} ساعت\n"
+            f"📉 فروش محصولات: {fa_num(int(res['sell_malus'] * 100))}% کمتر\n\n"
+            f"⏳ لو دادنت هم سوخت؛ {fa_dur(config.SNITCH_COOLDOWN_SECONDS)} دیگه می‌تونی دوباره گزارش بدی",
         )
     elif res["status"] == "hidden":
         await respond(

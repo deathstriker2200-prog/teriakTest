@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import config
 from models import InventoryItem, User
 from services import dogs as dog_svc
-from services import economy, users
+from services import users
 from services.farming import add_seed_stock
 from utils import fa_num, money
 
@@ -187,10 +187,13 @@ async def purchase(
 
     if kind in ("weap", "arm"):
         ammo = None
+        durability = None
         if kind == "weap":
-            from services import combat as _cbt  # تفنگ تازه خشابش پره (راند ۲۹)
+            from services import combat as _cbt  # تفنگ تازه خشابش پره
             ammo = _cbt.ammo_cap(key, 1) if _cbt.is_gun(key) else None
-        session.add(InventoryItem(user_id=user.id, item_key=key, ammo=ammo))
+        else:
+            durability = int(item.get("durability", 0)) or None
+        session.add(InventoryItem(user_id=user.id, item_key=key, ammo=ammo, durability=durability))
     elif kind == "arti":
         session.add(InventoryItem(user_id=user.id, item_key=f"arti_{key}"))
     elif kind == "seed":

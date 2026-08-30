@@ -441,7 +441,8 @@ def skills_kb(user: User) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(rows)
 
 
-def gear_kb(user: User, owned_lvls: dict[str, int], tab: str = "weap") -> InlineKeyboardMarkup:
+def gear_kb(user: User, owned_lvls: dict[str, int], tab: str = "weap",
+            durability: dict[str, tuple[int, int]] | None = None) -> InlineKeyboardMarkup:
     """کیبورد بخش تجهیزات: تب سلاح/زره + کارت هر آیتم (gear:it) + دست خالی + آپگرید"""
     is_w = tab == "weap"
     catalog = config.WEAPONS if is_w else config.ARMORS
@@ -455,10 +456,17 @@ def gear_kb(user: User, owned_lvls: dict[str, int], tab: str = "weap") -> Inline
         item = catalog[key]
         lv = owned_lvls.get(key, 1)
         lvtxt = f" +{fa_num(lv - 1)}" if lv and lv > 1 else ""
-        if key == eq:
-            rows.append([_btn(f"✅ {item['name']}{lvtxt}", f"gear:it:{tab}:{key}", None)])
+        hp = ""
+        broken = False
+        if not is_w and durability and key in durability:
+            cur, maximum = durability[key]
+            broken = cur <= 0
+            hp = f" | {'💔' if broken else '❤️'} {fa_num(cur)}/{fa_num(maximum)}"
+        if key == eq and not broken:
+            rows.append([_btn(f"✅ {item['name']}{lvtxt}{hp}", f"gear:it:{tab}:{key}", None)])
         else:
-            rows.append([_btn(f"🖐 {item['name']}{lvtxt}", f"gear:it:{tab}:{key}", SUCCESS)])
+            icon = "💔" if broken else "🖐"
+            rows.append([_btn(f"{icon} {item['name']}{lvtxt}{hp}", f"gear:it:{tab}:{key}", DANGER if broken else SUCCESS)])
     if eq:
         rows.append([_btn(
             "👊 دست خالی" if is_w else "🦺 بدون زره",
@@ -469,13 +477,17 @@ def gear_kb(user: User, owned_lvls: dict[str, int], tab: str = "weap") -> Inline
 
 
 def gear_item_kb(tab: str, key: str, equipped: bool, is_gun: bool, can_reload: bool,
-                 lv: int = 1) -> InlineKeyboardMarkup:
-    """کارت یه آیتم تجهیزات: انتخاب/آپگرید همون آیتم/ریلود (راند ۳۰، درخواست کارفرما)"""
+                 lv: int = 1, *, can_repair: bool = False, broken: bool = False) -> InlineKeyboardMarkup:
+    """کارت تجهیز با انتخاب، ارتقا، ریلود و تعمیر زره."""
     rows: list[list[InlineKeyboardButton]] = []
-    if equipped:
+    if equipped and not broken:
         rows.append([_btn("✅ انتخاب شده", "noop:own", None)])
-    else:
+    elif not broken:
         rows.append([_btn("🖐 انتخاب", f"gear:eqs:{tab}:{key}", SUCCESS)])
+    else:
+        rows.append([_btn("💔 زره شکسته", "noop:broken", DANGER)])
+    if tab == "arm" and can_repair:
+        rows.append([_btn("🔧 تعمیر کامل", f"gear:rep:{key}", SUCCESS)])
     if lv < config.GEAR_UPG_MAX:
         rows.append([_btn(f"⬆️ آپگرید به لول {fa_num(lv + 1)}", f"gear:upgi:{tab}:{key}", PRIMARY)])
     else:
@@ -492,6 +504,13 @@ def gear_item_upg_kb(tab: str, key: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
         [_btn("✅ تایید", f"cf:gup:{kind}:{key}", SUCCESS)],
         [_btn("🔙 کارت آیتم", f"gear:it:{tab}:{key}", PRIMARY)],
+    ])
+
+
+def armor_repair_confirm_kb(key: str, tg_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [_btn("✅ تعمیر کامل", f"gear:repdo:{key}:{tg_id}", SUCCESS)],
+        [_btn("❌ لغو", f"gear:it:arm:{key}", DANGER)],
     ])
 
 
@@ -850,6 +869,8 @@ def team_kb(is_owner: bool = False, is_manager: bool = False, has_active_war: bo
     ]
     if has_active_war:
         rows.append([_btn("⚔️ جنگ کارتل‌ها", "cw:panel", DANGER)])
+    elif is_owner:
+        rows.append([_btn("🎲 جنگ رندوم", "cw:match", DANGER)])
     rows.append([_btn("💬 چت کارتل", "tc:page", PRIMARY)])  # راند ۲۰
     if is_manager:
         rows.append([_btn("👑 مدیریت کارتل", "team:mng", PRIMARY)])
@@ -862,12 +883,28 @@ def team_kb(is_owner: bool = False, is_manager: bool = False, has_active_war: bo
     return InlineKeyboardMarkup(rows)
 
 
-def team_manage_kb() -> InlineKeyboardMarkup:
-    """صفحه 👑 مدیریت کارتل، فقط رهبر و مدیران"""
-    return InlineKeyboardMarkup([
+def team_manage_kb(is_owner: bool = False) -> InlineKeyboardMarkup:
+    """صفحه مدیریت؛ انتقال مالکیت فقط برای رهبر نمایش داده می‌شود."""
+    rows = [
         [_btn("📨 درخواست‌های عضویت", "team:req", PRIMARY)],
         [_btn("👢 اخراج عضو", "team:kick", DANGER)],
-        [_btn("🔙 کارتل من", "menu:team", PRIMARY)],
+    ]
+    if is_owner:
+        rows.append([_btn("👑 انتقال مالکیت", "team:owner", DANGER)])
+    rows.append([_btn("🔙 کارتل من", "menu:team", PRIMARY)])
+    return InlineKeyboardMarkup(rows)
+
+
+def team_owner_pick_kb(members: list[tuple[int, str]]) -> InlineKeyboardMarkup:
+    rows = [[_btn(f"👤 {short_name(name)}", f"town:ask:{mid}", PRIMARY)] for mid, name in members[:30]]
+    rows.append([_btn("🔙 مدیریت", "team:mng", PRIMARY)])
+    return InlineKeyboardMarkup(rows)
+
+
+def team_owner_confirm_kb(member_id: int, tg_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [_btn("✅ انتقال قطعی", f"town:do:{member_id}:{tg_id}", DANGER)],
+        [_btn("❌ انصراف", "team:owner", PRIMARY)],
     ])
 
 
@@ -1672,6 +1709,17 @@ def team_chat_kb() -> InlineKeyboardMarkup:
 # cw:hitu:<user_id>         → ⚔️ تایید حمله به هدف قفل‌شده‌ی همین دور (بدون قابلیت تغییر هدف)
 # cw:stats                  → 📊 آمار جنگ فعلی
 # cw:board                  → 🏆 جدول نبرد (لیدربرد کارتل‌ها بر اساس تروفی)
+
+
+def cartel_war_matchmaking_kb(queued: bool) -> InlineKeyboardMarkup:
+    rows = []
+    if queued:
+        rows.append([_btn("❌ خروج از صف", "cw:qcancel", DANGER)])
+        rows.append([_btn("🔄 جست‌وجوی دوباره", "cw:qjoin", SUCCESS)])
+    else:
+        rows.append([_btn("🎲 ورود به صف جنگ", "cw:qjoin", DANGER)])
+    rows.append([_btn("🔙 کارتل من", "menu:team", PRIMARY)])
+    return InlineKeyboardMarkup(rows)
 
 
 def cartel_war_request_confirm_kb(team_id: int) -> InlineKeyboardMarkup:

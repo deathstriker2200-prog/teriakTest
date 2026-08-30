@@ -28,7 +28,7 @@ TKI = "(?:کارتلی?|تیمی?)"  # صفت با ی اختیاری: «کوئس
 # ترتیب مهمه: الگوهای اختصاصی بالاترن (مثلا «تریاکی کارتل بانک» قبل از «تریاکی کارتل [اسم]»)
 # فرمت: (اسم، الگو، هندلر)، تست‌ها روی همین جدول پترن‌ها رو چک می‌کنن
 TEXT_HANDLERS: list[tuple[str, str, object]] = [
-    ("team_mine", rf"{TP}کنده{S}*کاری{S}*" + TKI + rf"!?$|{TP}استخراج{S}*" + TKI + rf"!?$", team.team_mine_text),
+    ("team_mine", rf"{TP}کنده{S}*کاری{S}*" + TKI + rf"!?$|{TP}استخراج{S}*" + TKI + r"!?$", team.team_mine_text),
     ("mine_upg", rf"{TP}آپگرید{S}+کنده{S}*کاری!?$|{TP}کنده{S}*کاری{S}+آپگرید!?$|{TP}ابزار{S}*کنده{S}*کاری!?$", mine.mine_tools_cb),  # ارتقای ابزار، صفحه وضعیت ابزار
     ("mine", rf"^کنده[\s‌]*کاری!?$|{T}کنده{S}*کاری!?$", mine.mine_cmd),  # با و بدون پیشوند
     ("shop", rf"{TP}شاپ!?$|{TP}فروشگاه!?$", textcmd.shop_text),  # با و بدون پیشوند
@@ -57,19 +57,19 @@ TEXT_HANDLERS: list[tuple[str, str, object]] = [
     ("daily_alias", rf"{T}دیلی!?$", dquests.daily_quests_cb),  # راند ۳۵ (درخواست کارفرما): «تریاکی دیلی» صفحه ماموریت‌های روزانه
     ("plot_buy", rf"{T}ساخت{S}+زمین!?$|{T}خرید{S}+زمین!?$", farm.buy_plot_text),  # راند ۳۵: «تریاکی ساخت زمین» کارت تایید خرید
     # ── کارتل ──
-    ("team_war", rf"{TP}" + TK + rf"{S}+وار{S}+(.+)$", cartelwar.cartel_war_start_text),  # «کارتل وار [نام]»، باید قبل از الگوی عمومی team بیاد
+    ("team_war", rf"{TP}" + TK + rf"{S}+وار(?:{S}+.*)?$", cartelwar.cartel_war_start_text),  # وار مستقیم حذف؛ دستور وارد صف رندوم می‌شود
     ("team_bld", rf"{TP}" + TK + rf"{S}+ساختمان(?:{S}*ها)?!?$|{TP}" + TK + rf"{S}+ساخت!?$", team.buildings_text),
     ("team_profile", rf"{TP}" + TK + rf"{S}+پروفایل!?$", team.team_profile_text),
     ("roster", rf"{TP}" + TK + rf"{S}+عضویت!?$", team.roster_text),
     ("team_top", rf"{TP}" + TK + rf"{S}+لیدربرد!?$|{TP}" + TK + rf"{S}+لیدر{S}*برد!?$", team.top_teams_text),
-    ("team_quests", rf"{TP}" + TK + rf"{S}+(?:کوئست|چالش)!?$|{TP}کوئست{S}*" + TKI + rf"?!?$", team.quests_text),
+    ("team_quests", rf"{TP}" + TK + rf"{S}+(?:کوئست|چالش)!?$|{TP}کوئست{S}*" + TKI + r"?!?$", team.quests_text),
     ("team_bank", rf"{TP}" + TK + rf"{S}+بانک!?$", team.team_bank_text),
     ("team_dep", rf"{TP}" + TK + rf"{S}+واریز(?:{S}+(.+))?!?$", team.team_deposit_text),
     ("team_up", rf"{TP}" + TK + rf"{S}+ارتقا{S}+(?:حمله|دفاع)!?$", team.team_upgrade_text),
-    ("team_create", rf"{TP}ساخت{S}+" + TK + rf"!?$", team.create_team_text),
+    ("team_create", rf"{TP}ساخت{S}+" + TK + r"!?$", team.create_team_text),
     ("team_join", rf"{TP}(?:جوین{S}+" + TK + rf"|{TK}{S}+جوین){S}+(.+)$", team.join_team_text),  # راند ۲۷: «کارتل جوین X» هم جوابه
-    ("team_leave", rf"{TP}ترک{S}+" + TK + rf"!?$", team.leave_confirm),
-    ("team_disband", rf"{TP}انحلال{S}+" + TK + rf"!?$", team.disband_confirm),
+    ("team_leave", rf"{TP}ترک{S}+" + TK + r"!?$", team.leave_confirm),
+    ("team_disband", rf"{TP}انحلال{S}+" + TK + r"!?$", team.disband_confirm),
     ("team_bio", rf"{TP}" + TK + rf"{S}+ست{S}+بیو{S}+(.+)$", team.set_bio_text),
     ("team_hide", rf"{TP}" + TK + rf"{S}+مخفی(?:{S}+(.+))?!?$", team.hide_team_text),
     ("team_rename", rf"{TP}" + TK + rf"{S}+تغییر{S}+نام{S}+(.+)$", team.rename_text),
@@ -266,6 +266,8 @@ def register_handlers(app: Application) -> None:
     # راند ۲۹: کارت آیتم + انتخاب از کارت + ریلود مهمات با تاییدیه
     app.add_handler(CallbackQueryHandler(gear.gear_item_cb, pattern=r"^gear:it:(?:weap|arm):\w+$"))
     app.add_handler(CallbackQueryHandler(gear.gear_equip_card_cb, pattern=r"^gear:eqs:(?:weap|arm):\w+$"))
+    app.add_handler(CallbackQueryHandler(gear.gear_repair_cb, pattern=r"^gear:rep:\w+$"))
+    app.add_handler(CallbackQueryHandler(gear.gear_repair_do_cb, pattern=r"^gear:repdo:\w+:\d+$"))
     app.add_handler(CallbackQueryHandler(gear.gear_reload_cb, pattern=r"^gear:rel:\w+$"))
     app.add_handler(CallbackQueryHandler(gear.gear_reload_do_cb, pattern=r"^gear:reldo:\w+:\d+$"))
     app.add_handler(CallbackQueryHandler(gear.gear_reload_cancel_cb, pattern=r"^gear:relcl:\w+$"))
@@ -356,6 +358,9 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CallbackQueryHandler(team.team_confirm_cb, pattern=r"^tmcf:(?:leave|disband|rename):\d+$"))
     app.add_handler(CallbackQueryHandler(team.team_create_cb, pattern=r"^teamcf:(?:ok|no):\d+$"))
     app.add_handler(CallbackQueryHandler(team.team_manage_cb, pattern=r"^team:mng$"))
+    app.add_handler(CallbackQueryHandler(team.team_owner_pick_cb, pattern=r"^team:owner$"))
+    app.add_handler(CallbackQueryHandler(team.team_owner_ask_cb, pattern=r"^town:ask:\d+$"))
+    app.add_handler(CallbackQueryHandler(team.team_owner_execute_cb, pattern=r"^town:do:\d+:\d+$"))
     app.add_handler(CallbackQueryHandler(team.team_requests_cb, pattern=r"^team:req$"))
     app.add_handler(CallbackQueryHandler(team.team_request_resolve_cb, pattern=r"^treq:(?:ok|no):\d+:\d+$"))
     app.add_handler(CallbackQueryHandler(team.team_join_request_cb, pattern=r"^tjr:(?:ok|no):\d+$"))  # دی‌ام درخواست به رهبر (راند ۲۷)
@@ -370,6 +375,10 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CallbackQueryHandler(team.team_upgrade_execute, pattern=r"^tbcf:(?:atk|def):\d+$"))
 
     # ── جنگ کارتل‌ها ⚔️🏴 (دکمه‌ها) ──
+    app.add_handler(CallbackQueryHandler(cartelwar.war_matchmaking_cb, pattern=r"^cw:match$"))
+    app.add_handler(CallbackQueryHandler(cartelwar.war_queue_join_cb, pattern=r"^cw:qjoin$"))
+    app.add_handler(CallbackQueryHandler(cartelwar.war_queue_cancel_cb, pattern=r"^cw:qcancel$"))
+    # قبول/رد فقط برای درخواست‌های pending قدیمی نگه داشته شده
     app.add_handler(CallbackQueryHandler(cartelwar.war_accept_cb, pattern=r"^cw:accept:\d+$"))
     app.add_handler(CallbackQueryHandler(cartelwar.war_reject_cb, pattern=r"^cw:reject:\d+$"))
     app.add_handler(CallbackQueryHandler(cartelwar.war_panel_cb, pattern=r"^cw:panel$"))

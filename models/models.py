@@ -76,7 +76,10 @@ class User(Base):
     last_snitch_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)   # آخرین لو دادن، کولدان ۱ ساعته
     snitch_count: Mapped[int] = mapped_column(Integer, default=0)                      # لو دادن‌های موفق تو پنجره هفته
     snitch_window_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True) # شروع پنجره هفتگی شمارش
-    khaye_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)      # تا این وقت لقب «خایه‌مال» داره
+    khaye_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)      # تا این وقت لقب «چاپلوس» داره
+    liar_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)       # تا این وقت لقب «دروغگو» و افت فروش دارد
+    cartel_cooldown_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)  # مهلت منع ساخت/عضویت دوباره
+    cartel_cooldown_reason: Mapped[str | None] = mapped_column(String(12), nullable=True)     # leave / kick / disband
     jailed_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)     # تا این وقت زندانیه و هیچ دستوری نمی‌تونه بزنه
     gems: Mapped[int] = mapped_column(Integer, default=0)                              # 💎 جم، فقط از باس به‌دست میاد
     boss_fragments: Mapped[int] = mapped_column(Integer, default=0)                    # 🔹 فرگمنت باس، برای تجهیزات آخر بازی
@@ -219,8 +222,10 @@ class InventoryItem(Base):
     item_key: Mapped[str] = mapped_column(String(32))
     # لول ارتقای سلاح/زره (۱ تا GEAR_UPG_MAX) — آرتیفکت‌ها همیشه ۱
     level: Mapped[int] = mapped_column(Integer, default=1)
-    # 🔫 مهمات باقی‌مونده سلاح گرم (راند ۲۹)؛ None یعنی پر (=ظرفیت)، سلاح سرد همیشه None
+    # 🔫 مهمات باقی‌مونده سلاح گرم؛ None یعنی پر (=ظرفیت)، سلاح سرد همیشه None
     ammo: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
+    # 🛡 HP فعلی زره؛ None برای زره قدیمی یعنی سالم و پر، صفر یعنی شکسته
+    durability: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
     bought_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
 
     user: Mapped[User] = relationship(back_populates="items")
@@ -756,6 +761,17 @@ class GambleMatchRound(Base):
     status: Mapped[str] = mapped_column(String(16), default="rolling", index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class CartelWarQueue(Base):
+    """صف پایدار جنگ رندوم؛ هر کارتل هم‌زمان فقط یک جای صف دارد."""
+    __tablename__ = "cartel_war_queue"
+    __table_args__ = (UniqueConstraint("team_id", name="uq_cartel_war_queue_team"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    team_id: Mapped[int] = mapped_column(ForeignKey("teams.id"), index=True)
+    leader_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    joined_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc, index=True)
 
 
 class CartelWar(Base):

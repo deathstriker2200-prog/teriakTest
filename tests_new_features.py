@@ -81,8 +81,8 @@ def test_config_and_source() -> None:
     guns = {k: v for k, v in config.WEAPONS.items() if v.get("gun")}
     check("همه تفنگ‌ها قابلیت معنی‌دار دارند", bool(guns) and all(v.get("ability", {}).get("kind") for v in guns.values()))
     specials = {k: v for k, v in config.ARMORS.items() if v.get("sec") == "special"}
-    check("هر هشت زره ویژه قابلیت مستقل دارند",
-          len(specials) == 8 and len({v["ability"]["kind"] for v in specials.values()}) == 8)
+    check("هر نه زره ویژه، شامل هزارچهره، قابلیت مستقل دارند",
+          len(specials) == 9 and len({v["ability"]["kind"] for v in specials.values()}) == 9)
 
     ratios = config.GEAR_UPG_TP_STEPS
     check("چهار آپگرید مجموعاً دقیقاً ۳.۵ برابر قیمت خرید است", abs(sum(ratios) - 3.5) < 1e-9)

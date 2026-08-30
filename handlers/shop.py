@@ -333,7 +333,7 @@ async def _section_text(session, user, kind: str) -> str:
     if kind in ("wup", "aup"):
         gkind = "weap" if kind == "wup" else "arm"
         lvls = {
-            k: v for k, v in (await users.get_item_levels(session, user.id)).items()
+            k: v for k, v in (await users.get_item_levels(session, user.id, include_broken=True)).items()
             if k in economy.gear_catalog(gkind)
         }
         return _gear_up_text(gkind, lvls, user)
@@ -396,7 +396,7 @@ async def render_section(update: Update, kind: str, alert: str | None = None) ->
         elif kind in ("wup", "aup"):
             gkind = "weap" if kind == "wup" else "arm"
             lvls = {
-                k: v for k, v in (await users.get_item_levels(s, user.id)).items()
+                k: v for k, v in (await users.get_item_levels(s, user.id, include_broken=True)).items()
                 if k in economy.gear_catalog(gkind)
             }
             markup = kb.gear_up_kb(gkind, lvls, user)
@@ -677,7 +677,7 @@ async def gear_up_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
-        lv = (await users.get_item_levels(s, user.id)).get(key)
+        lv = (await users.get_item_levels(s, user.id, include_broken=True)).get(key)
         await s.commit()
 
     if lv is None:
@@ -732,7 +732,13 @@ async def gear_up_execute(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             else:
                 user.cash -= tp
                 user.iron -= iron
+                old_level = row.level
+                old_max_hp = users.armor_max_durability(key, old_level) if kind == "arm" else 0
+                old_hp = users.armor_current_durability(key, old_level, row.durability) if kind == "arm" else 0
                 row.level += 1
+                if kind == "arm":
+                    new_max_hp = users.armor_max_durability(key, row.level)
+                    row.durability = min(new_max_hp, old_hp + max(0, new_max_hp - old_max_hp))
                 item = economy.gear_catalog(kind)[key]
                 alert = f"⬆️ {item['name']} رفت رو لول {fa_num(row.level)}"
                 # راند ۳۰ (باگ گزارش‌شده کارفرما): با آپگرید تفنگ خشاب تا ظرفیت جدید شارژ میشه

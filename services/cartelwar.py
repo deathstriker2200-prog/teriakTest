@@ -1,12 +1,11 @@
 """
 جنگ کارتل‌ها ⚔️🏴 — جنگ کارتل به کارتل با حمله‌های پیاپی اعضا
 
-جریان: pending (رهبر هدف پاسخ میده، مهلت CARTEL_WAR_REQUEST_TIMEOUT_SECONDS) → scheduled (پذیرفته، CARTEL_WAR_PREP_SECONDS آماده‌سازی)
-       → active (CARTEL_WAR_DURATION_SECONDS، اعضا حمله می‌کنن) → finished (برنده با War XP بیشتر مشخص میشه)
-       رد یا بی‌پاسخی: rejected / expired
+جریان جدید: صف داوطلبانه دو رهبر → مچ تصادفی → scheduled (بدون قبول/رد) → active → finished.
+وضعیت pending و قبول/رد فقط برای درخواست‌های قدیمیِ ساخته‌شده پیش از این تغییر نگه داشته شده‌اند.
 
-قوانین کلیدی (درخواست کارفرما):
-- فقط رهبر (owner) کارتل می‌تونه وار بفرسته یا قبول/رد کنه
+قوانین کلیدی:
+- فقط رهبر (owner) می‌تواند کارتل را وارد صف یا از آن خارج کند
 - هر کارتل هر روز حداکثر CARTEL_WAR_DAILY_LIMIT تا وار قبول‌شده/انجام‌شده (pending_war_id قفلش می‌کنه)
 - پیش‌نیاز ورود به جنگ (هم مهاجم هم مدافع): لول کارتل ≥ CARTEL_WAR_MIN_TEAM_LEVEL و سابقه ≥ CARTEL_WAR_MIN_TEAM_AGE_DAYS روز از تأسیس
 - حمله وار کاملاً جدا از پی‌وی عادیه: بدون سپر | بدون انتقام | بدون زندان | بدون جاسوسی | کولدان شخصی مستقل
@@ -22,11 +21,11 @@ import logging
 import random
 from datetime import timedelta
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import config
-from models import CartelWar, Team, TeamMember, User, WarAttackCooldown, WarAttackLog
+from models import CartelWar, CartelWarQueue, Team, TeamMember, User, WarAttackCooldown, WarAttackLog
 from services import economy, pvattack
 from services import combat as combat_svc
 from services import teams as team_svc
@@ -108,6 +107,79 @@ async def can_start_war(session: AsyncSession, attacker_team: Team) -> tuple[boo
     return True, ""
 
 
+async def random_queue_row(session: AsyncSession, team_id: int) -> CartelWarQueue | None:
+    return (await session.execute(select(CartelWarQueue).where(
+        CartelWarQueue.team_id == team_id
+    ))).scalar_one_or_none()
+
+
+async def leave_random_queue(session: AsyncSession, team_id: int) -> bool:
+    result = await session.execute(delete(CartelWarQueue).where(CartelWarQueue.team_id == team_id))
+    return bool(result.rowcount)
+
+
+async def join_random_queue(session: AsyncSession, leader: User, team: Team) -> dict:
+    """ورود به صف داوطلبانه و مچ تصادفی دو کارتل آماده؛ پس از مچ قبول/رد وجود ندارد."""
+    ok, error = await can_start_war(session, team)
+    if not ok:
+        await leave_random_queue(session, team.id)
+        return {"status": "blocked", "message": error}
+
+    mine = await random_queue_row(session, team.id)
+    if mine is None:
+        mine = CartelWarQueue(team_id=team.id, leader_id=leader.id)
+        session.add(mine)
+        await session.flush()
+
+    queued = list((await session.execute(
+        select(CartelWarQueue).where(CartelWarQueue.team_id != team.id).with_for_update()
+    )).scalars())
+    candidates: list[tuple[CartelWarQueue, Team, int]] = []
+    stale_ids: list[int] = []
+    my_members = await team_svc.member_count(session, team.id)
+    for row in queued:
+        other = await session.get(Team, row.team_id)
+        if other is None or other.owner_id != row.leader_id:
+            stale_ids.append(row.id)
+            continue
+        other_ok, _ = await can_start_war(session, other)
+        if not other_ok:
+            stale_ids.append(row.id)
+            continue
+        candidates.append((row, other, await team_svc.member_count(session, other.id)))
+    if stale_ids:
+        await session.execute(delete(CartelWarQueue).where(CartelWarQueue.id.in_(stale_ids)))
+
+    if not candidates:
+        return {"status": "queued", "queue_id": mine.id}
+
+    # اولویت با لول نزدیک و اختلاف حداکثر پنج عضو است؛ داخل گروه مناسب انتخاب تصادفی می‌ماند.
+    close = [pair for pair in candidates
+             if abs((pair[1].level or 1) - (team.level or 1)) <= 3
+             and abs(pair[2] - my_members) <= 5]
+    level_close = [pair for pair in candidates if abs((pair[1].level or 1) - (team.level or 1)) <= 3]
+    pool = close or level_close or candidates
+    other_row, other, _ = random.choice(pool)
+
+    now = now_utc()
+    war = CartelWar(
+        attacker_cartel_id=team.id,
+        defender_cartel_id=other.id,
+        attacker_leader_id=leader.id,
+        defender_leader_id=other.owner_id,
+        status="pending",
+        expires_at=now + timedelta(seconds=config.CARTEL_WAR_PREP_SECONDS),
+    )
+    session.add(war)
+    await session.flush()
+    team.pending_war_id = war.id
+    other.pending_war_id = war.id
+    await accept_war(session, war)  # مستقیم scheduled؛ مرحله قبول/رد حذف شده
+    await session.delete(mine)
+    await session.delete(other_row)
+    return {"status": "matched", "war": war, "attacker": team, "defender": other}
+
+
 async def start_war(session: AsyncSession, attacker_user: User, attacker_team: Team,
                      defender_team: Team) -> tuple[bool, str, CartelWar | None]:
     """ساخت درخواست وار جدید (وضعیت pending)، خروجی: (موفق, پیام خطا/موفقیت, شیء وار)"""
@@ -167,6 +239,8 @@ async def accept_war(session: AsyncSession, war: CartelWar) -> None:
     for team_id in (war.attacker_cartel_id, war.defender_cartel_id):
         team = await session.get(Team, team_id)
         if team:
+            if team.war_day != today:
+                team.daily_war_count = 0
             team.war_day = today
             team.daily_war_count = (team.daily_war_count or 0) + 1
 
@@ -393,11 +467,20 @@ async def attack(session: AsyncSession, attacker: User, war: CartelWar) -> dict:
         return {"ok": False, "message": "😅 هدف خودت شدی، یکی دیگه رو انتخاب کن"}
 
     # همون قاعده‌ی حمله پی‌وی: «قدرت کل» رقابتی، رول شانسی فقط تو بازه نزدیک، بدون سپر و بدون جاسوسی
-    a_total, t_total, _ = await pvattack.total_powers(session, attacker, target)
+    a_total, t_total, battle_info = await pvattack.total_powers(session, attacker, target)
     success = pvattack.decide_win(a_total, t_total)
 
-    # تفنگ این حمله یک تیر مصرف می‌کند؛ سم/سرکوب هم مثل پی‌وی عادی روی بازیکن واقعی می‌ماند.
+    # تفنگ این حمله یک تیر مصرف می‌کند؛ سم/سرکوب و استهلاک زره روی بازیکن واقعی می‌مانند.
     ability_note = ""
+    mimic_key = battle_info.get("mimic_armor_key")
+    if mimic_key:
+        ability_note += f"\n🎭 هزارچهره قدرت {config.ARMORS[mimic_key]['name']} رو گرفت"
+    wear = await user_svc.damage_armor(session, target, battle_info.get("target_armor_key"))
+    if wear and wear["loss"]:
+        ability_note += (f"\n🛡 دوام زره هدف {fa_num(wear['loss'])} تا کم شد؛ "
+                         f"{fa_num(wear['current'])}/{fa_num(wear['maximum'])}")
+        if wear["broken"]:
+            ability_note += "\n💔 زره هدف شکست و از تنش دراومد"
     a_levels = await user_svc.get_item_levels(session, attacker.id)
     a_ammo = await user_svc.get_ammo_map(session, attacker.id)
     wkey = combat_svc.weapon_choice(attacker, a_levels, a_ammo)
@@ -407,10 +490,10 @@ async def attack(session: AsyncSession, attacker: User, war: CartelWar) -> dict:
     wlvl = a_levels.get(wkey, 1) if wkey else 1
     if wabil and wabil.get("kind") == "poison" and random.random() < economy.gear_ability_value(wabil, "chance", wlvl):
         target.poison_until = now_utc() + timedelta(seconds=int(wabil.get("seconds", 600)))
-        ability_note = "\n💀 قابلیت تفنگ: حریف مسموم شد"
+        ability_note += "\n💀 قابلیت تفنگ: حریف مسموم شد"
     elif wabil and wabil.get("kind") == "suppress" and random.random() < economy.gear_ability_value(wabil, "chance", wlvl):
         target.suppressed_until = now_utc() + timedelta(seconds=int(wabil.get("seconds", 300)))
-        ability_note = "\n🔻 قابلیت تفنگ: حمله حریف 5 دقیقه سرکوب شد"
+        ability_note += "\n🔻 قابلیت تفنگ: حمله حریف 5 دقیقه سرکوب شد"
 
     medals_gain = config.CARTEL_WAR_HIT_MEDALS if success else config.CARTEL_WAR_MISS_MEDALS
     tp_gain = config.CARTEL_WAR_HIT_TP if success else 0

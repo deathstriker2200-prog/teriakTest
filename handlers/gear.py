@@ -25,10 +25,11 @@ def _wname(key: str | None) -> str:
     return w["name"] if w.get("gun") else f"🔪 {w['name']}"
 
 
-def _gear_text(user, lvls: dict, tab: str, atk: int, dfn: int, ammo: dict | None = None) -> str:
-    """متن صفحه تجهیزات: استت فعلی + تجهیزشده‌ها + قابلیت سلاح ویژه اگه داره"""
-    wkey = combat.weapon_choice(user, lvls, ammo)
-    akey = combat.armor_choice(user, lvls)
+def _gear_text(user, lvls: dict, active_lvls: dict, tab: str, atk: int, dfn: int,
+               ammo: dict | None = None, durability: dict | None = None) -> str:
+    """متن صفحه تجهیزات: آیتم‌های شکسته در فهرست می‌مانند ولی وارد قدرت نبرد نمی‌شوند."""
+    wkey = combat.weapon_choice(user, active_lvls, ammo)
+    akey = combat.armor_choice(user, active_lvls)
     wname = _wname(wkey)
     aname = config.ARMORS[akey]["name"] if akey else "🦺 بدون زره"
     lines = [
@@ -49,6 +50,9 @@ def _gear_text(user, lvls: dict, tab: str, atk: int, dfn: int, ammo: dict | None
         lines.append("با ارتقای سلاح درصد قابلیت بیشتر میشه")
         lines.append("")
     lines.append(f"🦺 زره فعال: {esc(aname)}")
+    if akey and durability and akey in durability:
+        cur, maximum = durability[akey]
+        lines.append(f"❤️ دوام زره: {fa_num(cur)}/{fa_num(maximum)}")
     lines.append("")
     lines.append("🔽 روی هر آیتم بزن تا کارتش باز شه")
     if not any(k in (config.WEAPONS if tab == "weap" else config.ARMORS) for k in lvls):
@@ -59,12 +63,14 @@ def _gear_text(user, lvls: dict, tab: str, atk: int, dfn: int, ammo: dict | None
 async def render_gear(update: Update, tab: str = "weap", alert: str | None = None) -> None:
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
-        lvls = await users.get_item_levels(s, user.id)
+        lvls = await users.get_item_levels(s, user.id, include_broken=True)
+        active_lvls = await users.get_item_levels(s, user.id)
+        durability = await users.get_armor_durability_map(s, user.id)
         ammo = await users.get_ammo_map(s, user.id)
         dogs = await dog_svc.get_user_dogs(s, user.id)
-        atk, dfn = combat.combat_stats(user, lvls, dogs, ammo=ammo)
-        text = _gear_text(user, lvls, tab, atk, dfn, ammo)
-        markup = kb.gear_kb(user, lvls, tab)
+        atk, dfn = combat.combat_stats(user, active_lvls, dogs, ammo=ammo)
+        text = _gear_text(user, lvls, active_lvls, tab, atk, dfn, ammo, durability)
+        markup = kb.gear_kb(user, lvls, tab, durability)
         await s.commit()
     await respond(update, text, markup, alert=alert)
 
@@ -87,10 +93,15 @@ async def gear_equip_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         return await render_gear(update, tab)
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
-        lvls = await users.get_item_levels(s, user.id)
+        lvls = await users.get_item_levels(s, user.id, include_broken=True)
         if key not in lvls:
             await s.commit()
             return await render_gear(update, tab, alert="❌ اینو نداری")
+        if tab == "arm":
+            durability = await users.get_armor_durability_map(s, user.id)
+            if durability.get(key, (0, 0))[0] <= 0:
+                await s.commit()
+                return await render_gear(update, tab, alert="💔 این زره شکسته؛ اول تعمیرش کن")
         if tab == "weap":
             user.equipped_weapon = key
         else:
@@ -107,7 +118,7 @@ async def gear_unequip_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         if tab == "weap":
             user.equipped_weapon = None
         else:
-            user.equipped_armor = None
+            user.equipped_armor = ""
         await s.commit()
     alert = "👊 دست خالی شدی" if tab == "weap" else "🦺 زره رو درآوردی"
     await render_gear(update, tab, alert=alert)
@@ -123,7 +134,8 @@ async def gear_upg_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     await respond(update, text, kb.gear_upgrade_kb())
 
 
-def _gear_item_text(user, tab: str, key: str, lv: int, ammo_left: int | None) -> str | None:
+def _gear_item_text(user, tab: str, key: str, lv: int, ammo_left: int | None,
+                    durability: int | None = None) -> str | None:
     """متن کارت یه آیتم تجهیزات: مشخصات بالا، دکمه‌ها پایین (راند ۲۹، درخواست کارفرما)"""
     kind = "weap" if tab == "weap" else "arm"
     catalog = config.WEAPONS if kind == "weap" else config.ARMORS
@@ -143,6 +155,27 @@ def _gear_item_text(user, tab: str, key: str, lv: int, ammo_left: int | None) ->
         cur, _ = economy.gear_ability_change_text(abil, lv)
         if cur is not None:
             lines.append(f"📈 مقدار اصلی قابلیت در این لول: {fa_num(cur)}٪")
+    if kind == "arm":
+        maximum = users.armor_max_durability(key, lv)
+        current = users.armor_current_durability(key, lv, durability)
+        ratio = current / maximum if maximum else 0
+        filled = min(10, max(0, round(ratio * 10)))
+        meter = "█" * filled + "░" * (10 - filled)
+        if current <= 0:
+            status = "💔 شکسته؛ تا تعمیر هیچ دفاعی نمی‌ده"
+        elif ratio <= 0.25:
+            status = "🛠 نیازمند تعمیر"
+        elif ratio < 0.75:
+            status = "🟠 آسیب‌دیده"
+        else:
+            status = "🟢 سالم"
+        repair = users.armor_repair_cost(key, lv, durability)
+        lines += [
+            "",
+            f"❤️ دوام: <code>{meter}</code> {fa_num(current)}/{fa_num(maximum)}",
+            f"📋 وضعیت: {status}",
+            f"🔧 تعمیر کامل: {money(repair) if repair else 'لازم نیست'}",
+        ]
     if combat.is_gun(key):
         cap = combat.ammo_cap(key, lv)
         left = cap if ammo_left is None else ammo_left
@@ -155,21 +188,30 @@ async def render_gear_item(update: Update, tab: str, key: str, alert: str | None
     """کارت آیتم رو رندر می‌کنه (از دکمه gear:it یا برگشت از ریلود)"""
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
-        lvls = await users.get_item_levels(s, user.id)
+        lvls = await users.get_item_levels(s, user.id, include_broken=True)
         if key not in lvls:
             await s.commit()
             return await render_gear(update, tab, alert="❌ اینو نداری")
-        ammo_left = await users.get_ammo(s, user.id, key)
+        row = await users.get_inventory_item(s, user.id, key)
+        ammo_left = row.ammo if row else None
+        durability = row.durability if row else None
         await s.commit()
     eq = user.equipped_weapon if tab == "weap" else user.equipped_armor
-    text = _gear_item_text(user, tab, key, lvls.get(key, 1), ammo_left)
+    text = _gear_item_text(user, tab, key, lvls.get(key, 1), ammo_left, durability)
     if text is None:
         return await render_gear(update, tab)
     gun = combat.is_gun(key)
     lv_it = lvls.get(key, 1) or 1
     cap = combat.ammo_cap(key, lv_it) if gun else 0
     can_reload = gun and (cap if ammo_left is None else ammo_left) < cap
-    await respond(update, text, kb.gear_item_kb(tab, key, eq == key, gun, can_reload, lv_it), alert=alert)
+    can_repair = tab == "arm" and users.armor_repair_cost(key, lv_it, durability) > 0
+    broken = tab == "arm" and users.armor_current_durability(key, lv_it, durability) <= 0
+    await respond(
+        update, text,
+        kb.gear_item_kb(tab, key, eq == key, gun, can_reload, lv_it,
+                        can_repair=can_repair, broken=broken),
+        alert=alert,
+    )
 
 
 async def gear_item_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -177,6 +219,57 @@ async def gear_item_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     _, _, tab, key = parts(update)
     await update.callback_query.answer()
     await render_gear_item(update, tab, key)
+
+
+async def gear_repair_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """فاکتور تعمیر کامل یک زره."""
+    key = parts(update)[2]
+    item = config.ARMORS.get(key)
+    if item is None:
+        return await render_gear(update, "arm", alert="❌ زره پیدا نشد")
+    async with session_scope() as s:
+        user, _ = await users.get_or_create(s, update.effective_user)
+        row = await users.get_inventory_item(s, user.id, key)
+        if row is None:
+            await s.commit()
+            return await render_gear(update, "arm", alert="❌ این زره رو نداری")
+        level = row.level or 1
+        current = users.armor_current_durability(key, level, row.durability)
+        maximum = users.armor_max_durability(key, level)
+        cost = users.armor_repair_cost(key, level, row.durability)
+        cash = user.cash
+        await s.commit()
+    if cost <= 0:
+        return await render_gear_item(update, "arm", key, alert="🟢 زره کاملاً سالمه")
+    await respond(
+        update,
+        f"<b>🔧 تعمیر {esc(item['name'])}</b>\n\n"
+        f"❤️ دوام: {fa_num(current)}/{fa_num(maximum)} ← {fa_num(maximum)}/{fa_num(maximum)}\n"
+        f"💸 هزینه تعمیر: {money(cost)}\n"
+        f"💵 موجودی: {money(cash)}\n\n"
+        "تعمیر کامل انجام بشه؟",
+        kb.armor_repair_confirm_kb(key, update.effective_user.id),
+    )
+
+
+async def gear_repair_do_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    pz = parts(update)
+    key, owner_tg = pz[2], int(pz[3])
+    if update.effective_user.id != owner_tg:
+        return await update.callback_query.answer()
+    async with session_scope() as s:
+        user, _ = await users.get_or_create(s, update.effective_user)
+        result = await users.repair_armor(s, user, key)
+        await s.commit()
+    if result["status"] == "ok":
+        alert = f"✅ زره کامل تعمیر شد | {money(result['cost'])}"
+    elif result["status"] == "broke":
+        alert = f"❌ {money(result['cost'])} لازم داری"
+    elif result["status"] == "full":
+        alert = "🟢 زره همین الان سالمه"
+    else:
+        alert = "❌ این زره رو نداری"
+    await render_gear_item(update, "arm", key, alert=alert)
 
 
 async def gear_equip_card_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -188,10 +281,15 @@ async def gear_equip_card_cb(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return await render_gear(update, tab)
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
-        lvls = await users.get_item_levels(s, user.id)
+        lvls = await users.get_item_levels(s, user.id, include_broken=True)
         if key not in lvls:
             await s.commit()
             return await render_gear(update, tab, alert="❌ اینو نداری")
+        if tab == "arm":
+            durability = await users.get_armor_durability_map(s, user.id)
+            if durability.get(key, (0, 0))[0] <= 0:
+                await s.commit()
+                return await render_gear(update, tab, alert="💔 این زره شکسته؛ اول تعمیرش کن")
         if tab == "weap":
             user.equipped_weapon = key
         else:
@@ -235,7 +333,7 @@ async def gear_reload_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
-        lv = (await users.get_item_levels(s, user.id)).get(key)
+        lv = (await users.get_item_levels(s, user.id, include_broken=True)).get(key)
         if lv is None:
             await s.commit()
             return await render_gear(update, "weap", alert="❌ اینو نداری")
@@ -263,7 +361,7 @@ async def gear_reload_do_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         return
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
-        lv = (await users.get_item_levels(s, user.id)).get(key)
+        lv = (await users.get_item_levels(s, user.id, include_broken=True)).get(key)
         if lv is None:
             await s.commit()
             return await render_gear(update, "weap", alert="❌ اینو نداری")
@@ -294,7 +392,7 @@ async def reload_text_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     """دستور «ریلود»: کارت تایید ریلود تفنگ فعال، اگه سرد بود قوی‌ترین تفنگ انبار"""
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
-        lvls = await users.get_item_levels(s, user.id)
+        lvls = await users.get_item_levels(s, user.id, include_broken=True)
         key = user.equipped_weapon
         if not key or not combat.is_gun(key):
             key = None
@@ -325,7 +423,7 @@ async def gear_item_upg_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         return await render_gear(update, tab)
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
-        lv = (await users.get_item_levels(s, user.id)).get(key)
+        lv = (await users.get_item_levels(s, user.id, include_broken=True)).get(key)
         cash = user.cash or 0
         iron = user.iron or 0
         await s.commit()

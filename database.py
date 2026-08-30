@@ -119,6 +119,9 @@ _NEW_COLUMNS = {
         ("snitch_count", "INTEGER NOT NULL DEFAULT 0"),
         ("snitch_window_at", "DATETIME"),
         ("khaye_until", "DATETIME"),
+        ("liar_until", "DATETIME"),
+        ("cartel_cooldown_until", "DATETIME"),
+        ("cartel_cooldown_reason", "VARCHAR(12)"),
         ("gems", "INTEGER NOT NULL DEFAULT 0"),
         ("caravan_level", "INTEGER NOT NULL DEFAULT 1"),
         ("jailed_until", "DATETIME"),
@@ -174,10 +177,11 @@ _NEW_COLUMNS = {
         ("msgs_hour", "INTEGER NOT NULL DEFAULT 0"),
         ("hour_key", "VARCHAR(16)"),
     ],
-                "inventory": [
-            ("level", "INTEGER NOT NULL DEFAULT 1"),
-            ("ammo", "INTEGER"),
-        ],
+    "inventory": [
+        ("level", "INTEGER NOT NULL DEFAULT 1"),
+        ("ammo", "INTEGER"),
+        ("durability", "INTEGER"),
+    ],
 "plots": [
         ("built_at", "DATETIME"),
     ],

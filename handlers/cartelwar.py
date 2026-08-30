@@ -1,9 +1,9 @@
 """
 جنگ کارتل‌ها ⚔️🏴 — هندلر
 
-دستور متنی: «کارتل وار [نام کارتل هدف]» — فقط رهبر کارتل، تو پی‌وی یا گروه کار می‌کنه
-درخواست به پی‌وی رهبر هدف میره (✅ قبول / ❌ رد)، پذیرش → config.CARTEL_WAR_PREP_SECONDS بعد فعال میشه
-پنل وار از داخل «کارتل من» با دکمه ⚔️ وار در دسترسه (فقط وقتی وضعیت active باشه)
+رهبر از «کارتل من» وارد صف داوطلبانه جنگ رندوم می‌شود.
+دو کارتل واجدشرایط شانسی مچ و بدون قبول/رد وارد آماده‌سازی می‌شوند؛ درخواست‌های pending قدیمی فقط برای سازگاری پشتیبانی می‌شوند.
+پنل نبرد از داخل «کارتل من» هنگام وضعیت active در دسترس است.
 """
 
 from telegram import Update
@@ -11,7 +11,7 @@ from telegram.ext import ContextTypes
 
 import config
 from database import session_scope
-from handlers.common import parts, respond, strip_bot_cmd
+from handlers.common import parts, respond
 from keyboards import keyboards as kb
 from models import CartelWar, Team, User
 from services import cartelwar as cw_svc
@@ -113,52 +113,96 @@ def _war_finished_text(data: dict) -> str:
     )
 
 
-# ───────── شروع وار: دستور متنی «کارتل وار [نام]» ─────────
+# ───────── صف جنگ رندوم ─────────
 
-async def cartel_war_start_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    raw_text = update.message.text or ""
-    txt = strip_bot_cmd(raw_text)
-    p = txt.split(None, 2)
-    target_name = p[2].strip() if len(p) > 2 else ""
-    if not target_name:
-        return await respond(update, _no_target_text())
-
+async def war_matchmaking_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     async with session_scope() as s:
         user, _ = await users.get_or_create(s, update.effective_user)
         membership = await team_svc.get_membership(s, user.id)
         if not membership or membership.role != "owner":
             await s.commit()
-            return await respond(update, "🚫 <b>اجازه نداری</b>\n\nفقط رهبر کارتل می‌تونه جنگ راه بندازه")
+            return await respond(update, "👑 فقط رهبر کارتل می‌تونه جنگ رندوم رو استارت کنه")
+        team = await team_svc.get_team_of(s, user.id)
+        queued = await cw_svc.random_queue_row(s, team.id) is not None
+        await s.commit()
+    state = "🟢 کارتلت تو صفه؛ می‌تونی دوباره جست‌وجو کنی یا از صف بیای بیرون." if queued else "هنوز وارد صف نشدی. حریف فقط بین کارتل‌های داوطلب و واجدشرایط شانسی انتخاب میشه."
+    await respond(
+        update,
+        f"<b>🎲 جنگ رندوم کارتل‌ها</b>\n\n{state}\n\n"
+        f"⭐ حداقل لول کارتل: {fa_num(config.CARTEL_WAR_MIN_TEAM_LEVEL)}\n"
+        f"⏳ بعد مچ، جنگ {fa_dur(config.CARTEL_WAR_PREP_SECONDS)} بعد خودکار شروع میشه و قبول/رد نداره.",
+        kb.cartel_war_matchmaking_kb(queued),
+    )
 
-        attacker_team = await team_svc.get_team_of(s, user.id)
-        defender_team = await team_svc.get_team_by_name(s, target_name)
-        if not defender_team:
+
+async def war_queue_join_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    async with session_scope() as s:
+        user, _ = await users.get_or_create(s, update.effective_user)
+        membership = await team_svc.get_membership(s, user.id)
+        if not membership or membership.role != "owner":
             await s.commit()
-            return await respond(update, _team_not_found_text(target_name))
-
-        ok, err, war = await cw_svc.start_war(s, user, attacker_team, defender_team)
-        if not ok:
-            await s.commit()
-            return await respond(update, err)
-
-        defender_leader = await s.get(User, defender_team.owner_id)
+            return await respond(update, "👑 فقط رهبر می‌تونه کارتل رو وارد صف کنه")
+        team = await team_svc.get_team_of(s, user.id)
+        result = await cw_svc.join_random_queue(s, user, team)
+        notify_users: list[int] = []
+        if result["status"] == "matched":
+            war = result["war"]
+            a_team, d_team = result["attacker"], result["defender"]
+            members_a = await team_svc.get_members(s, a_team.id)
+            members_d = await team_svc.get_members(s, d_team.id)
+            for member in members_a + members_d:
+                member_user = await s.get(User, member.user_id)
+                if member_user:
+                    notify_users.append(member_user.telegram_id)
+            starts_at = war.starts_at
         await s.commit()
 
-    await respond(update, _request_sent_text(defender_team.name))
+    if result["status"] == "blocked":
+        return await respond(update, result["message"], kb.cartel_war_matchmaking_kb(False))
+    if result["status"] == "queued":
+        return await respond(
+            update,
+            "<b>🔎 کارتلت وارد صف جنگ شد</b>\n\nفعلاً حریف آماده‌ای نیست؛ وقتی رهبر یک کارتل واجدشرایط وارد صف بشه، با جست‌وجوی دوباره مچ می‌شید.",
+            kb.cartel_war_matchmaking_kb(True),
+        )
 
-    if defender_leader:
+    clock = iran_clock_at(starts_at)
+    text = (
+        f"<b>⚔️ مچ رندوم پیدا شد</b>\n\n"
+        f"🏴 {esc(a_team.name)} VS 🏴 {esc(d_team.name)}\n"
+        f"⏳ شروع جنگ: ساعت {clock}\n\n"
+        "این مچ قبول/رد نداره؛ آماده نبرد بشید 🔥"
+    )
+    await respond(update, text)
+    for tg_id in set(notify_users):
         try:
-            await context.bot.send_message(
-                defender_leader.telegram_id,
-                _request_received_text(attacker_team.name),
-                parse_mode="HTML",
-                reply_markup=kb.cartel_war_response_kb(war.id),
-            )
+            await context.bot.send_message(tg_id, text, parse_mode="HTML")
         except Exception:
-            pass  # راند ۲۲: ربات نتونست پیام بده، جریان وار متوقف نمیشه (خودش با انقضا هندل میشه)
+            pass
 
 
-# ───────── پاسخ رهبر هدف ─────────
+async def war_queue_cancel_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    async with session_scope() as s:
+        user, _ = await users.get_or_create(s, update.effective_user)
+        membership = await team_svc.get_membership(s, user.id)
+        if not membership or membership.role != "owner":
+            await s.commit()
+            return await respond(update, "👑 فقط رهبر می‌تونه صف رو لغو کنه")
+        removed = await cw_svc.leave_random_queue(s, membership.team_id)
+        await s.commit()
+    await respond(
+        update,
+        "✅ از صف جنگ رندوم خارج شدید" if removed else "🤷 کارتلت تو صف نبود",
+        kb.cartel_war_matchmaking_kb(False),
+    )
+
+
+async def cartel_war_start_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """دستور قدیمی وار حالا به صف رندوم امن وصل است و نام حریف را قبول نمی‌کند."""
+    await war_queue_join_cb(update, context)
+
+
+# ───────── پاسخ رهبر هدف (فقط درخواست‌های قدیمیِ قبل از مهاجرت) ─────────
 
 async def war_accept_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     war_id = int(parts(update)[2])
@@ -209,7 +253,6 @@ async def war_reject_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             return await respond(update, "🚫 <b>دسترسی نداری</b>\n\nاین درخواست مال تو نیست")
 
         await cw_svc.reject_war(s, war)
-        a_team = await s.get(Team, war.attacker_cartel_id)
         attacker_leader = await s.get(User, war.attacker_leader_id)
         await s.commit()
 

@@ -295,6 +295,11 @@ async def execute_hit(session: AsyncSession, attacker: User, target: User) -> di
     aabil = (acfg19 or {}).get("ability")
     alvl19 = (t_levels19.get(akey19, 1) if akey19 else 1) or 1
     aname19 = (acfg19 or {}).get("name", "زره")
+    armor_contact = dmg > 0
+    if aabil and aabil.get("kind") == "mimic":
+        mimic_key = combat.roll_mimic_armor()
+        aabil = config.ARMORS[mimic_key].get("ability")
+        armor_lines.append(f"{aname19} این بار قدرت {config.ARMORS[mimic_key]['name']} رو گرفت")
 
     # جهان‌شکن و داوری ممکن است قابلیت زره را در همین ضربه خاموش کنند.
     bypass_armor = False
@@ -398,6 +403,16 @@ async def execute_hit(session: AsyncSession, attacker: User, target: User) -> di
             if dmg > cap_dmg:
                 dmg = cap_dmg
                 armor_lines.append(f"{aname19} دمیج رو روی {fa_num(cap_dmg)} سقف کرد")
+
+    if armor_contact and akey19 and not bypass_armor:
+        wear = await user_svc.damage_armor(session, target, akey19)
+        if wear and wear["loss"]:
+            armor_lines.append(
+                f"دوام {aname19} {fa_num(wear['loss'])} تا کم شد؛ "
+                f"{fa_num(wear['current'])}/{fa_num(wear['maximum'])}"
+            )
+            if wear["broken"]:
+                armor_lines.append(f"💔 {aname19} شکست و خودکار از تن دراومد")
 
     if dmg <= 0:
         return {"ok": True, "nodmg": True, "a_pow": atk, "d_pow": dfn, "info": info,
