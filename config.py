@@ -313,17 +313,19 @@ FACTORIES = {
 }
 
 # ───────── 🧪 آزمایشگاه: تولید محصول با کارگر + مواد اولیه (راند ۴۳، درخواست کارفرما) ─────────
-# باز شدن از لول بازیکن ۱۵، بدون هیچ پیش‌نیاز جانبی (ژنراتور و غیره) — همون داخل صفحه آزمایشگاه لول ۱ میشه
+# باز شدن ساخت لول ۱ از لول بازیکن ۱۵؛ هر لول هزینه سنگین پول، چوب و آهن دارد
 # لول‌آپ آزمایشگاه ۴ تا سقفه، هر لول کارگر بیشتر و محصول جدید باز می‌کنه، طبق جدول لول بازیکن زیر
 LAB_MIN_LEVEL = 15
 LAB_MAX_LEVEL = 4
 # لول بازیکن لازم برای رسیدن آزمایشگاه به لول ۲..۴ (اندیس ۰ = رفتن به لول ۲)
 LAB_UPGRADE_MIN_LEVELS = [20, 25, 30]
-# هزینه ارتقای آزمایشگاه به لول ۲..۴: (تی‌پوینت, {ماده اولیه: تعداد})؛ گرون و کند، محتوای پایان‌بازیه
+# هزینه نهایی ساخت/ارتقا: (تی‌پوینت، چوب، آهن).
+# این عددها عمداً از ضریب سختی سراسری پایین فایل عبور نمی‌کنند تا جدول تأییدشده دقیق بماند.
+LAB_BUILD_COST = (500000, 1180, 630)
 LAB_UPGRADE_COST = [
-    (400000, {"mat_a": 60, "mat_b": 40}),
-    (1200000, {"mat_b": 100, "mat_c": 60}),
-    (3000000, {"mat_c": 120, "mat_d": 80}),
+    (1500000, 1960, 1080),
+    (4000000, 3080, 2200),
+    (10000000, 3700, 3800),
 ]
 # تعداد اسلات کارگر همزمان به ازای لول آزمایشگاه (۱ تا ۴)
 LAB_WORKER_SLOTS = [1, 2, 3, 4]
@@ -340,13 +342,13 @@ LAB_MATERIALS = {
 LAB_MATERIAL_CAP_BY_LEVEL = [250, 500, 800, 1200]
 LAB_MATERIAL_CAP = LAB_MATERIAL_CAP_BY_LEVEL[-1]  # سقف نهایی؛ برای سازگاری کدهای قدیمی
 
-# 👷 کارگرها: هزینه استخدام دست‌نخورده، دستمزد هر دور تولید ۴ برابر شده
+# 👷 کارگرها: هر رده با لول خود آزمایشگاه باز می‌شود، نه لول مستقیم بازیکن.
 # speed_mult: زمان تولید ÷ این عدد (بیشتر = سریع‌تر) | yield_mult: خروجی هر بار × این عدد
 LAB_WORKERS = {
-    "basic":     {"name": "کارگر پایه",      "emoji": "👷",     "min_level": 15, "speed_mult": 1.00, "yield_mult": 1.00, "hire_cost": 50000,   "upkeep": 2000},
-    "skilled":   {"name": "کارگر ماهر",      "emoji": "🧑‍🔬", "min_level": 20, "speed_mult": 1.25, "yield_mult": 1.15, "hire_cost": 200000,  "upkeep": 6000},
-    "expert":    {"name": "متخصص",           "emoji": "🧪",     "min_level": 25, "speed_mult": 1.55, "yield_mult": 1.35, "hire_cost": 600000,  "upkeep": 16000},
-    "scientist": {"name": "دانشمند ارشد",    "emoji": "🧠",     "min_level": 30, "speed_mult": 2.00, "yield_mult": 1.60, "hire_cost": 1500000, "upkeep": 36000},
+    "basic":     {"name": "کارگر پایه",      "emoji": "👷",     "unlock_lab_level": 1, "speed_mult": 1.00, "yield_mult": 1.00, "hire_cost": 50000,   "upkeep": 2000},
+    "skilled":   {"name": "کارگر ماهر",      "emoji": "🧑‍🔬", "unlock_lab_level": 2, "speed_mult": 1.25, "yield_mult": 1.15, "hire_cost": 200000,  "upkeep": 6000},
+    "expert":    {"name": "متخصص",           "emoji": "🧪",     "unlock_lab_level": 3, "speed_mult": 1.55, "yield_mult": 1.35, "hire_cost": 600000,  "upkeep": 16000},
+    "scientist": {"name": "دانشمند ارشد",    "emoji": "🧠",     "unlock_lab_level": 4, "speed_mult": 2.00, "yield_mult": 1.60, "hire_cost": 1500000, "upkeep": 36000},
 }
 # ترتیب نمایش کارگرها تو صفحه (پایین‌ترین لول اول)
 LAB_WORKER_ORDER = ["basic", "skilled", "expert", "scientist"]
@@ -764,6 +766,8 @@ ARMORS = {
     "neutron": {"name": "☄️ زره نوترونی",   "price": 300000, "defense": 205, "min_level": 20, "sec": "special",
                 "desc": "چگالی بالا دمیج ورودی را خرد می‌کند",
                 "ability": {"kind": "reduce", "pct": 0.25}},
+    "demigod": {"name": "🪽 زره نیمه‌خدایان", "price": 400000, "defense": 220, "min_level": 20, "sec": "special",
+                "desc": "آخرین برکت آسمانی را یک‌بار برای نجات جانت آزاد می‌کند"},
     "dragonbone": {"name": "🐉 زره استخوان اژدها", "price": 600000, "defense": 240, "min_level": 22, "sec": "special", "desc": "زره سنگین ساخته‌شده از بقایای اژدها"},
     "quantum":    {"name": "💠 زره کوانتومی",      "price": 1000000, "defense": 275, "min_level": 24, "sec": "special", "desc": "لایه‌های کوانتومی ضربه را پخش می‌کنند"},
     "celestial":  {"name": "🌌 زره آسمانی",       "price": 1600000, "defense": 315, "min_level": 26, "sec": "special", "desc": "محافظ پیشرفته فرماندهان آسمانی"},
@@ -782,31 +786,35 @@ PLASMA_REFLECT = 0.20      # 🛡️ پلاسمایی: این درصد از دم
 VOID_CHANCE = 0.12         # 🌑 خلأ: شانس اینکه حمله حریف کاملاً بلعیده بشه و صفر دمیج (پایه)
 NEUTRON_CUT = 0.25         # ☄️ نواترون: کاهش همیشگی دمیج ورودی (پایه، ثابته شانس نداره)
 GODS_REVIVE_PCT = 0.50     # 👑 خدایان (راند ۲۳، درخواست کارفرما): ضربه‌ای که خونتو صفر می‌کنه، زره یه بار تو اون نبرد این‌قدر از خونت رو برمی‌گردونه
-# راند ۴۲ (درخواست کارفرما): تعداد بار فعال شدن زره خدایان تو یه زندگی، بر اساس لول ارتقای زره (۱ تا ۵)
-GODS_SHIELD_CHARGES_BY_LEVEL = {1: 1, 2: 1, 3: 2, 4: 2, 5: 3}
+# تعداد نجات در هر زندگی: نیمه‌خدایان همیشه یک بار؛ خدایان با ارتقا از دو تا چهار بار.
+DEMIGOD_SHIELD_CHARGES = 1
+GODS_SHIELD_CHARGES_BY_LEVEL = {1: 2, 2: 2, 3: 3, 4: 3, 5: 4}
 # متن نمایشی قابلیت هر زره ویژه برای فروشگاه و تجهیزات (درصدهای پایه، با لول زره رشد می‌کنن)
 ARMOR_ABILITY_TEXT = {
     "reflect": "🛡️ 20٪ از دمیج هر ضربه به حمله‌کننده برمی‌گردد",
     "void": "🌑 12٪ احتمال دارد حمله حریف وارد خلأ شود و هیچ دمیجی وارد نکند",
     "reduce": "☄️ دمیج هر ضربه‌ای که دریافت می‌کنی همیشه 25٪ کمتر می‌شود",
-    "godshield": "👑 اگر ضربه‌ای خونت را به صفر برساند، زره فعال می‌شود و 50٪ از خونت را برمی‌گرداند",
+    "godshield": "👑 اگر ضربه‌ای خونت را به صفر برساند، زره با شارژ باقی‌مانده دوباره زنده‌ات می‌کند",
 }
 # راند ۴۱ (درخواست کارفرما): زیرخط شاعرانه هر زره ویژه، زیر خط قابلیت تو فروشگاه نشون داده میشه
 ARMOR_FLAVOR_TEXT = {
     "plasma": "انرژی ضربه را جذب می‌کند و بخشی از آن را به دشمن پس می‌فرستد",
     "void": "گاهی حمله دشمن را کاملاً می‌بلعد و اثری از آن باقی نمی‌گذارد",
     "neutron": "چگالی ستاره‌ای آن فشار ضربه‌ها را خرد می‌کند",
+    "demigodshield": "آخرین برکت نیمه‌خدایان فقط یک‌بار بین تو و مرگ می‌ایستد",
     "dragonward": "استخوان اژدها جلوی ضربه‌های مرگبار و آتش را می‌گیرد",
     "quantum": "گاهی زره و سلاح دشمن را برای یک لحظه از فاز نبرد بیرون می‌اندازد",
     "celestial": "نور آسمانی بعد هر ضربه بخشی از جان را ترمیم می‌کند",
     "emperor": "هیچ ضربه‌ای اجازه ندارد از فرمان سقف دمیج عبور کند",
-    "godshield": "در لحظه سقوط، نیروی خدایان یک‌بار تو را به میدان برمی‌گرداند",
+    "godshield": "با هر ارتقا، نیروی خدایان بارهای بیشتری تو را از سقوط برمی‌گرداند",
 }
 
 ARMOR_ABILITIES = {
     "plasma": {"kind": "plasma", "reflect": 0.12, "reflect_step": 0.02, "reflect_cap": 0.20},
     "void": {"kind": "void", "chance": 0.08, "chance_step": 0.015, "chance_cap": 0.14},
     "neutron": {"kind": "neutron", "reduce": 0.10, "reduce_step": 0.02, "reduce_cap": 0.18},
+    "demigod": {"kind": "demigodshield", "revive_pct": 0.25, "revive_pct_step": 0.0625,
+                "revive_pct_cap": 0.50, "charges": DEMIGOD_SHIELD_CHARGES},
     "dragonbone": {"kind": "dragonward", "crit_cut": 0.25, "crit_cut_step": 0.05, "crit_cut_cap": 0.45,
                    "burn_cut": 0.25, "burn_cut_step": 0.05, "burn_cut_cap": 0.45},
     "quantum": {"kind": "quantum", "chance": 0.12, "chance_step": 0.02, "chance_cap": 0.20, "reduce": 0.50},
@@ -815,7 +823,7 @@ ARMOR_ABILITIES = {
     "emperor": {"kind": "emperor", "damage_cap_pct": 0.25, "damage_cap_pct_step": -0.02,
                 "damage_cap_pct_floor": 0.17},
     "gods": {"kind": "godshield", "revive_pct": 0.25, "revive_pct_step": 0.0625, "revive_pct_cap": 0.50,
-             "charges": 1},
+             "charges_by_level": GODS_SHIELD_CHARGES_BY_LEVEL},
     "mimic": {"kind": "mimic"},
 }
 for _armor_key, _ability in ARMOR_ABILITIES.items():
@@ -825,11 +833,12 @@ ARMOR_ABILITY_TEXT = {
     "plasma": "🛡 بازتاب 12٪ تا 20٪ دمیج به مهاجم (غیرکشنده)",
     "void": "🌑 شانس 8٪ تا 14٪ برای بلعیدن کامل ضربه",
     "neutron": "☄️ کاهش همیشگی 10٪ تا 18٪ دمیج ورودی",
+    "demigodshield": "🪽 یک نجات در هر زندگی؛ برگشت 25٪ تا 50٪ HP با ارتقا",
     "dragonward": "🐉 مقاومت 25٪ تا 45٪ در برابر کریت و سوختگی",
     "quantum": "💠 شانس 12٪ تا 20٪ برای نصف‌کردن ضربه و خنثی‌کردن قابلیت سلاح",
     "celestial": "🌌 ترمیم 4٪ تا 8٪ HP کامل بعد از ضربه، با سقف امن",
     "emperor": "🏛 سقف هر ضربه از 25٪ تا 17٪ HP کامل",
-    "godshield": "👑 یک احیا در هر زندگی؛ 25٪ تا 50٪ HP با ارتقا",
+    "godshield": "👑 دو تا چهار نجات در هر زندگی؛ برگشت 25٪ تا 50٪ HP با ارتقا",
     "mimic": "🎭 در هر ضربه یکی از قابلیت‌های هشت زره ویژه قبلی را تصادفی قرض می‌گیرد",
 }
 ARMOR_FLAVOR_TEXT["mimic"] = "هیچ‌کس تا لحظه برخورد نمی‌داند این بار کدام چهره‌اش بیدار می‌شود"
@@ -839,7 +848,7 @@ ARMOR_MIMIC_POOL = ("plasma", "void", "neutron", "dragonbone", "quantum", "celes
 ARMOR_DURABILITY_BASE = {
     "jacket": 80, "vest": 90, "kevlar": 100, "steel": 110,
     "swat": 125, "nano": 140, "titan": 160, "legend": 180,
-    "plasma": 200, "void": 215, "neutron": 230, "dragonbone": 245,
+    "plasma": 200, "void": 215, "neutron": 230, "demigod": 238, "dragonbone": 245,
     "quantum": 260, "celestial": 280, "emperor": 300, "gods": 320,
     "mimic": 340,
 }
@@ -1278,7 +1287,7 @@ SPECIAL_WEAPON_PARTS = {
     "stormbringer": 3, "sunlance": 4, "dragonbreath": 5, "worldbreaker": 6, "judgment": 8,
 }
 SPECIAL_ARMOR_PARTS = {
-    "plasma": 1, "void": 1, "neutron": 2, "dragonbone": 3, "quantum": 4,
+    "plasma": 1, "void": 1, "neutron": 2, "demigod": 2, "dragonbone": 3, "quantum": 4,
     "celestial": 5, "emperor": 6, "gods": 8, "mimic": 10,
 }
 # فرگمنت‌های باس منبع ساخت تجهیزات لول ۲۰ تا ۳۰ هستند؛ قطعه افسانه‌ای کمیاب‌تر و جداست
@@ -1288,7 +1297,7 @@ SPECIAL_WEAPON_FRAGMENTS = {
     "worldbreaker": 80, "judgment": 110,
 }
 SPECIAL_ARMOR_FRAGMENTS = {
-    "neutron": 20, "dragonbone": 30, "quantum": 45, "celestial": 60,
+    "neutron": 20, "demigod": 25, "dragonbone": 30, "quantum": 45, "celestial": 60,
     "emperor": 80, "gods": 110, "mimic": 140,
 }
 
@@ -1541,7 +1550,7 @@ for _tool in TOOLS.values():
 for _factory in FACTORIES.values():
     _factory["build"] = (_hard_cost(_factory["build"][0]), _factory["build"][1])
     _factory["up_tp"] = [_hard_cost(x) for x in _factory["up_tp"]]
-LAB_UPGRADE_COST[:] = [(_hard_cost(tp), mats) for tp, mats in LAB_UPGRADE_COST]
+# هزینه ساخت/ارتقای آزمایشگاه جدول نهایی مستقل خودش را دارد و دوباره ×1.5 نمی‌شود.
 for _spec in LAB_MATERIALS.values():
     _spec["unit"] = _hard_cost(_spec["unit"])
 for _spec in WEAPONS.values():

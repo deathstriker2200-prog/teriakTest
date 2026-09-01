@@ -228,6 +228,7 @@ async def test_market_and_boss(Session) -> None:
         )
         _, expiring = await market.create_listing(session, seller, "fragment", 2, 5_000)
         expiring.created_at = now_utc() - timedelta(hours=config.MARKET_TTL_HOURS + 1)
+        await session.flush()
         swept = await market.sweep_expired(session)
         await session.flush()
         check(
@@ -286,7 +287,7 @@ async def test_migrations(Session) -> None:
         session.add_all([
             InventoryItem(user_id=armor_only.id, item_key="gods", level=3, durability=192),
             InventoryItem(user_id=armor_merge.id, item_key="gods", level=2, durability=None),
-            InventoryItem(user_id=armor_merge.id, item_key="neutron", level=1, durability=0),
+            InventoryItem(user_id=armor_merge.id, item_key="demigod", level=1, durability=0),
         ])
         await session.flush()
         armor_stats = await compat_migrations.migrate_legacy_gods_armor(session)
@@ -299,17 +300,17 @@ async def test_migrations(Session) -> None:
 
         armor_row = (await session.execute(select(InventoryItem).where(
             InventoryItem.user_id == armor_only.id,
-            InventoryItem.item_key == "neutron",
+            InventoryItem.item_key == "demigod",
         ))).scalar_one()
         merged_rows = list((await session.execute(select(InventoryItem).where(
             InventoryItem.user_id == armor_merge.id,
         ))).scalars())
         check(
-            "زره خدایان legacy به نوترونی با دوام نسبی و equip درست تبدیل می‌شود",
+            "زره خدایان legacy به نیمه‌خدایان با دوام نسبی و equip درست تبدیل می‌شود",
             armor_stats["converted"] == 1 and armor_stats["merged"] == 1
-            and armor_only.equipped_armor == armor_merge.equipped_armor == "neutron"
-            and armor_row.level == 3 and 0 < armor_row.durability < users.armor_max_durability("neutron", 3)
-            and len(merged_rows) == 1 and merged_rows[0].item_key == "neutron" and merged_rows[0].level == 2,
+            and armor_only.equipped_armor == armor_merge.equipped_armor == "demigod"
+            and armor_row.level == 3 and 0 < armor_row.durability < users.armor_max_durability("demigod", 3)
+            and len(merged_rows) == 1 and merged_rows[0].item_key == "demigod" and merged_rows[0].level == 2,
         )
         check(
             "XP سقف قدیمی حفظ و دقیق روی جدول 400k نگاشت می‌شود",

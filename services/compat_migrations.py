@@ -21,8 +21,8 @@ async def _mark_done(session: AsyncSession, key: str, data: dict) -> None:
 
 
 async def migrate_legacy_gods_armor(session: AsyncSession) -> dict:
-    """زره خدایان دارندگان سقف قدیمی لول 20 را امن به نوترونی تبدیل می‌کند."""
-    marker = "gods20_neutron_v1"
+    """زره خدایان دارندگان سقف قدیمی لول 20 را امن به نیمه‌خدایان تبدیل می‌کند."""
+    marker = "gods20_demigod_v1"
     empty = {"done": False, "converted": 0, "merged": 0, "equipped": 0}
     if await _already_done(session, marker):
         return empty
@@ -46,27 +46,27 @@ async def migrate_legacy_gods_armor(session: AsyncSession) -> dict:
         target = (await session.execute(
             select(InventoryItem).where(
                 InventoryItem.user_id == source.user_id,
-                InventoryItem.item_key == "neutron",
+                InventoryItem.item_key == "demigod",
             ).with_for_update()
         )).scalar_one_or_none()
         if target is None:
-            source.item_key = "neutron"
-            target_max = users.armor_max_durability("neutron", source_level)
+            source.item_key = "demigod"
+            target_max = users.armor_max_durability("demigod", source_level)
             source.durability = max(0, min(target_max, round(target_max * source_ratio)))
             stats["converted"] += 1
         else:
             target_level = max(1, int(target.level or 1))
-            target_old_max = users.armor_max_durability("neutron", target_level)
-            target_old_cur = users.armor_current_durability("neutron", target_level, target.durability)
+            target_old_max = users.armor_max_durability("demigod", target_level)
+            target_old_cur = users.armor_current_durability("demigod", target_level, target.durability)
             target_ratio = target_old_cur / max(1, target_old_max)
             target.level = max(source_level, target_level)
-            target_new_max = users.armor_max_durability("neutron", target.level)
+            target_new_max = users.armor_max_durability("demigod", target.level)
             best_ratio = max(source_ratio, target_ratio)
             target.durability = max(0, min(target_new_max, round(target_new_max * best_ratio)))
             await session.delete(source)
             stats["merged"] += 1
         if user.equipped_armor == "gods":
-            user.equipped_armor = "neutron"
+            user.equipped_armor = "demigod"
             stats["equipped"] += 1
 
     await _mark_done(session, marker, stats)

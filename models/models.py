@@ -66,7 +66,7 @@ class User(Base):
     lumber_stock: Mapped[int] = mapped_column(Integer, default=0)     # انبار تولید چوب‌بری، ۱۲ ساعته پر میشه
     ironmill_stock: Mapped[int] = mapped_column(Integer, default=0)   # انبار تولید کارخانه آهن
 
-    # 🧪 آزمایشگاه (راند ۴۳) — لول ۰ یعنی هنوز نساخته، از لول بازیکن ۱۵ باز میشه
+    # 🧪 آزمایشگاه — لول ۰ یعنی هنوز نساخته؛ ساخت هر لول پول، چوب و آهن می‌خواهد
     lab_level: Mapped[int] = mapped_column(Integer, default=0)
 
     # کولدانهای سیستم‌های جهان
@@ -109,9 +109,9 @@ class User(Base):
     hp: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # بعد شکست تا این زمان بیهوشه، بعدش خودکار با HP فول زنده میشه
     dead_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    # 👑 زره خدایان: یه بار که فعال شد تا واقعاً نمیره دیگه دوباره فعال نمیشه (ستون قدیمی، دیگه استفاده نمیشه ولی برای سازگاری می‌مونه)
+    # ستون بولی قدیمی احیا؛ فقط برای سازگاری اسکیما نگه داشته شده و موتور جدید از شمارنده پایین استفاده می‌کند.
     gods_shield_used: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
-    # راند ۴۲ (درخواست کارفرما): شمارشگر جدید — چندبار تو همین زندگی فعال شده، زره‌های لول‌بالا تا ۳ بار نجات میدن
+    # شمارنده مشترک نجات نیمه‌خدایان/خدایان در زندگی فعلی؛ با مرگ واقعی صفر می‌شود
     gods_shield_charges: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
 
     # کوئست‌های روزانه، تاریخ به‌وقت ایران + JSON پیشرفت و جایزه‌ها

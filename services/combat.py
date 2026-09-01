@@ -264,7 +264,7 @@ def pvp_armor_ability_bonus(key: str | None, level: int = 1) -> float:
         return val(ability, "heal_pct", level)
     if kind == "emperor":
         return max(0.0, 0.30 - val(ability, "damage_cap_pct", level))
-    if kind == "godshield":
+    if kind in ("demigodshield", "godshield"):
         return val(ability, "revive_pct", level) * 0.25
     return 0.0
 

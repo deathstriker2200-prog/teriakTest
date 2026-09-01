@@ -1,8 +1,8 @@
 """
 🧪 آزمایشگاه (راند ۴۳، درخواست کارفرما)
 
-باز میشه از لول بازیکن ۱۵، بدون هیچ پیش‌نیاز جانبی — همون داخل صفحه لول ۱ میشه
-۴ لول ارتقا (لول بازیکن ۲۰/۲۵/۳۰) | ۴ نوع کارگر | ۷ محصول با unlock مرحله‌ای | ۴ ماده اولیه (فقط Resource، بدون فرمول واقعی)
+از لول بازیکن ۱۵ با هزینه سنگین پول، چوب و آهن ساخته میشه
+۴ لول (گیت بازیکن ۱۵/۲۰/۲۵/۳۰) | بازشدن کارگر با لول خود آزمایشگاه | ۷ محصول مرحله‌ای | ۴ ماده اولیه خیالی برای تولید
 
 تولید کاملاً روی ستون busy_until هر کارگر زمان‌بندی میشه، ربطی به آنلاین بودن کاربر یا باز بودن صفحه نداره
 همه قیمت‌ها و اعداد فقط تو config.py (LAB_*) و از اونجا قابل تنظیمن، اینجا هیچ عدد هاردکدی نیست
@@ -10,7 +10,7 @@
 
 from datetime import timedelta
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import config
@@ -219,22 +219,92 @@ def lab_upgrade_min_level(to_level: int) -> int:
     return config.LAB_UPGRADE_MIN_LEVELS[idx]
 
 
-def lab_upgrade_cost(to_level: int) -> tuple[int, dict[str, int]]:
+def lab_build_cost() -> tuple[int, int, int]:
+    """هزینه نهایی ساخت لول 1: تی‌پوینت، چوب، آهن."""
+    return config.LAB_BUILD_COST
+
+
+def lab_upgrade_cost(to_level: int) -> tuple[int, int, int]:
+    """هزینه نهایی رفتن به لول 2..4: تی‌پوینت، چوب، آهن."""
     idx = min(max(to_level - 2, 0), len(config.LAB_UPGRADE_COST) - 1)
     return config.LAB_UPGRADE_COST[idx]
 
 
+async def _lock_and_refresh_builder(session: AsyncSession, user: User) -> None:
+    """ردیف کاربر را پیش از محاسبه هزینه قفل و موجودی‌های حساس را تازه می‌کند."""
+    with session.no_autoflush:
+        await session.execute(select(User.id).where(User.id == user.id).with_for_update())
+    await session.refresh(user, ["level", "lab_level", "cash", "wood", "iron"])
+
+
+def _missing_build_resource(user: User, cost: tuple[int, int, int]) -> str | None:
+    tp, wood, iron = cost
+    if int(user.cash or 0) < tp:
+        return f"❌ برای این ساخت {money(tp)} تی‌پوینت لازم داری"
+    if int(user.wood or 0) < wood:
+        return f"❌ برای این ساخت {fa_num(wood)} چوب لازم داری"
+    if int(user.iron or 0) < iron:
+        return f"❌ برای این ساخت {fa_num(iron)} آهن لازم داری"
+    return None
+
+
+async def _charge_lab_level(
+    session: AsyncSession,
+    user: User,
+    *,
+    from_level: int,
+    to_level: int,
+    min_player_level: int,
+    cost: tuple[int, int, int],
+) -> bool:
+    """برداشت اتمیک سه موجودی؛ درخواست هم‌زمان نمی‌تواند دوبار لول بدهد یا منفی کند."""
+    tp, wood, iron = cost
+    result = await session.execute(
+        update(User)
+        .where(
+            User.id == user.id,
+            User.lab_level == from_level,
+            User.level >= min_player_level,
+            User.cash >= tp,
+            User.wood >= wood,
+            User.iron >= iron,
+        )
+        .values(
+            cash=User.cash - tp,
+            wood=User.wood - wood,
+            iron=User.iron - iron,
+            lab_level=to_level,
+        )
+        .execution_options(synchronize_session=False)
+    )
+    if int(result.rowcount or 0) != 1:
+        await session.refresh(user, ["level", "lab_level", "cash", "wood", "iron"])
+        return False
+    await session.refresh(user, ["level", "lab_level", "cash", "wood", "iron"])
+    return True
+
+
 async def build_lab(session: AsyncSession, user: User) -> tuple[bool, str]:
-    """ساخت اولیه‌ی آزمایشگاه (لول ۰ → ۱)، بدون هیچ هزینه یا پیش‌نیاز جانبی، فقط لول بازیکن ۱۵ می‌خواد"""
+    """ساخت اتمیک لول 1 با هزینه تأییدشده پول، چوب و آهن."""
+    await _lock_and_refresh_builder(session, user)
     if lab_locked(user):
         return False, f"🔒 آزمایشگاه از لول {fa_num(config.LAB_MIN_LEVEL)} باز میشه، فعلا لولت کمه"
     if lab_active(user):
         return False, "🧪 آزمایشگاهت از قبل ساخته شده"
-    user.lab_level = 1
-    return True, "🧪 آزمایشگاهت ساخته شد! حالا یه کارگر استخدام کن و تولید رو شروع کن"
+    cost = lab_build_cost()
+    missing = _missing_build_resource(user, cost)
+    if missing:
+        return False, missing
+    if not await _charge_lab_level(
+        session, user, from_level=0, to_level=1,
+        min_player_level=config.LAB_MIN_LEVEL, cost=cost,
+    ):
+        return False, "❌ موجودی یا وضعیت آزمایشگاه عوض شد؛ دوباره امتحان کن"
+    return True, "🧪 آزمایشگاه لول 1 ساخته شد! پول، چوب و آهن ساخت کامل پرداخت شد"
 
 
 async def upgrade_lab(session: AsyncSession, user: User) -> tuple[bool, str]:
+    await _lock_and_refresh_builder(session, user)
     if lab_locked(user) and lab_active(user):
         return False, f"🔒 آزمایشگاهت تا لول {fa_num(config.LAB_MIN_LEVEL)} قفله، لولت که رسید خودش باز میشه"
     if not lab_active(user):
@@ -245,15 +315,16 @@ async def upgrade_lab(session: AsyncSession, user: User) -> tuple[bool, str]:
     need_lvl = lab_upgrade_min_level(cur + 1)
     if (getattr(user, "level", None) or 1) < need_lvl:
         return False, f"🔒 ارتقا به لول {fa_num(cur + 1)} از لول بازیکن {fa_num(need_lvl)} باز میشه"
-    tp, mats = lab_upgrade_cost(cur + 1)
-    if user.cash < tp:
-        return False, "❌ تی‌پوینتت کافی نیس"
-    if not await _take_materials(session, user.id, mats):
-        need_txt = " + ".join(f"{fa_num(v)} {config.LAB_MATERIALS[k]['name']}" for k, v in mats.items())
-        return False, f"🧴 مواد اولیه کافی نیست، این‌قدر می‌خواد: {need_txt}"
-    user.cash -= tp
-    user.lab_level = cur + 1
-    return True, f"🧪 آزمایشگاه رفت رو لول {fa_num(cur + 1)}"
+    cost = lab_upgrade_cost(cur + 1)
+    missing = _missing_build_resource(user, cost)
+    if missing:
+        return False, missing
+    if not await _charge_lab_level(
+        session, user, from_level=cur, to_level=cur + 1,
+        min_player_level=need_lvl, cost=cost,
+    ):
+        return False, "❌ موجودی یا وضعیت آزمایشگاه عوض شد؛ دوباره امتحان کن"
+    return True, f"🧪 آزمایشگاه رفت رو لول {fa_num(cur + 1)}؛ هزینه ساخت کامل پرداخت شد"
 
 
 # ───────── کارگرها ─────────
@@ -272,10 +343,12 @@ async def hire_worker(session: AsyncSession, user: User, worker_key: str) -> tup
     cfg = config.LAB_WORKERS.get(worker_key)
     if not cfg:
         return False, "❌ همچین کارگری نیست"
+    await _lock_and_refresh_builder(session, user)
     if not lab_active(user):
         return False, "🧪 اول باید آزمایشگاه رو بسازی"
-    if (getattr(user, "level", None) or 1) < cfg["min_level"]:
-        return False, f"🔒 {cfg['emoji']} {cfg['name']} از لول {fa_num(cfg['min_level'])} باز میشه"
+    need_lab = int(cfg["unlock_lab_level"])
+    if lab_level(user) < need_lab:
+        return False, f"🔒 {cfg['emoji']} {cfg['name']} از لول آزمایشگاه {fa_num(need_lab)} باز میشه"
     workers = await get_workers(session, user.id)
     if len(workers) >= worker_slots(user):
         return False, f"👷 اسلات کارگرت پره ({fa_num(worker_slots(user))} تا)، اول آزمایشگاه رو ارتقا بده"
@@ -411,6 +484,10 @@ async def production_quote(
         return False, "❌ این کارگر رو نداری"
     if w.busy_until:
         return False, "👷 این کارگر هنوز مشغوله یا تولید آماده‌اش تحویل نشده"
+    wcfg = config.LAB_WORKERS[w.worker_key]
+    worker_lab_level = int(wcfg["unlock_lab_level"])
+    if lab_level(user) < worker_lab_level:
+        return False, f"🔒 این کارگر از لول آزمایشگاه {fa_num(worker_lab_level)} قابل استفاده است"
     if worker_rank(w.worker_key) < worker_rank(cfg["min_worker"]):
         need = config.LAB_WORKERS[cfg["min_worker"]]
         return False, f"🔒 این محصول حداقل {need['emoji']} {need['name']} می‌خواد"
@@ -418,7 +495,6 @@ async def production_quote(
     stock = await get_materials(session, user.id)
     if any(stock.get(k, 0) < v for k, v in cfg["materials"].items()):
         return False, "❌ مواد اولیه کافی نیست"
-    wcfg = config.LAB_WORKERS[w.worker_key]
     upkeep = int(wcfg["upkeep"])
     if int(user.cash or 0) < upkeep:
         return False, f"💸 برای شروع این دور {money(upkeep)} دستمزد کم داری"
@@ -492,9 +568,15 @@ async def lab_home_text(session: AsyncSession, user: User) -> str:
         "تولید که تموم بشه محصول خودکار میره انبار و کارگر همون لحظه دوباره آزاد میشه.",
     ]
     if lab_level(user) < config.LAB_MAX_LEVEL:
-        need_lvl = lab_upgrade_min_level(lab_level(user) + 1)
+        to_level = lab_level(user) + 1
+        need_lvl = lab_upgrade_min_level(to_level)
+        tp, wood, iron = lab_upgrade_cost(to_level)
+        lines += [
+            "",
+            f"⬆️ ساخت لول {fa_num(to_level)}: {money(tp)} + 🪵 {fa_num(wood)} + ⛏️ {fa_num(iron)}",
+        ]
         if (getattr(user, "level", None) or 1) < need_lvl:
-            lines.append(f"\n🔒 ارتقای بعدی از لول بازیکن {fa_num(need_lvl)} باز میشه")
+            lines.append(f"🔒 ارتقای بعدی از لول بازیکن {fa_num(need_lvl)} باز میشه")
     return "\n".join(lines)
 
 
@@ -511,7 +593,9 @@ async def lab_workers_text(session: AsyncSession, user: User) -> str:
         lines += ["", "<b>وضعیت کارگرها</b>"]
         for w in workers:
             cfg = config.LAB_WORKERS[w.worker_key]
-            if not w.busy_until:
+            if not w.busy_until and lab_level(user) < int(cfg["unlock_lab_level"]):
+                state = f"🔒 تا آزمایشگاه لول {fa_num(cfg['unlock_lab_level'])}"
+            elif not w.busy_until:
                 state = "🟢 آزاد"
             else:
                 pcfg = config.LAB_PRODUCTS.get(w.job_product, {})
@@ -521,8 +605,9 @@ async def lab_workers_text(session: AsyncSession, user: User) -> str:
     lines += ["", "<b>استخدام</b>"]
     for key in config.LAB_WORKER_ORDER:
         cfg = config.LAB_WORKERS[key]
-        if user.level < cfg["min_level"]:
-            lines.append(f"🔒 {cfg['name']} — لول {fa_num(cfg['min_level'])}")
+        need_lab = int(cfg["unlock_lab_level"])
+        if lab_level(user) < need_lab:
+            lines.append(f"🔒 {cfg['name']} — آزمایشگاه لول {fa_num(need_lab)}")
         else:
             lines.append(
                 f"{cfg['emoji']} {cfg['name']} — استخدام {money(cfg['hire_cost'])} | "
@@ -542,7 +627,9 @@ async def lab_employed_text(session: AsyncSession, user: User) -> str:
         lines.append(SEP)
         lines.append(f"{cfg['emoji']} {cfg['name']}")
         lines.append(f"🪙 دستمزد هر دور: {money(cfg['upkeep'])}")
-        if not w.busy_until:
+        if not w.busy_until and lab_level(user) < int(cfg["unlock_lab_level"]):
+            lines.append(f"🔒 وضعیت: تا آزمایشگاه لول {fa_num(cfg['unlock_lab_level'])} قابل استفاده نیست")
+        elif not w.busy_until:
             lines.append("⚪ وضعیت: آزاد")
         else:
             pcfg = config.LAB_PRODUCTS.get(w.job_product, {})
@@ -562,12 +649,13 @@ async def lab_hire_catalog_text(session: AsyncSession, user: User) -> str:
              f"اسلات آزاد: {fa_num(max(0, worker_slots(user) - len(workers)))} از {fa_num(worker_slots(user))}", ""]
     for key in config.LAB_WORKER_ORDER:
         cfg = config.LAB_WORKERS[key]
-        locked = user.level < cfg["min_level"]
+        need_lab = int(cfg["unlock_lab_level"])
+        locked = lab_level(user) < need_lab
         lines += [SEP, f"{'🔒' if locked else cfg['emoji']} {cfg['name']}"]
         lines.append(f"⚡ سرعت ×{cfg['speed_mult']:g} | 📦 بازده ×{cfg['yield_mult']:g}")
         lines.append(f"💸 استخدام: {money(cfg['hire_cost'])} | 🪙 دستمزد: {money(cfg['upkeep'])}")
         if locked:
-            lines.append(f"⭕️ از لول {fa_num(cfg['min_level'])} باز می‌شود")
+            lines.append(f"⭕️ از لول آزمایشگاه {fa_num(need_lab)} باز می‌شود")
     lines.append(SEP)
     return "\n".join(lines)
 

@@ -80,8 +80,8 @@ def test_config_and_source() -> None:
     guns = {k: v for k, v in config.WEAPONS.items() if v.get("gun")}
     check("همه تفنگ‌ها قابلیت معنی‌دار دارند", bool(guns) and all(v.get("ability", {}).get("kind") for v in guns.values()))
     specials = {k: v for k, v in config.ARMORS.items() if v.get("sec") == "special"}
-    check("هر نه زره ویژه، شامل هزارچهره، قابلیت مستقل دارند",
-          len(specials) == 9 and len({v["ability"]["kind"] for v in specials.values()}) == 9)
+    check("هر ده زره ویژه، شامل نیمه‌خدایان و هزارچهره، قابلیت مستقل دارند",
+          len(specials) == 10 and len({v["ability"]["kind"] for v in specials.values()}) == 10)
 
     ratios = config.GEAR_UPG_TP_STEPS
     check("چهار آپگرید مجموعاً دقیقاً ۳.۵ برابر قیمت خرید است", abs(sum(ratios) - 3.5) < 1e-9)
@@ -343,7 +343,7 @@ async def test_combat_engine(Session) -> None:
         await s.flush()
         with patch("services.battle.random.random", return_value=0.99), patch("services.battle.roll_damage", return_value=(10, False)):
             revive_hit = await battle.execute_hit(s, attacker, god_target)
-        check("زره خدایان در نبرد HP یک‌بار با درصد لول خودش احیا می‌کند",
+        check("اولین شارژ زره خدایان در نبرد HP با درصد لول خودش احیا می‌کند",
               revive_hit["ok"] and not revive_hit.get("killed") and god_target.hp > 0
               and god_target.gods_shield_charges == 1,
               f"result={revive_hit}, hp={god_target.hp}, charges={god_target.gods_shield_charges}")

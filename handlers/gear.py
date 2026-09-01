@@ -155,6 +155,9 @@ def _gear_item_text(user, tab: str, key: str, lv: int, ammo_left: int | None,
         cur, _ = economy.gear_ability_change_text(abil, lv)
         if cur is not None:
             lines.append(f"📈 مقدار اصلی قابلیت در این لول: {fa_num(cur)}٪")
+        if kind == "arm" and abil.get("kind") in ("demigodshield", "godshield"):
+            charges = economy.armor_revive_charges(abil, lv)
+            lines.append(f"🪽 تعداد نجات در هر زندگی: {fa_num(charges)} بار")
     if kind == "arm":
         maximum = users.armor_max_durability(key, lv)
         current = users.armor_current_durability(key, lv, durability)
@@ -440,6 +443,10 @@ async def gear_item_upg_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     ability_line = ""
     if abil_now is not None and abil_next is not None:
         ability_line = f"🎯 مقدار اصلی قابلیت: {fa_num(abil_now)}٪ ← {fa_num(abil_next)}٪\n"
+    if kind == "arm" and (item.get("ability") or {}).get("kind") in ("demigodshield", "godshield"):
+        charges_now = economy.armor_revive_charges(item["ability"], lv)
+        charges_next = economy.armor_revive_charges(item["ability"], lv + 1)
+        ability_line += f"🪽 نجات در هر زندگی: {fa_num(charges_now)} ← {fa_num(charges_next)} بار\n"
     text = (
         f"<b>⬆️ ارتقای {esc(item['name'])}</b>\n\n"
         f"لول {fa_num(lv)} ← لول {fa_num(lv + 1)}\n"

@@ -278,6 +278,8 @@ def _gear_up_text(kind: str, owned_lvls: dict[str, int], user) -> str:
         if abil and kind == "arm":
             pct_now = economy.gear_ability_pct_now(abil, lv)
             lines.append(f"🎯 قابلیت الان: {config.ARMOR_ABILITY_TEXT.get(abil['kind'], '')} | واقعی الان: {fa_num(int(round(pct_now * 100)))}%")
+            if abil.get("kind") in ("demigodshield", "godshield"):
+                lines.append(f"🪽 نجات در هر زندگی: {fa_num(economy.armor_revive_charges(abil, lv))} بار")
         if lv >= config.GEAR_UPG_MAX:
             lines.append("👑 لول مکس")
         else:
@@ -287,6 +289,9 @@ def _gear_up_text(kind: str, owned_lvls: dict[str, int], user) -> str:
             if abil:
                 pct_next = economy.gear_ability_pct_now(abil, lv + 1)
                 lines.append(f"⬆️ قابلیت بعد ارتقا: {fa_num(int(round(pct_next * 100)))}%")
+                if kind == "arm" and abil.get("kind") in ("demigodshield", "godshield"):
+                    next_charges = economy.armor_revive_charges(abil, lv + 1)
+                    lines.append(f"⬆️ نجات بعد ارتقا: {fa_num(next_charges)} بار در هر زندگی")
             lines.append(f"🪙 هزینه: 💰 {money(tp)} + ⛏️ {fa_num(iron)} آهن")
             req = economy.gear_upg_min_level(lv)
             if user.level < req:

@@ -1152,7 +1152,7 @@ def lab_workers_menu_kb(user: User, workers: list) -> InlineKeyboardMarkup:
     if len(workers) < lab_svc.worker_slots(user):
         for key in config.LAB_WORKER_ORDER:
             cfg = config.LAB_WORKERS[key]
-            if user.level >= cfg["min_level"]:
+            if lab_svc.lab_level(user) >= int(cfg["unlock_lab_level"]):
                 rows.append([_btn(f"➕ استخدام {cfg['emoji']} {cfg['name']}", f"lab:hire:{key}", SUCCESS)])
     for w in workers:
         if not w.busy_until:
@@ -1181,8 +1181,9 @@ def lab_hire_list_kb(user: User, workers: list) -> InlineKeyboardMarkup:
     else:
         for key in config.LAB_WORKER_ORDER:
             cfg = config.LAB_WORKERS[key]
-            if user.level < cfg["min_level"]:
-                rows.append([_btn(f"🔒 {cfg['name']} | لول {fa_num(cfg['min_level'])}", "noop:lablock", DANGER)])
+            need_lab = int(cfg["unlock_lab_level"])
+            if lab_svc.lab_level(user) < need_lab:
+                rows.append([_btn(f"🔒 {cfg['name']} | آزمایشگاه {fa_num(need_lab)}", "noop:lablock", DANGER)])
             else:
                 rows.append([_btn(f"➕ استخدام {cfg['emoji']} {cfg['name']}", f"lab:hire:{key}", SUCCESS)])
     rows.append([_btn("👷 کارگران استخدام‌شده", "lab:employed", PRIMARY)])

@@ -344,7 +344,7 @@ async def update_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             f"{fa_num(armor_migration['merged'])} ادغام، {fa_num(armor_migration['equipped'])} تعویض زره پوشیده"
         )
     else:
-        lines.append("✅ مهاجرت زره خدایان لول 20 قبلاً انجام شده")
+        lines.append("✅ مهاجرت زره خدایان قدیمی به نیمه‌خدایان قبلاً انجام شده")
     if xp_migration["done"]:
         lines.append(
             f"✨ XP روی منحنی 400,000: {fa_num(xp_migration['checked'])} بررسی | "

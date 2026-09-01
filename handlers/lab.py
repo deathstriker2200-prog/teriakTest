@@ -40,18 +40,22 @@ async def lab_build_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         locked = lab_svc.lab_locked(user)
         active = lab_svc.lab_active(user)
         level = user.level
+        cash, wood_have, iron_have = user.cash or 0, user.wood or 0, user.iron or 0
         await s.commit()
     if active:
         return await render_lab(update, alert="🧪 آزمایشگاهت از قبل ساخته شده")
     if locked:
         return await render_lab(update, alert=f"🔒 آزمایشگاه از لول {fa_num(config.LAB_MIN_LEVEL)} باز میشه")
+    tp, wood, iron = lab_svc.lab_build_cost()
     text = (
-        "<b>🧪 ساخت آزمایشگاه</b>\n\n"
+        "<b>🧪 ساخت آزمایشگاه لول 1</b>\n\n"
         f"⭐ لول فعلی: {fa_num(level)}\n"
-        "💸 هزینه ساخت: رایگان\n"
+        f"💸 تی‌پوینت: {money(tp)} <code>({money(cash)} داری)</code>\n"
+        f"🪵 چوب: {fa_num(wood)} <code>({fa_num(wood_have)} داری)</code>\n"
+        f"⛏️ آهن: {fa_num(iron)} <code>({fa_num(iron_have)} داری)</code>\n\n"
         f"📦 ظرفیت شروع هر محصول: {fa_num(config.LAB_WAREHOUSE_CAP_BY_LEVEL[0])}\n"
         f"🧴 ظرفیت شروع هر ماده: {fa_num(config.LAB_MATERIAL_CAP_BY_LEVEL[0])}\n\n"
-        "آزمایشگاه رو بسازیم؟"
+        "پول و مصالح کامل کم میشه؛ بسازیم؟"
     )
     await respond(update, text, kb.confirm_kb("cf:lab:build"))
 
@@ -74,23 +78,21 @@ async def lab_upgrade_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE
             await s.commit()
             return await render_lab(update, alert="👑 آزمایشگاهت لول مکسه")
         cur = lab_svc.lab_level(user)
-        tp, mats = lab_svc.lab_upgrade_cost(cur + 1)
+        tp, wood, iron = lab_svc.lab_upgrade_cost(cur + 1)
         need_lvl = lab_svc.lab_upgrade_min_level(cur + 1)
         player_lvl = user.level or 1
+        cash, wood_have, iron_have = user.cash or 0, user.wood or 0, user.iron or 0
         await s.commit()
     if player_lvl < need_lvl:
         return await render_lab(update, alert=f"🔒 ارتقا به لول {fa_num(cur + 1)} از لول بازیکن {fa_num(need_lvl)} باز میشه")
-    mats_txt = " + ".join(
-        f"{fa_num(v)} {config.LAB_MATERIALS[k]['emoji']} {config.LAB_MATERIALS[k]['name']}"
-        for k, v in mats.items()
-    )
     text = (
         f"<b>⬆️ ارتقای آزمایشگاه، لول {fa_num(cur)} ← {fa_num(cur + 1)}</b>\n\n"
-        f"💸 هزینه: {money(tp)}\n"
-        f"🧴 مواد لازم: {mats_txt}\n"
+        f"💸 تی‌پوینت: {money(tp)} <code>({money(cash)} داری)</code>\n"
+        f"🪵 چوب: {fa_num(wood)} <code>({fa_num(wood_have)} داری)</code>\n"
+        f"⛏️ آهن: {fa_num(iron)} <code>({fa_num(iron_have)} داری)</code>\n\n"
         f"📦 ظرفیت هر محصول: {fa_num(config.LAB_WAREHOUSE_CAP_BY_LEVEL[cur])}\n"
         f"🧪 ظرفیت هر ماده: {fa_num(config.LAB_MATERIAL_CAP_BY_LEVEL[cur])}\n\n"
-        "انجامش بدیم؟"
+        "پول و مصالح کامل کم میشه؛ انجامش بدیم؟"
     )
     await respond(update, text, kb.confirm_kb("cf:lab:up"))
 
@@ -138,11 +140,11 @@ async def lab_hire_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         workers = await lab_svc.get_workers(s, user.id)
         active = lab_svc.lab_active(user)
         slots = lab_svc.worker_slots(user)
-        level, cash = user.level, user.cash
+        lab_level, cash = lab_svc.lab_level(user), user.cash
         await s.commit()
     if not active:
         return await render_lab(update, alert="🧪 اول آزمایشگاه رو بساز")
-    if level < cfg["min_level"]:
+    if lab_level < int(cfg["unlock_lab_level"]):
         return await lab_hire_list_cb(update, context)
     if len(workers) >= slots:
         return await lab_hire_list_cb(update, context)
@@ -229,7 +231,9 @@ async def lab_start_pick_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     cfg = config.LAB_PRODUCTS[product_key]
     compatible = [
         w for w in workers
-        if not w.busy_until and lab_svc.worker_rank(w.worker_key) >= lab_svc.worker_rank(cfg["min_worker"])
+        if not w.busy_until
+        and int(config.LAB_WORKERS[w.worker_key]["unlock_lab_level"]) <= lab_svc.lab_level(user)
+        and lab_svc.worker_rank(w.worker_key) >= lab_svc.worker_rank(cfg["min_worker"])
     ]
     if not compatible:
         return await respond(update, "👷 کارگر آزاد و مناسب این محصول نداری", kb.lab_products_kb(user))

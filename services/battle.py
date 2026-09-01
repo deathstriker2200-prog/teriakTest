@@ -441,14 +441,19 @@ async def execute_hit(session: AsyncSession, attacker: User, target: User) -> di
             dmg = max(0, dmg - heal)
             armor_lines.append(f"{aname19} {fa_num(heal)} HP ترمیم کرد")
 
-    # زره خدایان فقط یک احیا در هر زندگی دارد و درصد احیا با لول رشد می‌کند.
-    if target.hp <= 0 and aabil and aabil.get("kind") == "godshield" and not bypass_armor:
-        charges = int(aabil.get("charges", 1))
+    # نیمه‌خدایان همیشه یک نجات دارد؛ خدایان با لول ارتقا دو تا چهار بار.
+    if (target.hp <= 0 and aabil and aabil.get("kind") in ("demigodshield", "godshield")
+            and not bypass_armor):
+        charges = economy.armor_revive_charges(aabil, alvl19)
         if int(target.gods_shield_charges or 0) < charges:
             revive = economy.gear_ability_value(aabil, "revive_pct", alvl19)
             target.hp = max(1, round(revive * hp_max))
             target.gods_shield_charges = int(target.gods_shield_charges or 0) + 1
-            armor_lines.append(f"برکت {aname19} فعال شد و خونش به {fa_num(target.hp)} برگشت")
+            left = max(0, charges - int(target.gods_shield_charges or 0))
+            armor_lines.append(
+                f"برکت {aname19} فعال شد و خونش به {fa_num(target.hp)} برگشت"
+                f"؛ {fa_num(left)} نجات موند"
+            )
 
     # افکت‌های پس از ضربه
     if not weapon_cancelled:

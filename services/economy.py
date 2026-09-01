@@ -173,6 +173,17 @@ def gear_ability_value(ability: dict | None, field: str, level: int, default: fl
     return value
 
 
+def armor_revive_charges(ability: dict | None, level: int) -> int:
+    """تعداد نجات واقعی زره در هر زندگی؛ ثابت یا جدول وابسته به لول ارتقا."""
+    if not ability:
+        return 0
+    by_level = ability.get("charges_by_level")
+    if isinstance(by_level, dict) and by_level:
+        lv = min(max(1, int(level or 1)), config.GEAR_UPG_MAX)
+        return max(0, int(by_level.get(lv, by_level.get(max(by_level), 0))))
+    return max(0, int(ability.get("charges", 0)))
+
+
 def gear_ability_primary(ability: dict | None) -> str | None:
     """فیلد اصلی قابل نمایش قابلیت؛ برای کارت ارتقا و تست‌ها."""
     if not ability:
