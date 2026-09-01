@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+import random
 from datetime import timedelta
 
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import config
-from models import GambleMatch, GambleMatchRound, GambleSoloRound, User
+from models import GambleMatch, GambleSoloRound, GambleTicTacToeMove, User
 from services import actionlog, tracklog
 from utils import now_utc
 
@@ -105,14 +106,17 @@ def outcome_text(code: str, value: int) -> str:
     if code == "foot":
         return "شوت گل شد!" if value in (4, 5) else "شوت گل نشد"
     if code == "slot":
-        combo = " | ".join(slot_symbols(value))
+        symbols = slot_symbols(value)
+        combo = " | ".join(symbols)
         mult = solo_multiplier(code, value)
         if value == 64:
-            return f"{combo} — جک‌پات ۷۷۷!"
-        if mult == 8.0:
-            return f"{combo} — سه نماد یکسان!"
-        if mult == 4.0:
-            return f"{combo} — دو تا ۷ اول!"
+            return f"{combo} — جک‌پات 777!"
+        if len(set(symbols)) == 1:
+            return f"{combo} — سه نماد یکسان، ضریب ×{mult:g}!"
+        if symbols.count("7️⃣") == 2:
+            return f"{combo} — دقیقاً دو تا 7، ضریب ×{mult:g}!"
+        if symbols[0] == symbols[1] and symbols[0] != "7️⃣":
+            return f"{combo} — دو نماد اول یکیه، ضریب ×{mult:g}!"
         return f"{combo} — ترکیب برنده نشد"
     raise ValueError("unsupported dice code")
 
@@ -214,15 +218,25 @@ async def _active_match_for(session: AsyncSession, user_id: int) -> GambleMatch 
 async def create_match(
     session: AsyncSession, creator: User, chat_id: int, thread_id: int | None, bet: int,
 ) -> tuple[GambleMatch | None, str]:
+    """لابی عمومی دوز می‌سازد؛ پول تا تأیید نهایی کم نمی‌شود."""
     ok, why = valid_bet(creator, bet, "duel")
     if not ok:
         return None, why
     if await _active_match_for(session, creator.id):
         return None, "busy"
+    now = now_utc()
     row = GambleMatch(
-        chat_id=chat_id, thread_id=thread_id, creator_id=creator.id, bet_per_player=bet,
-        status="waiting_opponent", expires_at=now_utc() + timedelta(seconds=config.GAMBLE_LOBBY_SECONDS),
-        updated_at=now_utc(),
+        chat_id=chat_id,
+        thread_id=thread_id,
+        creator_id=creator.id,
+        bet_per_player=bet,
+        game_kind="ttt3",
+        board_state=".........",
+        creator_moves="",
+        opponent_moves="",
+        status="waiting_opponent",
+        expires_at=now + timedelta(seconds=config.GAMBLE_LOBBY_SECONDS),
+        updated_at=now,
     )
     session.add(row)
     await session.flush()
@@ -238,7 +252,7 @@ async def bind_lobby_message(session: AsyncSession, match_id: int, message_id: i
 
 async def accept_match(session: AsyncSession, match_id: int, player: User) -> tuple[GambleMatch | None, str]:
     row = await session.get(GambleMatch, match_id, with_for_update=True)
-    if row is None or row.status != "waiting_opponent":
+    if row is None or row.status != "waiting_opponent" or row.game_kind != "ttt3":
         return row, "closed"
     if row.expires_at < now_utc():
         row.status = "expired"
@@ -258,28 +272,16 @@ async def accept_match(session: AsyncSession, match_id: int, player: User) -> tu
     return row, ""
 
 
-async def set_match_emoji(session: AsyncSession, match_id: int, actor: User, code: str) -> tuple[GambleMatch | None, str]:
+async def set_match_rounds(
+    session: AsyncSession, match_id: int, actor: User, rounds: int,
+) -> tuple[GambleMatch | None, str]:
+    """مدل سری دوز را سازنده انتخاب می‌کند: 1، 3 یا 5 دست."""
     row = await session.get(GambleMatch, match_id, with_for_update=True)
-    if row is None or row.status != "configuring":
+    if row is None or row.status != "configuring" or row.game_kind != "ttt3":
         return row, "closed"
     if row.creator_id != actor.id:
         return row, "owner"
-    spec = dice_spec(code)
-    if not spec:
-        return row, "bad_dice"
-    row.emoji = spec["emoji"]
-    row.updated_at = now_utc()
-    row.expires_at = now_utc() + timedelta(seconds=config.GAMBLE_CONFIG_SECONDS)
-    return row, ""
-
-
-async def set_match_rounds(session: AsyncSession, match_id: int, actor: User, rounds: int) -> tuple[GambleMatch | None, str]:
-    row = await session.get(GambleMatch, match_id, with_for_update=True)
-    if row is None or row.status != "configuring":
-        return row, "closed"
-    if row.creator_id != actor.id:
-        return row, "owner"
-    if rounds not in config.GAMBLE_DUEL_ROUNDS or not row.emoji:
+    if rounds not in config.GAMBLE_DUEL_ROUNDS:
         return row, "bad_config"
     row.rounds_total = rounds
     row.status = "confirming"
@@ -288,12 +290,77 @@ async def set_match_rounds(session: AsyncSession, match_id: int, actor: User, ro
     return row, ""
 
 
-async def confirm_match(session: AsyncSession, match_id: int, actor: User) -> tuple[GambleMatch | None, str, bool]:
-    """سهم هر نفر هنگام تأیید امانت می‌شود؛ خروجی سوم یعنی بازی همین حالا فعال شد."""
+def role_of(row: GambleMatch, user_id: int) -> str | None:
+    if row.creator_id == user_id:
+        return "creator"
+    if row.opponent_id == user_id:
+        return "opponent"
+    return None
+
+
+def symbol_of(row: GambleMatch, user_id: int) -> str | None:
+    role = role_of(row, user_id)
+    return "X" if role == "creator" else "O" if role == "opponent" else None
+
+
+def decode_moves(value: str | None) -> list[int]:
+    if not value:
+        return []
+    out: list[int] = []
+    for part in value.split(","):
+        if part.isdigit() and 0 <= int(part) <= 8:
+            out.append(int(part))
+    return out[-config.GAMBLE_TTT_MAX_ACTIVE_PIECES:]
+
+
+def encode_moves(moves: list[int]) -> str:
+    return ",".join(str(v) for v in moves[-config.GAMBLE_TTT_MAX_ACTIVE_PIECES:])
+
+
+def board_cells(row: GambleMatch) -> list[str]:
+    raw = row.board_state or "........."
+    if len(raw) != 9 or any(ch not in ".XO" for ch in raw):
+        return list(".........")
+    return list(raw)
+
+
+def has_ttt_win(board: list[str], symbol: str) -> bool:
+    wins = (
+        (0, 1, 2), (3, 4, 5), (6, 7, 8),
+        (0, 3, 6), (1, 4, 7), (2, 5, 8),
+        (0, 4, 8), (2, 4, 6),
+    )
+    return any(all(board[i] == symbol for i in line) for line in wins)
+
+
+def _other_id(row: GambleMatch, user_id: int) -> int:
+    return int(row.opponent_id) if user_id == row.creator_id else row.creator_id
+
+
+def _reset_round(row: GambleMatch, starter_id: int, *, advance: bool = True) -> None:
+    if advance:
+        row.current_round = int(row.current_round or 1) + 1
+    row.board_state = "........."
+    row.creator_moves = ""
+    row.opponent_moves = ""
+    row.moves_in_round = 0
+    row.round_starter_id = starter_id
+    row.turn_user_id = starter_id
+    row.updated_at = now_utc()
+    row.expires_at = now_utc() + timedelta(seconds=config.GAMBLE_ROUND_SECONDS)
+
+
+async def confirm_match(
+    session: AsyncSession, match_id: int, actor: User,
+) -> tuple[GambleMatch | None, str, bool]:
+    """سهم هر نفر هنگام تأیید امانت می‌شود؛ با تأیید دوم برد دوز ساخته می‌شود."""
     row = await session.get(GambleMatch, match_id, with_for_update=True)
-    if row is None or row.status != "confirming" or row.opponent_id is None:
+    if (
+        row is None or row.status != "confirming" or row.opponent_id is None
+        or row.game_kind != "ttt3" or row.rounds_total not in config.GAMBLE_DUEL_ROUNDS
+    ):
         return row, "closed", False
-    role = "creator" if row.creator_id == actor.id else "opponent" if row.opponent_id == actor.id else ""
+    role = role_of(row, actor.id)
     if not role:
         return row, "stranger", False
     if getattr(row, f"{role}_confirmed"):
@@ -308,113 +375,18 @@ async def confirm_match(session: AsyncSession, match_id: int, actor: User) -> tu
     if started:
         row.status = "active"
         row.current_round = 1
-        row.expires_at = now_utc() + timedelta(seconds=config.GAMBLE_ROUND_SECONDS)
+        starter = random.choice((row.creator_id, int(row.opponent_id)))
+        _reset_round(row, starter, advance=False)
         creator = await session.get(User, row.creator_id)
         opponent = await session.get(User, row.opponent_id)
         if creator:
             creator.last_casino_at = now_utc()
         if opponent:
             opponent.last_casino_at = now_utc()
-        session.add(GambleMatchRound(match_id=row.id, round_no=1, attempt_no=1, status="rolling"))
         await actionlog.log(session, "casino")
     else:
         row.expires_at = now_utc() + timedelta(seconds=config.GAMBLE_CONFIRM_SECONDS)
     return row, "", started
-
-
-async def current_round(session: AsyncSession, row: GambleMatch) -> GambleMatchRound | None:
-    q = select(GambleMatchRound).where(
-        GambleMatchRound.match_id == row.id,
-        GambleMatchRound.status == "rolling",
-    ).order_by(GambleMatchRound.id.desc()).limit(1)
-    return (await session.execute(q)).scalar_one_or_none()
-
-
-def role_of(row: GambleMatch, user_id: int) -> str | None:
-    if row.creator_id == user_id:
-        return "creator"
-    if row.opponent_id == user_id:
-        return "opponent"
-    return None
-
-
-async def check_roll(session: AsyncSession, match_id: int, actor: User) -> tuple[GambleMatch | None, GambleMatchRound | None, str]:
-    row = await session.get(GambleMatch, match_id, with_for_update=True)
-    if row is None or row.status != "active":
-        return row, None, "closed"
-    role = role_of(row, actor.id)
-    if role is None:
-        return row, None, "stranger"
-    rnd = await current_round(session, row)
-    if rnd is None:
-        return row, None, "round_missing"
-    if getattr(rnd, f"{role}_value") is not None:
-        return row, rnd, "already"
-    return row, rnd, ""
-
-
-async def record_roll(
-    session: AsyncSession, match_id: int, actor: User, value: int, dice_message_id: int | None,
-) -> dict:
-    row = await session.get(GambleMatch, match_id, with_for_update=True)
-    if row is None or row.status != "active":
-        return {"ok": False, "reason": "closed"}
-    role = role_of(row, actor.id)
-    if role is None:
-        return {"ok": False, "reason": "stranger"}
-    code = dice_code(row.emoji or "")
-    spec = dice_spec(code or "")
-    if not spec or value < 1 or value > int(spec["max"]):
-        return {"ok": False, "reason": "bad_value"}
-    rnd = await current_round(session, row)
-    if rnd is None:
-        return {"ok": False, "reason": "round_missing"}
-    if getattr(rnd, f"{role}_value") is not None:
-        return {"ok": False, "reason": "already"}
-    setattr(rnd, f"{role}_value", value)
-    setattr(rnd, f"{role}_dice_message_id", dice_message_id)
-    row.updated_at = now_utc()
-    row.expires_at = now_utc() + timedelta(seconds=config.GAMBLE_ROUND_SECONDS)
-    other = "opponent" if role == "creator" else "creator"
-    other_value = getattr(rnd, f"{other}_value")
-    if other_value is None:
-        return {"ok": True, "resolved": False, "role": role, "value": value, "match": row, "round": rnd}
-    return await _resolve_round(session, row, rnd)
-
-
-async def _resolve_round(session: AsyncSession, row: GambleMatch, rnd: GambleMatchRound) -> dict:
-    cv, ov = int(rnd.creator_value), int(rnd.opponent_value)
-    rnd.resolved_at = now_utc()
-    if cv == ov:
-        rnd.status = "tie"
-        attempt = rnd.attempt_no + 1
-        session.add(GambleMatchRound(
-            match_id=row.id, round_no=row.current_round, attempt_no=attempt, status="rolling",
-        ))
-        row.expires_at = now_utc() + timedelta(seconds=config.GAMBLE_ROUND_SECONDS)
-        return {"ok": True, "resolved": True, "tie": True, "match": row, "round": rnd,
-                "creator_value": cv, "opponent_value": ov}
-
-    winner_id = row.creator_id if cv > ov else int(row.opponent_id)
-    rnd.winner_id = winner_id
-    rnd.status = "resolved"
-    if winner_id == row.creator_id:
-        row.creator_score += 1
-    else:
-        row.opponent_score += 1
-    needed = int(row.rounds_total or 1) // 2 + 1
-    finished = row.creator_score >= needed or row.opponent_score >= needed
-    if finished:
-        payout = await _finish_match(session, row, winner_id)
-        return {"ok": True, "resolved": True, "tie": False, "finished": True,
-                "winner_id": winner_id, "payout": payout, "match": row, "round": rnd,
-                "creator_value": cv, "opponent_value": ov}
-    row.current_round += 1
-    session.add(GambleMatchRound(match_id=row.id, round_no=row.current_round, attempt_no=1, status="rolling"))
-    row.expires_at = now_utc() + timedelta(seconds=config.GAMBLE_ROUND_SECONDS)
-    return {"ok": True, "resolved": True, "tie": False, "finished": False,
-            "winner_id": winner_id, "match": row, "round": rnd,
-            "creator_value": cv, "opponent_value": ov}
 
 
 async def _finish_match(session: AsyncSession, row: GambleMatch, winner_id: int) -> int:
@@ -428,35 +400,107 @@ async def _finish_match(session: AsyncSession, row: GambleMatch, winner_id: int)
     row.winner_id = winner_id
     row.payout_done = True
     row.status = "finished"
+    row.turn_user_id = None
     row.updated_at = now_utc()
     row.expires_at = now_utc()
-    # دونفره پول جدید تولید نمی‌کند؛ net فقط سود خالص برنده برای آمار است.
     if winner:
         await tracklog.bump_casino(session, winner.id, True, row.bet_per_player)
     return pot
 
 
+async def play_ttt(session: AsyncSession, match_id: int, actor: User, cell: int) -> dict:
+    """یک حرکت قانونی دوز؛ حذف قدیمی‌ترین مهره و تسویه سری داخل همان تراکنش."""
+    row = await session.get(GambleMatch, match_id, with_for_update=True)
+    if row is None or row.status != "active" or row.game_kind != "ttt3":
+        return {"ok": False, "reason": "closed", "match": row}
+    role = role_of(row, actor.id)
+    if role is None:
+        return {"ok": False, "reason": "stranger", "match": row}
+    if row.turn_user_id != actor.id:
+        return {"ok": False, "reason": "turn", "match": row}
+    if not isinstance(cell, int) or not 0 <= cell <= 8:
+        return {"ok": False, "reason": "cell", "match": row}
+    board = board_cells(row)
+    if board[cell] != ".":
+        return {"ok": False, "reason": "occupied", "match": row}
+
+    symbol = "X" if role == "creator" else "O"
+    attr = f"{role}_moves"
+    moves = decode_moves(getattr(row, attr))
+    removed: int | None = None
+    if len(moves) >= config.GAMBLE_TTT_MAX_ACTIVE_PIECES:
+        removed = moves.pop(0)
+        if board[removed] == symbol:
+            board[removed] = "."
+    board[cell] = symbol
+    moves.append(cell)
+    setattr(row, attr, encode_moves(moves))
+    row.board_state = "".join(board)
+    row.moves_in_round = int(row.moves_in_round or 0) + 1
+    row.updated_at = now_utc()
+
+    session.add(GambleTicTacToeMove(
+        match_id=row.id,
+        round_no=row.current_round,
+        move_no=row.moves_in_round,
+        player_id=actor.id,
+        cell=cell,
+        removed_cell=removed,
+    ))
+
+    if has_ttt_win(board, symbol):
+        if role == "creator":
+            row.creator_score = int(row.creator_score or 0) + 1
+        else:
+            row.opponent_score = int(row.opponent_score or 0) + 1
+        needed = int(row.rounds_total or 1) // 2 + 1
+        if row.creator_score >= needed or row.opponent_score >= needed:
+            payout = await _finish_match(session, row, actor.id)
+            return {
+                "ok": True, "round_won": True, "finished": True, "winner_id": actor.id,
+                "payout": payout, "removed": removed, "match": row,
+            }
+        next_starter = _other_id(row, int(row.round_starter_id or actor.id))
+        _reset_round(row, next_starter)
+        return {
+            "ok": True, "round_won": True, "finished": False, "winner_id": actor.id,
+            "removed": removed, "match": row,
+        }
+
+    if row.moves_in_round >= config.GAMBLE_TTT_MAX_MOVES_PER_ROUND:
+        next_starter = _other_id(row, int(row.round_starter_id or actor.id))
+        _reset_round(row, next_starter)
+        return {"ok": True, "draw": True, "removed": removed, "match": row}
+
+    row.turn_user_id = _other_id(row, actor.id)
+    row.expires_at = now_utc() + timedelta(seconds=config.GAMBLE_ROUND_SECONDS)
+    return {"ok": True, "removed": removed, "match": row}
+
+
 async def _refund_match(session: AsyncSession, row: GambleMatch, status: str) -> int:
     refunded = 0
     if row.creator_escrow:
-        u = await session.get(User, row.creator_id, with_for_update=True)
-        if u:
-            u.cash = int(u.cash or 0) + int(row.creator_escrow)
+        user = await session.get(User, row.creator_id, with_for_update=True)
+        if user:
+            user.cash = int(user.cash or 0) + int(row.creator_escrow)
             refunded += int(row.creator_escrow)
         row.creator_escrow = 0
     if row.opponent_escrow and row.opponent_id:
-        u = await session.get(User, row.opponent_id, with_for_update=True)
-        if u:
-            u.cash = int(u.cash or 0) + int(row.opponent_escrow)
+        user = await session.get(User, row.opponent_id, with_for_update=True)
+        if user:
+            user.cash = int(user.cash or 0) + int(row.opponent_escrow)
             refunded += int(row.opponent_escrow)
         row.opponent_escrow = 0
     row.status = status
+    row.turn_user_id = None
     row.updated_at = now_utc()
     row.expires_at = now_utc()
     return refunded
 
 
-async def cancel_match(session: AsyncSession, match_id: int, actor: User) -> tuple[GambleMatch | None, str, int]:
+async def cancel_match(
+    session: AsyncSession, match_id: int, actor: User,
+) -> tuple[GambleMatch | None, str, int]:
     row = await session.get(GambleMatch, match_id, with_for_update=True)
     if row is None or row.status not in ("waiting_opponent", "configuring", "confirming"):
         return row, "closed", 0
@@ -466,16 +510,30 @@ async def cancel_match(session: AsyncSession, match_id: int, actor: User) -> tup
     return row, "", refunded
 
 
+async def retire_legacy_active_matches(session: AsyncSession) -> tuple[int, int]:
+    """بازی‌های دونفره تاسی باز نسخه قبل را یک‌بار با استرداد کامل می‌بندد."""
+    # این تابع فقط پشت marker یک‌باره /update اجرا می‌شود؛ در لحظه ارتقا هر match باز، legacy است.
+    # این کار waiting_opponentهای قدیمی را هم می‌گیرد که هنوز emoji انتخاب نکرده بودند.
+    q = select(GambleMatch).where(
+        GambleMatch.status.in_(_ACTIVE_MATCH_STATES),
+    ).with_for_update()
+    count = total = 0
+    for row in (await session.execute(q)).scalars():
+        total += await _refund_match(session, row, "retired_refunded")
+        count += 1
+    return count, total
+
+
 async def sweep_expired(session: AsyncSession) -> list[dict]:
-    """استرداد رزروها/لابی‌ها و تعیین تکلیف راندهای بی‌پاسخ، با خروجی مناسب جاب پیام‌رسان."""
+    """رزرو نیمه‌کاره و دوز بی‌حرکت را با استرداد کامل و idempotent می‌بندد."""
     now = now_utc()
     events: list[dict] = []
     qsolo = select(GambleSoloRound).where(
         GambleSoloRound.status.in_(("reserved", "rolled")),
         GambleSoloRound.expires_at <= now,
-    )
+    ).with_for_update()
     for solo in (await session.execute(qsolo)).scalars():
-        user = await session.get(User, solo.user_id)
+        user = await session.get(User, solo.user_id, with_for_update=True)
         if user:
             user.cash = int(user.cash or 0) + solo.bet
         solo.status = "refunded"
@@ -483,17 +541,16 @@ async def sweep_expired(session: AsyncSession) -> list[dict]:
         events.append({"kind": "solo_refund", "chat_id": solo.chat_id, "bet": solo.bet})
 
     qmatch = select(GambleMatch).where(
-        GambleMatch.status.in_(_ACTIVE_MATCH_STATES), GambleMatch.expires_at <= now,
-    )
+        GambleMatch.status.in_(_ACTIVE_MATCH_STATES),
+        GambleMatch.expires_at <= now,
+    ).with_for_update()
     for row in (await session.execute(qmatch)).scalars():
-        if row.status != "active":
-            amount = await _refund_match(session, row, "expired")
-            events.append({"kind": "match_refund", "chat_id": row.chat_id, "message_id": row.lobby_message_id,
-                           "match_id": row.id, "amount": amount})
-            continue
-        # قانون جدید: هر مرحله ۱۰ دقیقه ادامه پیدا نکند، حتی اگر فقط یک نفر حرکت کرده باشد،
-        # هیچ باخت فنی نداریم و کل escrow هر دو نفر پس داده می‌شود.
         amount = await _refund_match(session, row, "expired")
-        events.append({"kind": "match_refund", "chat_id": row.chat_id, "message_id": row.lobby_message_id,
-                       "match_id": row.id, "amount": amount})
+        events.append({
+            "kind": "match_refund",
+            "chat_id": row.chat_id,
+            "message_id": row.lobby_message_id,
+            "match_id": row.id,
+            "amount": amount,
+        })
     return events

@@ -280,6 +280,11 @@ async def update_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
     async with session_scope() as s:
         market_rolled = await world_svc.ensure_market(s, force=True)
+        # ترتیب مهم است: زره legacy با لول قبل از نگاشت XP تشخیص داده می‌شود.
+        from services import compat_migrations as compat_svc
+        armor_migration = await compat_svc.migrate_legacy_gods_armor(s)
+        xp_migration = await compat_svc.migrate_player_xp_400k(s)
+        duel_migration = await compat_svc.retire_legacy_duels(s)
         # سطح کارتل‌های قدیمی روی منحنی سخت‌تر بازنشانی میشه (فقط یه بار اجرا میشه)
         migrated_n = await team_svc.migrate_team_levels(s)
         # شخصیت سگ‌ها هم با همین آپدیت پاک میشه (سیستم شخصیت حذف شده)
@@ -333,6 +338,28 @@ async def update_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         f"📈 بازار: {'رول فوری انجام شد و قیمت‌ها تازه حساب شدن' if market_rolled else 'بدون تغییر'}",
         f"👥 ظرفیت {fa_num(len(all_teams))} کارتل بازخوانی شد",
     ]
+    if armor_migration["done"]:
+        lines.append(
+            f"🛡 زره legacy: {fa_num(armor_migration['converted'])} تبدیل، "
+            f"{fa_num(armor_migration['merged'])} ادغام، {fa_num(armor_migration['equipped'])} تعویض زره پوشیده"
+        )
+    else:
+        lines.append("✅ مهاجرت زره خدایان لول 20 قبلاً انجام شده")
+    if xp_migration["done"]:
+        lines.append(
+            f"✨ XP روی منحنی 400,000: {fa_num(xp_migration['checked'])} بررسی | "
+            f"{fa_num(xp_migration['raised'])} افزایش | {fa_num(xp_migration['lowered'])} کاهش | "
+            f"{fa_num(xp_migration['same'])} ثابت | {fa_num(xp_migration['old_cap_with_xp'])} سقف قدیمی"
+        )
+    else:
+        lines.append("✅ XP بازیکن‌ها قبلاً روی منحنی دقیق 400,000 مهاجرت کرده")
+    if duel_migration["done"]:
+        lines.append(
+            f"❌⭕ {fa_num(duel_migration['matches'])} دوئل قدیمی بسته شد و "
+            f"{money(duel_migration['refunded'])} escrow برگشت"
+        )
+    else:
+        lines.append("✅ دوئل‌های تاسی قدیمی قبلاً تعیین تکلیف شدن")
     if migrated_n:
         lines.append(f"⭐ سطح {fa_num(migrated_n)} کارتل روی منحنی سخت‌تر بازنشانی شد")
     else:

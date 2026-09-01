@@ -341,7 +341,38 @@ async def pending_sweep_job(context: ContextTypes.DEFAULT_TYPE) -> None:
             await _send(context, chat, text)
 
 
-# ───────── جاروی قمار تاسی 🎲 ─────────
+# ───────── پایان خودکار تولید آزمایشگاه 🧪 ─────────
+
+async def lab_completion_job(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """محصول را انبار و کارگر را آزاد می‌کند؛ اعلان از تراکنش تولید جدا و قابل retry است."""
+    from services import lab as lab_svc
+
+    payload: list[tuple[int, int, str]] = []
+    async with session_scope() as s:
+        await lab_svc.settle_due_productions(s)
+        for event in await lab_svc.pending_completion_events(s):
+            user = await s.get(User, event.user_id)
+            event.notify_attempts = int(event.notify_attempts or 0) + 1
+            if user:
+                payload.append((event.id, user.telegram_id, lab_svc.completion_message(event)))
+        await s.commit()
+
+    sent_ids: list[int] = []
+    for event_id, telegram_id, text in payload:
+        if await _send(context, telegram_id, text):
+            sent_ids.append(event_id)
+    if sent_ids:
+        from models import LabCompletionEvent
+        async with session_scope() as s:
+            now = now_utc()
+            for event_id in sent_ids:
+                event = await s.get(LabCompletionEvent, event_id)
+                if event and event.notified_at is None:
+                    event.notified_at = now
+            await s.commit()
+
+
+# ───────── جاروی قمار/دوز 🎲 ─────────
 
 async def gambling_sweep_job(context: ContextTypes.DEFAULT_TYPE) -> None:
     """رزرو قطع‌شده را پس می‌دهد و لابی/راند بی‌پاسخ را منصفانه می‌بندد."""
@@ -356,7 +387,7 @@ async def gambling_sweep_job(context: ContextTypes.DEFAULT_TYPE) -> None:
                 text = f"⌛ بازی تک‌نفره نیمه‌کاره موند؛ شرط {money(ev['bet'])} کامل برگشت جیبت"
             else:
                 text = (f"⌛ <b>مسابقه #{fa_num(ev['match_id'])} بسته شد</b>\n\n"
-                        f"بازی ۱۰ دقیقه ادامه پیدا نکرد؛ {money(ev['amount'])} از صندوق کامل به هر دو نفر برگشت")
+                        f"بازی 10 دقیقه ادامه پیدا نکرد؛ {money(ev['amount'])} از صندوق کامل به هر دو نفر برگشت")
             payload.append((ev, text))
         await s.commit()
 
@@ -634,6 +665,7 @@ def register_jobs(app) -> None:
     jq.run_repeating(caravan_refresh_job, interval=config.CARAVAN_BOARD_REFRESH_SECONDS, first=60, name="caravan-board")
     jq.run_repeating(pending_sweep_job, interval=config.PENDING_SWEEP_SECONDS, first=45, name="pending-sweep")
     jq.run_repeating(gambling_sweep_job, interval=config.GAMBLE_SWEEP_SECONDS, first=35, name="gambling-sweep")
+    jq.run_repeating(lab_completion_job, interval=config.LAB_COMPLETION_SWEEP_SECONDS, first=25, name="lab-completion")
     jq.run_repeating(shipment_job, interval=config.SHIPMENT_JOB_SECONDS, first=20, name="shipment")
     jq.run_repeating(boost_sweep_job, interval=config.ENERGY_BOOST_SWEEP_SECONDS, first=config.ENERGY_BOOST_SWEEP_SECONDS, name="boost-sweep")
     jq.run_repeating(smuggler_job, interval=config.SMUGGLER_TICK_SECONDS, first=40, name="smuggler")

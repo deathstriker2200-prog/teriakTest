@@ -28,6 +28,7 @@ def _home_text(n_open: int) -> str:
         "اینجا بازیکن‌ها می‌تونن مستقیم با هم معامله کنن 🤝\n\n"
         "قابل فروش:\n"
         "🧩 قطعه افسانه‌ای\n"
+        "🔹 فرگمنت باس\n"
         "🪵 چوب\n"
         "⛏️ آهن\n\n"
         f"📋 آگهی‌های فعال: {fa_num(n_open)}\n\n"
@@ -118,7 +119,7 @@ async def _n_open() -> int:
 
 SELL_PICK_TEXT = (
     "<b>🏷 فروش تو مارکت</b>\n\n"
-    "کدوم جنسو می‌خوای آگهی کنی؟ 🧩 قطعه افسانه‌ای، 🪵 چوب یا ⛏️ آهن\n"
+    "کدوم جنسو می‌خوای آگهی کنی؟ 🧩 قطعه افسانه‌ای، 🔹 فرگمنت باس، 🪵 چوب یا ⛏️ آهن\n"
     "بعد تعداد و قیمت کل رو ازت می‌پرسم و آخرش یه تاییدیه می‌گیری"
 )
 
@@ -132,7 +133,7 @@ def _stock_line(user, item: str) -> str:
 
 async def market_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     async with session_scope() as s:
-        n_exp = await mk_svc.sweep_expired(s)
+        await mk_svc.sweep_expired(s)
         n_open = await mk_svc.count_listings(s)
         await s.commit()
     return await respond(update, _home_text(n_open), kb.market_home_kb(n_open, update.effective_user.id))

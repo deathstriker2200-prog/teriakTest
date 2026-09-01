@@ -54,7 +54,7 @@ async def wipe_account(session: AsyncSession, user: User) -> None:
     """
     from sqlalchemy import delete as sql_delete
 
-    from models import CartelWarQueue, Dog, LabMaterial, LabProduct, LabWorker, SeedStock, TeamDaily, TeamRequest, Team
+    from models import CartelWarQueue, Dog, LabCompletionEvent, LabMaterial, LabProduct, LabWorker, SeedStock, TeamDaily, TeamRequest, Team
 
     # کارتل: رهبره → انحلال کامل | عضو ساده → حذف عضویت
     from services import teams as team_svc
@@ -71,7 +71,7 @@ async def wipe_account(session: AsyncSession, user: User) -> None:
             await session.delete(m)
         await session.flush()
 
-    for model in (Plot, InventoryItem, Dog, SeedStock, LabMaterial, LabProduct, LabWorker):
+    for model in (Plot, InventoryItem, Dog, SeedStock, LabMaterial, LabProduct, LabWorker, LabCompletionEvent):
         await session.execute(sql_delete(model).where(model.user_id == user.id))
     await session.flush()
 
@@ -191,6 +191,24 @@ def expected_skill_points(level: int) -> int:
     """مجموع امتیاز مهارتی که یه بازیکن تا این لول باید گرفته باشه (لول ۱۰ دو امتیاز و لول ۲۰ سه امتیاز میده)"""
     level = max(1, int(level or 1))
     return sum(config.SKILL_BONUS_LEVELS.get(k, config.SKILL_POINT_PER_LEVEL) for k in range(2, level + 1))
+
+
+def lifetime_xp(level: int, residual_xp: int, needs: tuple[int, ...]) -> int:
+    """بازسازی XP تاریخی از level و XP باقی‌مانده با جدول همان نسخه."""
+    lvl = min(max(1, int(level or 1)), len(needs) + 1)
+    return sum(int(v) for v in needs[:lvl - 1]) + max(0, int(residual_xp or 0))
+
+
+def level_from_lifetime_xp(total_xp: int, needs: tuple[int, ...]) -> tuple[int, int]:
+    """نگاشت XP تاریخی به (level, residual)؛ XP اضافه بعد سقف هم حفظ می‌شود."""
+    left = max(0, int(total_xp or 0))
+    level = 1
+    for need in needs:
+        if left < int(need):
+            break
+        left -= int(need)
+        level += 1
+    return level, left
 
 
 def ensure_skills(user: User) -> None:

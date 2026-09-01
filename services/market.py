@@ -20,17 +20,23 @@ from utils import money, now_utc
 def qty_of(user: User, item: str) -> int:
     if item == "part":
         return int(getattr(user, "legendary_parts", 0) or 0)
+    if item == "fragment":
+        return int(getattr(user, "boss_fragments", 0) or 0)
     if item == "wood":
         return int(getattr(user, "wood", 0) or 0)
-    return int(getattr(user, "iron", 0) or 0)
+    if item == "iron":
+        return int(getattr(user, "iron", 0) or 0)
+    return 0
 
 
 def give(user: User, item: str, n: int) -> None:
     if item == "part":
         user.legendary_parts = qty_of(user, "part") + n
+    elif item == "fragment":
+        user.boss_fragments = qty_of(user, "fragment") + n
     elif item == "wood":
         user.wood = qty_of(user, "wood") + n
-    else:
+    elif item == "iron":
         user.iron = qty_of(user, "iron") + n
 
 
@@ -44,7 +50,7 @@ def take(user: User, item: str, n: int) -> bool:
 
 def return_room(user: User, item: str) -> int | None:
     """جای خالی واقعی برای برگشت آگهی؛ قطعه افسانه‌ای سقف نداره."""
-    if item == "part":
+    if item in ("part", "fragment"):
         return None
     if item in ("wood", "iron"):
         from services.resources import res_cap
@@ -65,7 +71,7 @@ async def sweep_expired(session: AsyncSession) -> int:
     اگر انبار چوب/آهن پر باشه، آگهی رزرو می‌مونه تا کاربر جا باز کنه؛ جنس نه گم میشه نه تکثیر.
     """
     cutoff = now_utc() - timedelta(hours=config.MARKET_TTL_HOURS)
-    q = select(MarketListing).where(MarketListing.created_at < cutoff)
+    q = select(MarketListing).where(MarketListing.created_at < cutoff).with_for_update()
     rows = list((await session.execute(q)).scalars())
     n = 0
     for row in rows:
@@ -157,7 +163,9 @@ async def cancel_listing(session: AsyncSession, user: User, listing_id: int) -> 
     لغو آگهی توسط صاحبش. False/None یعنی آگهی مال کاربر نیست؛ False/row یعنی انبار جا نداره.
     این قرارداد دوخروجی قبلی رو حفظ می‌کنه ولی اجازه نمی‌ده لغو، ظرفیت چوب/آهن رو دور بزنه.
     """
-    row = await session.get(MarketListing, listing_id)
+    row = (await session.execute(
+        select(MarketListing).where(MarketListing.id == listing_id).with_for_update()
+    )).scalar_one_or_none()
     if row is None or row.seller_id != user.id:
         return False, None
     if not can_return(user, row.item, row.qty):
@@ -175,7 +183,9 @@ async def buy_listing(session: AsyncSession, buyer: User, listing_id: int) -> tu
     خروجی: (وضعیت، اطلاعات) → status: gone | own | poor | full | ok
     راند ۴۰ (درخواست کارفرما): چوب و آهن سقف انبار مخفیگاه دارن، جا نبود خرید انجام نمیشه
     """
-    row = await session.get(MarketListing, listing_id)
+    row = (await session.execute(
+        select(MarketListing).where(MarketListing.id == listing_id).with_for_update()
+    )).scalar_one_or_none()
     if row is None:
         return "gone", {}
     if row.seller_id == buyer.id:

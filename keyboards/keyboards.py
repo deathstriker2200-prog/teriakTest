@@ -1123,9 +1123,8 @@ def lab_home_kb(user: User) -> InlineKeyboardMarkup:
             _btn("👷 کارگران", "lab:workers", PRIMARY),
         ])
         rows.append([
-            _btn("📦 انبار محصولات", "lab:wh", PRIMARY),
+            _btn("📦 انبار آزمایشگاه", "lab:wh", PRIMARY),
         ])
-        rows.append([_btn("📥 تحویل تولیدهای آماده", "lab:collect", SUCCESS)])
         if lab_svc.lab_level(user) >= config.LAB_MAX_LEVEL:
             rows.append([_btn("👑 آزمایشگاه | لول مکس", "noop:maxlab")])
         else:
@@ -1145,12 +1144,22 @@ def lab_confirm_kb(action: str, key: str) -> InlineKeyboardMarkup:
     ]])
 
 
-def lab_workers_menu_kb() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([
-        [_btn("👷 کارگران استخدام‌شده", "lab:employed", PRIMARY)],
-        [_btn("➕ استخدام کارگر جدید", "lab:hirelist", SUCCESS)],
-        [_btn("🔙 آزمایشگاه", "menu:lab", PRIMARY)],
-    ])
+def lab_workers_menu_kb(user: User, workers: list) -> InlineKeyboardMarkup:
+    """استخدام و اخراج کارگر آزاد در همان صفحه، بدون دو هاب تکراری."""
+    from services import lab as lab_svc
+
+    rows: list[list[InlineKeyboardButton]] = []
+    if len(workers) < lab_svc.worker_slots(user):
+        for key in config.LAB_WORKER_ORDER:
+            cfg = config.LAB_WORKERS[key]
+            if user.level >= cfg["min_level"]:
+                rows.append([_btn(f"➕ استخدام {cfg['emoji']} {cfg['name']}", f"lab:hire:{key}", SUCCESS)])
+    for w in workers:
+        if not w.busy_until:
+            cfg = config.LAB_WORKERS[w.worker_key]
+            rows.append([_btn(f"❌ اخراج {cfg['emoji']} {cfg['name']}", f"lab:fire:{w.id}", DANGER)])
+    rows.append([_btn("🔙 آزمایشگاه", "menu:lab", PRIMARY)])
+    return InlineKeyboardMarkup(rows)
 
 
 def lab_employed_kb(workers: list) -> InlineKeyboardMarkup:
@@ -1202,14 +1211,14 @@ def lab_products_kb(user: User) -> InlineKeyboardMarkup:
 def lab_hire_confirm_kb(worker_key: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([[
         _btn("✅ استخدام", f"cf:lab:hire:{worker_key}", SUCCESS),
-        _btn("❌ لغو", "lab:hirelist", DANGER),
+        _btn("❌ لغو", "lab:workers", DANGER),
     ]])
 
 
 def lab_fire_confirm_kb(worker_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([[
         _btn("✅ اخراج", f"cf:lab:fire:{worker_id}", DANGER),
-        _btn("❌ لغو", "lab:employed", PRIMARY),
+        _btn("❌ لغو", "lab:workers", PRIMARY),
     ]])
 
 
@@ -1476,15 +1485,18 @@ def gamble_lobby_wait_kb(match_id: int) -> InlineKeyboardMarkup:
     ])
 
 
-def gamble_duel_emoji_kb(match_id: int) -> InlineKeyboardMarkup:
-    return gamble_dice_kb("duel", match_id=match_id)
+def gamble_ttt_modes_kb(match_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [_btn("⚡ تک‌دست سریع", f"gm:dr:{match_id}:1", SUCCESS)],
+        [_btn("🎮 دو برد از سه", f"gm:dr:{match_id}:3", PRIMARY)],
+        [_btn("🏆 سه برد از پنج", f"gm:dr:{match_id}:5", PRIMARY)],
+        [_btn("❌ لغو مسابقه", f"gm:dx:{match_id}", DANGER)],
+    ])
 
 
 def gamble_duel_rounds_kb(match_id: int) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([
-        [_btn(f"best-of-{n}", f"gm:dr:{match_id}:{n}", SUCCESS) for n in config.GAMBLE_DUEL_ROUNDS],
-        [_btn("❌ لغو مسابقه", f"gm:dx:{match_id}", DANGER)],
-    ])
+    """سازگاری اسم قبلی."""
+    return gamble_ttt_modes_kb(match_id)
 
 
 def gamble_duel_confirm_kb(match_id: int) -> InlineKeyboardMarkup:
@@ -1494,9 +1506,35 @@ def gamble_duel_confirm_kb(match_id: int) -> InlineKeyboardMarkup:
     ])
 
 
+def gamble_ttt_board_kb(match, finished: bool = False) -> InlineKeyboardMarkup:
+    """برد 3×3؛ مهره قدیمی هر بازیکن با شکل جدا مشخص می‌شود."""
+    board = match.board_state if len(match.board_state or "") == 9 else "........."
+    creator_moves = [int(x) for x in (match.creator_moves or "").split(",") if x.isdigit()]
+    opponent_moves = [int(x) for x in (match.opponent_moves or "").split(",") if x.isdigit()]
+    oldest_x = creator_moves[0] if len(creator_moves) >= config.GAMBLE_TTT_MAX_ACTIVE_PIECES else None
+    oldest_o = opponent_moves[0] if len(opponent_moves) >= config.GAMBLE_TTT_MAX_ACTIVE_PIECES else None
+    rows: list[list[InlineKeyboardButton]] = []
+    for r in range(3):
+        line: list[InlineKeyboardButton] = []
+        for c in range(3):
+            cell = r * 3 + c
+            if board[cell] == "X":
+                label = "❎" if cell == oldest_x else "❌"
+            elif board[cell] == "O":
+                label = "🔘" if cell == oldest_o else "⭕"
+            else:
+                label = "▫️"
+            data = "gm:noop" if finished else f"gm:tp:{match.id}:{cell}"
+            line.append(_btn(label, data, PRIMARY if board[cell] == "." else None))
+        rows.append(line)
+    if finished:
+        rows.append([_btn("🎰 قمارخانه", "gm:h", PRIMARY)])
+    return InlineKeyboardMarkup(rows)
+
+
 def gamble_duel_roll_kb(match_id: int, code: str | None = None) -> InlineKeyboardMarkup:
-    spec = config.GAMBLE_DICE.get(code or "") or {}
-    return InlineKeyboardMarkup([[_btn(spec.get("duel_button", "🎮 حرکت من"), f"gm:roll:{match_id}", SUCCESS)]])
+    """callbackهای پیام قدیمی دیگر بازی تازه‌ای نمی‌سازند."""
+    return InlineKeyboardMarkup([[_btn("❌ این بازی قدیمیه", "gm:h", DANGER)]])
 
 
 def gamble_finished_kb() -> InlineKeyboardMarkup:
@@ -1638,7 +1676,8 @@ def market_filter_kb(desc: bool, owner_id: int) -> InlineKeyboardMarkup:
     """انتخاب آیتم برای سرچ تو آگهی‌ها"""
     sd = "e" if desc else "a"
     return InlineKeyboardMarkup([
-        [_btn("🧩 قطعه افسانه‌ای", f"mk:b:0:{sd}:part:{owner_id}", PRIMARY)],
+        [_btn("🧩 قطعه افسانه‌ای", f"mk:b:0:{sd}:part:{owner_id}", PRIMARY),
+         _btn("🔹 فرگمنت باس", f"mk:b:0:{sd}:fragment:{owner_id}", PRIMARY)],
         [_btn("🪵 چوب", f"mk:b:0:{sd}:wood:{owner_id}", PRIMARY),
          _btn("⛏️ آهن", f"mk:b:0:{sd}:iron:{owner_id}", PRIMARY)],
         [_btn("📋 همه آگهی‌ها", f"mk:b:0:{sd}:x:{owner_id}", SUCCESS)],
@@ -1657,7 +1696,8 @@ def market_listing_kb(listing_id: int, owner_id: int) -> InlineKeyboardMarkup:
 def market_sell_kb(owner_id: int) -> InlineKeyboardMarkup:
     """انتخاب جنس برای فروش"""
     return InlineKeyboardMarkup([
-        [_btn("🧩 قطعه افسانه‌ای", f"mk:si:part:a:{owner_id}", PRIMARY)],
+        [_btn("🧩 قطعه افسانه‌ای", f"mk:si:part:a:{owner_id}", PRIMARY),
+         _btn("🔹 فرگمنت باس", f"mk:si:fragment:a:{owner_id}", PRIMARY)],
         [_btn("🪵 چوب", f"mk:si:wood:a:{owner_id}", PRIMARY),
          _btn("⛏️ آهن", f"mk:si:iron:a:{owner_id}", PRIMARY)],
         [_btn("🛒 برگشت به مارکت", f"mk:h:0:a:{owner_id}", PRIMARY)],

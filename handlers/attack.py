@@ -159,14 +159,20 @@ def _victim_text(attacker_name: str, result: dict) -> str:
         head = f"⚔️ حریف «{name}» بهت حمله کرد و برد"
         money_line = (f"💰 {money(result['steal'])} ازت دزدید" if result["steal"]
                       else "💰 جیبت خالی بود، چیزی نتونست بدزده")
+        resource_lines = (
+            f"🪵 {fa_num(result.get('wood_loot', 0))} چوب از انبارت دزدید\n"
+            f"⛏️ {fa_num(result.get('iron_loot', 0))} آهن از انبارت دزدید\n"
+        )
     else:
         head = f"🛡 حریف «{name}» بهت حمله کرد ولی دفاع کردی"
         money_line = (f"💵 {money(result['penalty'])} جریمه‌ش رسید دستت" if result["penalty"]
                       else "💸 جیبش خالی بود، جریمه‌ای گیرت نیومد")
+        resource_lines = ""
     return (
         "<b>🚨 بهت حمله شد</b>\n\n"
         f"{head}\n"
         f"{money_line}\n"
+        f"{resource_lines}"
         f"💪 قدرت کل تو {fa_num(result['d_pow_disp'])} ✕ طرف {fa_num(result['a_pow_disp'])}\n"
         f"✨ {fa_num(result['victim_xp'])} تجربه گرفتی\n\n"
         f"🛡 تا {fa_num(config.PV_ATTACK_SHIELD_SECONDS // 3600)} ساعت از حملات در امانی"
@@ -291,7 +297,6 @@ async def _run_attack(update: Update, context, target_id: int, break_shield: boo
     wkey = result.get("weapon")
     _al = result.get("ammo_left", -1)
     if wkey and _al is not None and _al >= 0:
-        from services import combat
         wname = (config.WEAPONS.get(wkey) or {}).get("name", wkey)
         text += f"\n🔫 {esc(wname)}: {fa_num(_al)} تیر مونده"
 

@@ -138,14 +138,20 @@ TEXT_DEDUP_SECONDS = 0.5      # تکرار همون دستور زیر نیم ث�
 FARM_UPDATE_SECONDS = 3       # کولدان ریز دکمه آپدیت مزرعه
 
 # ───────── لول و تجربه بازیکن ─────────
-# منحنی Idle/RPG: لول‌های پایین سریع | از لول ۲۰ به بعد رشد نرم‌تر میشه
-# لول‌های ۱ تا ۲۰: XP_CURVE_BASE × level^XP_CURVE_EXP
-# لول‌های بالاتر از ۲۰: مقدار لول ۲۰ × (level / 20)^XP_CURVE_HIGH_EXP
-# توان دوم عمداً از ۱٫۶ کمتره تا مسیر ۲۰→۳۰ سنگین بشه ولی جهش غیرمنطقی نداشته باشه
-XP_CURVE_BASE = 78.5
-XP_CURVE_EXP = 1.6
-XP_CURVE_HIGH_START = 20
-XP_CURVE_HIGH_EXP = 1.15
+# جدول قطعی XP هر پله از لول 1→2 تا 29→30.
+# پله‌های 1 تا 20 همان منحنی قدیمی‌اند؛ ده پله آخر سخت‌تر شده‌اند و جمع کل دقیقاً 400,000 است.
+PLAYER_XP_NEEDS = (
+    78, 237, 455, 721, 1_030, 1_380, 1_766, 2_186, 2_640, 3_125,
+    3_639, 4_183, 4_755, 5_353, 5_978, 6_629, 7_304, 8_003, 8_727,
+    19_000, 22_000, 25_000, 28_000, 31_000, 34_000, 37_000, 40_000, 45_000, 50_811,
+)
+PLAYER_XP_TOTAL_TO_MAX = 400_000
+# جدول نسخه قبلی برای مهاجرت یک‌باره /update؛ این جدول immutable است.
+LEGACY_PLAYER_XP_NEEDS = (
+    78, 237, 455, 721, 1_030, 1_380, 1_766, 2_186, 2_640, 3_125,
+    3_639, 4_183, 4_755, 5_353, 5_978, 6_629, 7_304, 8_003, 8_727,
+    9_473, 10_020, 10_571, 11_125, 11_683, 12_245, 12_810, 13_378, 13_949, 14_524,
+)
 LEVEL_CASH_REWARD = 400         # جایزه نقدی لول‌آپ = این عدد × لول جدید
 
 # ───────── اثر لول روی اقتصاد و تجهیزات ─────────
@@ -351,31 +357,32 @@ LAB_WORKER_ORDER = ["basic", "skilled", "expert", "scientist"]
 LAB_PRODUCTS = {
     "crystal": {
         "name": "کریستال", "emoji": "🧪", "unlock_lab_level": 1, "min_worker": "basic",
-        "materials": {"mat_a": 4}, "time_seconds": 900, "output": 3, "sell": 7500,
+        "materials": {"mat_a": 4}, "time_seconds": 1080, "output": 3, "sell": 6000,
     },
     "meth": {
         "name": "متفتامین", "emoji": "🧪", "unlock_lab_level": 1, "min_worker": "basic",
-        "materials": {"mat_a": 6, "mat_b": 2}, "time_seconds": 1500, "output": 3, "sell": 11000,
+        "materials": {"mat_a": 6, "mat_b": 2}, "time_seconds": 1800, "output": 3, "sell": 8800,
     },
     "amph": {
         "name": "آمفتامین", "emoji": "⚡", "unlock_lab_level": 2, "min_worker": "skilled",
-        "materials": {"mat_b": 6, "mat_c": 2}, "time_seconds": 2700, "output": 4, "sell": 18000,
+        "materials": {"mat_b": 6, "mat_c": 2}, "time_seconds": 3240, "output": 4, "sell": 14400,
     },
     "heroin": {
         "name": "هروئین", "emoji": "☠️", "unlock_lab_level": 3, "min_worker": "expert",
-        "materials": {"mat_b": 8, "mat_c": 6}, "time_seconds": 4500, "output": 4, "sell": 35000,
+        "materials": {"mat_b": 8, "mat_c": 6}, "time_seconds": 5400, "output": 4, "sell": 28000,
     },
     "fentanyl": {
         "name": "فنتانیل", "emoji": "🧬", "unlock_lab_level": 3, "min_worker": "expert",
-        "materials": {"mat_c": 10, "mat_d": 4}, "time_seconds": 5400, "output": 4, "sell": 55000,
+        "materials": {"mat_c": 10, "mat_d": 4}, "time_seconds": 6480, "output": 4, "sell": 44000,
     },
     "purecrystal": {
         "name": "کریستال خالص", "emoji": "💎", "unlock_lab_level": 3, "min_worker": "expert",
-        "materials": {"mat_c": 12, "mat_d": 8}, "time_seconds": 6300, "output": 4, "sell": 80000,
+        "materials": {"mat_c": 12, "mat_d": 8}, "time_seconds": 7560, "output": 4, "sell": 64000,
     },
     "legendary": {
         "name": "محصول افسانه‌ای", "emoji": "👑", "unlock_lab_level": 4, "min_worker": "scientist",
-        "materials": {"mat_d": 25}, "time_seconds": 10800, "output": 1, "sell": 400000,
+        "materials": {"mat_d": 25}, "time_seconds": 12960, "output": 1, "sell": 320000,
+        "fixed_output": True,
     },
 }
 # ترتیب نمایش محصولات تو صفحه تولید (به ترتیب باز شدن)
@@ -383,6 +390,8 @@ LAB_PRODUCT_ORDER = ["crystal", "meth", "amph", "heroin", "fentanyl", "purecryst
 # ظرفیت هر محصول در انبار داخلی آزمایشگاه، متناسب با لول آزمایشگاه
 LAB_WAREHOUSE_CAP_BY_LEVEL = [40, 80, 140, 220]
 LAB_WAREHOUSE_CAP_PER_PRODUCT = LAB_WAREHOUSE_CAP_BY_LEVEL[-1]  # سقف نهایی؛ سازگاری با نسخه‌های قبل
+LAB_COMPLETION_SWEEP_SECONDS = 60
+LAB_COMPLETION_NOTIFY_MAX_ATTEMPTS = 3
 
 # ───────── برداشت ─────────
 HARVEST_COOLDOWN_SECONDS = 120  # هر ۲ دقیقه فقط یه بار برداشت، زمان‌بندی برای هر کاربر جداست
@@ -1142,44 +1151,51 @@ GAMBLE_CONFIG_SECONDS = 600
 GAMBLE_CONFIRM_SECONDS = 600
 GAMBLE_ROUND_SECONDS = 600
 GAMBLE_SWEEP_SECONDS = 20
-GAMBLE_DUEL_ROUNDS = (1, 3, 5)
+GAMBLE_DUEL_ROUNDS = (1, 3, 5)  # دوز: تک‌دست، دو برد از سه، سه برد از پنج
+GAMBLE_TTT_MAX_ACTIVE_PIECES = 3
+GAMBLE_TTT_MAX_MOVES_PER_ROUND = 60
 # اسم «Dice» فقط اصطلاح Bot API است؛ در UI هر انیمیشن بازی مستقل خودش را دارد.
 # wins برای بردهای تک‌ضریبی و payouts برای اسلات چندجایزه‌ای است.
 GAMBLE_DICE = {
     "dice": {
         "emoji": "🎲", "max": 6, "wins": (4, 5, 6), "payout": 1.80,
         "name": "بازی تاس", "action": "انداختن تاس", "button": "🎲 تاس بنداز", "duel_button": "🎲 تاس من",
-        "rule": "اگه تاس روی ۴، ۵ یا ۶ بشینه، جایزه ×۱.۸ می‌گیری.",
+        "rule": "اگه تاس روی 4، 5 یا 6 بشینه، جایزه ×1.8 می‌گیری.",
     },
     "dart": {
         "emoji": "🎯", "max": 6, "wins": (6,), "payout": 5.40,
         "name": "دارت", "action": "پرتاب دارت", "button": "🎯 دارت پرت کن", "duel_button": "🎯 پرتاب دارت من",
-        "rule": "اگه دارت دقیقاً وسط خال بخوره، جایزه ×۵.۴ می‌گیری.",
+        "rule": "اگه دارت دقیقاً وسط خال بخوره، جایزه ×5.4 می‌گیری.",
     },
     "bowl": {
         "emoji": "🎳", "max": 6, "wins": (6,), "payout": 5.40,
         "name": "بولینگ", "action": "پرتاب توپ بولینگ", "button": "🎳 توپ رو بنداز", "duel_button": "🎳 توپ بولینگ من",
-        "rule": "اگه استرایک کنی و همه پین‌ها بریزن، جایزه ×۵.۴ می‌گیری.",
+        "rule": "اگه استرایک کنی و همه پین‌ها بریزن، جایزه ×5.4 می‌گیری.",
     },
     "basket": {
         "emoji": "🏀", "max": 5, "wins": (4, 5), "payout": 2.25,
         "name": "بسکتبال", "action": "پرتاب توپ بسکتبال", "button": "🏀 توپ رو پرتاب کن", "duel_button": "🏀 پرتاب توپ من",
-        "rule": "اگه توپ بره تو سبد، جایزه ×۲.۲۵ می‌گیری.",
+        "rule": "اگه توپ بره تو سبد، جایزه ×2.25 می‌گیری.",
     },
     "foot": {
         "emoji": "⚽", "max": 5, "wins": (4, 5), "payout": 2.25,
         "name": "فوتبال", "action": "شوت‌کردن توپ", "button": "⚽ شوت کن", "duel_button": "⚽ شوت من",
-        "rule": "اگه شوتت گل بشه، جایزه ×۲.۲۵ می‌گیری.",
+        "rule": "اگه شوتت گل بشه، جایزه ×2.25 می‌گیری.",
     },
     "slot": {
         "emoji": "🎰", "max": 64, "name": "ماشین اسلات", "action": "چرخاندن اسلات",
         "button": "🎰 دستگاه رو بچرخون", "duel_button": "🎰 چرخوندن دستگاه من",
         "payouts": {
-            64: 20.0,                         # 7-7-7
-            1: 8.0, 22: 8.0, 43: 8.0,       # سه نماد یکسان به‌جز 777
-            16: 4.0, 32: 4.0, 48: 4.0,      # دو 7 در دو خانه اول
+            64: 10.0,                         # 7-7-7
+            1: 6.0, 22: 5.0, 43: 4.0,       # BAR / grape / lemon triples
+            # دقیقاً دو 7 در هر جای سه خانه
+            16: 2.5, 32: 2.5, 48: 2.5, 52: 2.5, 56: 2.5,
+            60: 2.5, 61: 2.5, 62: 2.5, 63: 2.5,
+            # دو نماد اول یکسان غیر 7، نماد سوم متفاوت
+            6: 1.5, 11: 1.5, 17: 1.5, 27: 1.5, 33: 1.5,
+            38: 1.5, 49: 1.5, 54: 1.5, 59: 1.5,
         },
-        "rule": "۷۷۷ جایزه ×۲۰؛ سه نماد یکسان ×۸؛ دو تا ۷ در دو خانه اول ×۴.",
+        "rule": "777 ×10؛ سه BAR ×6؛ سه 🍇 ×5؛ سه 🍋 ×4؛ دقیقاً دو 7 ×2.5؛ دو نماد اول یکسان ×1.5.",
     },
 }
 GAMBLE_EMOJI_TO_KEY = {v["emoji"]: k for k, v in GAMBLE_DICE.items()}
@@ -1288,9 +1304,11 @@ BOSS_TIERS = {
 BOSS_TIER_SPAWN = [("common", 0.80), ("epic", 0.15), ("legendary", 0.05)]
 # شانس قطعه افسانه‌ای برای قاتل؛ دیگر تضمینی نیست
 BOSS_PART_DROP = {"common": 0.00, "epic": 0.05, "legendary": 0.20}
-# فرگمنت برای سه نفر برتر؛ عدد هر نفر بر اساس درجه باس
+# فرگمنت کمیاب: برای هر باس فقط یک رول؛ دراپ بین سه نفر برتر با وزن رتبه تقسیم می‌شود.
 BOSS_FRAGMENT_TOP_N = 3
-BOSS_FRAGMENT_DROP = {"common": (1, 2), "epic": (3, 6), "legendary": (8, 15)}
+BOSS_FRAGMENT_DROP_CHANCE = {"common": 0.10, "epic": 0.30, "legendary": 0.65}
+BOSS_FRAGMENT_DROP = {"common": (1, 1), "epic": (1, 2), "legendary": (2, 4)}
+BOSS_FRAGMENT_RANK_WEIGHTS = (0.50, 0.30, 0.20)
 BOSSES = [
     # ⚪ معمولی: مارلو ← ویکتور ← کِروک
     {"key": "marlo",   "name": "مارلو",   "emoji": "🥃", "tier": "common", "tag": "قاچاقچی قدیمی",
@@ -1357,6 +1375,7 @@ BOSS_IMAGE_DIR = "media/bosses"   # عکس باس‌ها اینجا روی سر�
 # ───────── مارکت (بازار خرید و فروش بازیکن‌ها 🛒، راند ۲۳، درخواست کارفرما) ─────────
 MARKET_ITEMS = {
     "part": {"name": "🧩 قطعه افسانه‌ای", "short": "قطعه افسانه‌ای"},
+    "fragment": {"name": "🔹 فرگمنت باس", "short": "فرگمنت باس"},
     "wood": {"name": "🪵 چوب", "short": "چوب"},
     "iron": {"name": "⛏️ آهن", "short": "آهن"},
 }

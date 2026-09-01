@@ -1,7 +1,7 @@
 from models.models import (
     ActionEvent, BossPlan, CartelWar, CartelWarQueue, Dog, GambleMatch, GambleMatchRound,
-    GambleSoloRound, GameMeta, GroupActivity, GroupPlayer, InventoryItem,
-    LabMaterial, LabProduct, LabWorker, MarketListing, MessageOwner, Plot,
+    GambleSoloRound, GambleTicTacToeMove, GameMeta, GroupActivity, GroupPlayer, InventoryItem,
+    LabCompletionEvent, LabMaterial, LabProduct, LabWorker, MarketListing, MessageOwner, Plot,
     ProductStock, SeedSale, SeedStock, SeenUser, Shipment, ShipmentRaid,
     ShipmentRaidEntry, Team, TeamChatMessage, TeamDaily, TeamMember, TeamRequest,
     TrackedUser, TrackedUserStats, User, WarAttackCooldown, WarAttackLog,
@@ -14,6 +14,6 @@ __all__ = [
     "Shipment", "TrackedUser", "TrackedUserStats", "TeamChatMessage",
     "MarketListing", "BossPlan", "ShipmentRaid", "ShipmentRaidEntry",
     "CartelWar", "CartelWarQueue", "WarAttackCooldown", "WarAttackLog", "LabMaterial",
-    "LabProduct", "LabWorker", "GambleSoloRound", "GambleMatch",
-    "GambleMatchRound",
+    "LabProduct", "LabWorker", "LabCompletionEvent", "GambleSoloRound", "GambleMatch",
+    "GambleMatchRound", "GambleTicTacToeMove",
 ]

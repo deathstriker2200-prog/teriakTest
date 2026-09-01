@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import asyncio
-import inspect
 from contextlib import asynccontextmanager
 from datetime import timedelta
 from pathlib import Path
@@ -52,8 +51,9 @@ def test_config_and_source() -> None:
           and gambling.solo_outcome("foot", 10_000, 3) == (False, 0)
           and gambling.solo_outcome("dart", 10_000, 6) == (True, 54_000)
           and gambling.solo_outcome("bowl", 10_000, 5) == (False, 0)
-          and gambling.solo_outcome("slot", 10_000, 64) == (True, 200_000)
-          and gambling.solo_outcome("slot", 10_000, 48) == (True, 40_000)
+          and gambling.solo_outcome("slot", 10_000, 64) == (True, 100_000)
+          and gambling.solo_outcome("slot", 10_000, 48) == (True, 25_000)
+          and gambling.solo_outcome("slot", 10_000, 17) == (True, 15_000)
           and gambling.solo_outcome("slot", 10_000, 50) == (False, 0))
     check("نتیجه‌ها با گل، سبد، خال، استرایک و ترکیب اسلات تعریف می‌شوند نه کسر شانس",
           "سبد" in gambling.outcome_text("basket", 5)
@@ -66,17 +66,16 @@ def test_config_and_source() -> None:
           == config.GAMBLE_ROUND_SECONDS == 600)
 
     src = Path(__file__).with_name("handlers").joinpath("gambling.py").read_text(encoding="utf-8")
-    svc_src = inspect.getsource(gambling)
     keyboard_src = Path(__file__).with_name("keyboards").joinpath("keyboards.py").read_text(encoding="utf-8")
     check("شش بازی تک‌نفره هرکدام بخش مستقل دارند و زیر یک دکمه تاس جمع نشده‌اند",
           all(f"gm:game:{code}" in keyboard_src for code in expected)
           and "gm:solo:bet" not in keyboard_src)
-    check("هندلر هر دو حالت فقط send_dice رسمی صدا می‌زند", src.count("context.bot.send_dice(") == 2)
-    check("نتیجه فقط از message.dice.value خوانده می‌شود", src.count("msg.dice.value") == 2)
-    check("هر دو اعلام نتیجه تا پایان انیمیشن صبر می‌کنند",
-          src.count("await asyncio.sleep(config.GAMBLE_DICE_ANIMATION_SECONDS)") == 2
+    check("بازی‌های متحرک تک‌نفره فقط send_dice رسمی صدا می‌زنند", src.count("context.bot.send_dice(") == 1)
+    check("نتیجه انیمیشن فقط از message.dice.value خوانده می‌شود", src.count("message.dice.value") == 1)
+    check("اعلام نتیجه تا پایان انیمیشن صبر می‌کند",
+          src.count("await asyncio.sleep(config.GAMBLE_DICE_ANIMATION_SECONDS)") == 1
           and config.GAMBLE_DICE_ANIMATION_SECONDS >= 4)
-    check("سرویس و هندلر قمار random نتیجه‌ساز ندارند", "import random" not in src and "import random" not in svc_src)
+    check("هندلر نتیجه انیمیشن را رندوم نمی‌سازد", "import random" not in src and "random.randint" not in src)
 
     guns = {k: v for k, v in config.WEAPONS.items() if v.get("gun")}
     check("همه تفنگ‌ها قابلیت معنی‌دار دارند", bool(guns) and all(v.get("ability", {}).get("kind") for v in guns.values()))
@@ -148,39 +147,43 @@ async def test_gambling_service(Session) -> None:
 
         match, why = await gambling.create_match(s, creator, -100, 77, 4_000)
         match, why_accept = await gambling.accept_match(s, match.id, opponent)
-        _, why_owner = await gambling.set_match_emoji(s, match.id, opponent, "dice")
-        match, why_emoji = await gambling.set_match_emoji(s, match.id, creator, "dice")
+        _, why_owner = await gambling.set_match_rounds(s, match.id, opponent, 3)
         match, why_rounds = await gambling.set_match_rounds(s, match.id, creator, 3)
-        check("لابی فقط به سازنده اجازه تنظیم ایموجی/راند می‌دهد",
-              not why and not why_accept and why_owner == "owner" and not why_emoji and not why_rounds)
+        check("لابی دوز فقط به سازنده اجازه انتخاب مدل سری می‌دهد",
+              not why and not why_accept and why_owner == "owner" and not why_rounds)
 
         match, why_c, started_c = await gambling.confirm_match(s, match.id, creator)
         match, why_o, started_o = await gambling.confirm_match(s, match.id, opponent)
         await s.flush()
-        check("سهم هر نفر هنگام تأیید وارد escrow می‌شود و بازی با تأیید دوم شروع می‌شود",
+        # شروع تصادفی است؛ برای مسیر قطعی این تست، دست اول را سازنده شروع می‌کند.
+        match.round_starter_id = match.turn_user_id = creator.id
+        check("سهم هر نفر هنگام تأیید وارد escrow می‌شود و دوز با تأیید دوم شروع می‌شود",
               not why_c and not why_o and not started_c and started_o
               and creator.cash == 46_000 and opponent.cash == 46_000
               and match.creator_escrow == match.opponent_escrow == 4_000 and match.status == "active")
 
-        r1 = await gambling.record_roll(s, match.id, creator, 4, 7101)
-        duplicate_roll = await gambling.record_roll(s, match.id, creator, 5, 7102)
-        tie = await gambling.record_roll(s, match.id, opponent, 4, 7103)
-        check("هر نفر هر تلاش فقط یک حرکت رسمی دارد و تساوی همان راند را تکرار می‌کند",
-              not r1["resolved"] and duplicate_roll["reason"] == "already"
-              and tie["tie"] and match.current_round == 1)
+        await gambling.play_ttt(s, match.id, creator, 0)
+        await gambling.play_ttt(s, match.id, opponent, 3)
+        await gambling.play_ttt(s, match.id, creator, 1)
+        await gambling.play_ttt(s, match.id, opponent, 4)
+        win1 = await gambling.play_ttt(s, match.id, creator, 2)
+        check("برد سه‌تایی دست اول را ثبت و دست دوم را با شروع‌کننده جابه‌جا باز می‌کند",
+              win1["round_won"] and not win1["finished"] and match.creator_score == 1
+              and match.turn_user_id == opponent.id and match.board_state == ".........")
 
-        await gambling.record_roll(s, match.id, creator, 6, 7201)
-        win1 = await gambling.record_roll(s, match.id, opponent, 2, 7202)
-        await gambling.record_roll(s, match.id, creator, 5, 7301)
-        final = await gambling.record_roll(s, match.id, opponent, 3, 7302)
-        check("best-of-3 بعد دو برد تمام و کل صندوق یک‌بار به برنده منتقل می‌شود",
-              win1["finished"] is False and final["finished"] is True and final["payout"] == 8_000
+        await gambling.play_ttt(s, match.id, opponent, 3)
+        await gambling.play_ttt(s, match.id, creator, 0)
+        await gambling.play_ttt(s, match.id, opponent, 4)
+        await gambling.play_ttt(s, match.id, creator, 1)
+        await gambling.play_ttt(s, match.id, opponent, 6)
+        final = await gambling.play_ttt(s, match.id, creator, 2)
+        check("دو برد از سه بعد دو برد تمام و کل صندوق یک‌بار به برنده منتقل می‌شود",
+              final["finished"] is True and final["payout"] == 8_000
               and match.status == "finished" and match.payout_done and creator.cash == 54_000
               and opponent.cash == 46_000 and match.creator_escrow == match.opponent_escrow == 0)
 
         cm, _ = await gambling.create_match(s, cancel_creator, -200, None, 3_000)
         await gambling.accept_match(s, cm.id, cancel_opponent)
-        await gambling.set_match_emoji(s, cm.id, cancel_creator, "dart")
         await gambling.set_match_rounds(s, cm.id, cancel_creator, 1)
         await gambling.confirm_match(s, cm.id, cancel_creator)
         _, why_cancel, amount = await gambling.cancel_match(s, cm.id, cancel_opponent)
@@ -196,7 +199,6 @@ async def test_gambling_service(Session) -> None:
         await s.flush()
         m, _ = await gambling.create_match(s, c, -300, None, 2_000)
         await gambling.accept_match(s, m.id, o)
-        await gambling.set_match_emoji(s, m.id, c, "bowl")
         await gambling.set_match_rounds(s, m.id, c, 1)
         await gambling.confirm_match(s, m.id, c)
         await gambling.confirm_match(s, m.id, o)
@@ -212,11 +214,12 @@ async def test_gambling_service(Session) -> None:
         await s.flush()
         fm, _ = await gambling.create_match(s, fc, -301, None, 2_000)
         await gambling.accept_match(s, fm.id, fo)
-        await gambling.set_match_emoji(s, fm.id, fc, "foot")
         await gambling.set_match_rounds(s, fm.id, fc, 1)
         await gambling.confirm_match(s, fm.id, fc)
         await gambling.confirm_match(s, fm.id, fo)
-        await gambling.record_roll(s, fm.id, fc, 5, 7401)
+        fm.turn_user_id = fc.id
+        fm.round_starter_id = fc.id
+        await gambling.play_ttt(s, fm.id, fc, 0)
         fm.expires_at = now_utc() - timedelta(seconds=1)
         sr, _ = await gambling.reserve_solo(s, stale_solo, -302, None, "slot", 2_000)
         sr.expires_at = now_utc() - timedelta(seconds=1)

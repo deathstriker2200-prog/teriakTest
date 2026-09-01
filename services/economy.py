@@ -5,16 +5,13 @@ import random
 import config
 
 
-# ───────── منحنی تجربه (Idle/RPG، پایین سریع | بعد لول ۲۰ نرم‌تر) ─────────
+# ───────── منحنی تجربه؛ جدول صریح با مجموع دقیق 400,000 ─────────
 
 def xp_need(level: int) -> int:
-    """xp لازم برای رفتن از این لول به لول بعد؛ منحنی بعد ۲۰ پیوسته ولی کم‌شیب‌تره."""
+    """XP لازم برای رفتن از level به level+1؛ در لول مکس آخرین مقدار را برمی‌گرداند."""
     level = max(1, int(level or 1))
-    pivot = int(config.XP_CURVE_HIGH_START)
-    if level <= pivot:
-        return int(config.XP_CURVE_BASE * (level ** config.XP_CURVE_EXP))
-    at_pivot = config.XP_CURVE_BASE * (pivot ** config.XP_CURVE_EXP)
-    return int(at_pivot * ((level / pivot) ** config.XP_CURVE_HIGH_EXP))
+    idx = min(level - 1, len(config.PLAYER_XP_NEEDS) - 1)
+    return int(config.PLAYER_XP_NEEDS[idx])
 
 
 # ───────── زمین ─────────

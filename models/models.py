@@ -281,10 +281,29 @@ class LabWorker(Base):
     worker_key: Mapped[str] = mapped_column(String(32))
     hired_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
     busy_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    job_started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     job_product: Mapped[str | None] = mapped_column(String(32), nullable=True)
     job_output: Mapped[int] = mapped_column(Integer, default=0)   # خروجی همین یه بار تولید (با ضریب کارگر حساب‌شده، موقع شروع کار قفل میشه)
+    job_upkeep_paid: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
 
     user: Mapped[User] = relationship(back_populates="lab_workers")
+
+
+class LabCompletionEvent(Base):
+    """رسید ماندگار پایان تولید؛ آزادسازی کارگر از موفقیت ارسال پیام مستقل است."""
+    __tablename__ = "lab_completion_events"
+    __table_args__ = (
+        Index("ix_lab_completion_pending", "notified_at", "notify_attempts"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    worker_key: Mapped[str] = mapped_column(String(32))
+    product_key: Mapped[str] = mapped_column(String(32))
+    qty: Mapped[int] = mapped_column(Integer)
+    completed_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
+    notified_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    notify_attempts: Mapped[int] = mapped_column(Integer, default=0)
 
 
 class Dog(Base):
@@ -725,11 +744,19 @@ class GambleMatch(Base):
     creator_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     opponent_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
     bet_per_player: Mapped[int] = mapped_column(Integer)
+    # emoji فقط برای سابقه بازی‌های تاسی قدیمی نگه داشته می‌شود؛ بازی جدید ttt3 است.
     emoji: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    game_kind: Mapped[str] = mapped_column(String(16), default="ttt3", server_default="ttt3")
     rounds_total: Mapped[int | None] = mapped_column(Integer, nullable=True)
     current_round: Mapped[int] = mapped_column(Integer, default=1)
     creator_score: Mapped[int] = mapped_column(Integer, default=0)
     opponent_score: Mapped[int] = mapped_column(Integer, default=0)
+    board_state: Mapped[str] = mapped_column(String(9), default=".........", server_default=".........")
+    creator_moves: Mapped[str] = mapped_column(String(16), default="", server_default="")
+    opponent_moves: Mapped[str] = mapped_column(String(16), default="", server_default="")
+    turn_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    round_starter_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    moves_in_round: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     creator_confirmed: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
     opponent_confirmed: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
     creator_escrow: Mapped[int] = mapped_column(Integer, default=0)
@@ -761,6 +788,23 @@ class GambleMatchRound(Base):
     status: Mapped[str] = mapped_column(String(16), default="rolling", index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class GambleTicTacToeMove(Base):
+    """تاریخچه اتمیک حرکت‌های دوز سه‌مهره‌ای برای بازیابی و ممیزی."""
+    __tablename__ = "gamble_ttt_moves"
+    __table_args__ = (
+        UniqueConstraint("match_id", "round_no", "move_no", name="uq_gamble_ttt_move"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    match_id: Mapped[int] = mapped_column(ForeignKey("gamble_matches.id"), index=True)
+    round_no: Mapped[int] = mapped_column(Integer)
+    move_no: Mapped[int] = mapped_column(Integer)
+    player_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    cell: Mapped[int] = mapped_column(Integer)
+    removed_cell: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
 
 
 class CartelWarQueue(Base):

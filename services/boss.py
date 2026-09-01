@@ -2,7 +2,7 @@
 باس‌های محله 👹 (راند ۲۳، درخواست کارفرما)
 هر روز دو باس تو هر گروه فعال اسپان میشن، ساعتاشون شانسی ولی حداقل ۲ ساعت فاصله دارن
 درجه‌ها: ⚪ معمولی ۷۰ درصد | 🟣 اپیک ۲۰ درصد | 🟡 لجندری ۱۰ درصد (راند ۲۹: ماندگاری ۱۰/۲۰/۳۰ دقیقه و جواب باس منهای دفاع زره)
-قطعه افسانه‌ای برای قاتل تضمینی نیست (اپیک ۵٪، لجندری ۲۰٪) و سه نفر برتر فرگمنت می‌گیرند
+قطعه افسانه‌ای برای قاتل تضمینی نیست و هر باس فقط یک رول کمیاب فرگمنت بین سه نفر برتر دارد
 حالت باس فعال درون حافظه‌ست (مثل کاروان، با ری‌استارت می‌ره) ولی برنامه روزانه اسپون تو دیتابیسه
 عکس باس‌ها از پنل ادمین با فرستادن عکس ست میشه و فایلش روی سرور ذخیره می‌مونه
 """
@@ -12,7 +12,6 @@ import os
 import random
 from datetime import timedelta
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import config
@@ -230,7 +229,7 @@ async def _settle(session: AsyncSession, chat_id: int, killer_id: int) -> dict:
     """
     تسویه کشتن باس: جایزه رومیزی بین نفرهای برتر دمیج بر اساس رتبه (BOSS_RANK_PCT)
     جم هر درجه به صورت مجموع کنترل‌شده بین سه نفر برتر تقسیم می‌شود؛ لجندری ۵۰ تا ۸۰ جم.
-    سه نفر برتر فرگمنت می‌گیرند و قطعه افسانه‌ای فقط با شانس درجه به قاتل می‌رسد.
+    فرگمنت با یک رول کمیاب بین سه نفر برتر می‌افتد و قطعه افسانه‌ای فقط با شانس درجه به قاتل می‌رسد.
     """
     st = BOSSES.pop(chat_id, None)
     if not st:
@@ -259,10 +258,14 @@ async def _settle(session: AsyncSession, chat_id: int, killer_id: int) -> dict:
                 gu.gems = (gu.gems or 0) + g
                 gem_gains[uid] = g
 
-    # 🔹 فرگمنت باس برای سه نفر برتر، بر اساس درجه
+    # 🔹 فرگمنت باس کمیاب است: برای هر باس فقط یک رول، نه جایزه تضمینی برای همه.
     fragment_gains: dict[int, int] = {}
-    frag_lo, frag_hi = config.BOSS_FRAGMENT_DROP[boss["tier"]]
-    for uid, _d in ranked[: config.BOSS_FRAGMENT_TOP_N]:
+    frag_candidates = ranked[: config.BOSS_FRAGMENT_TOP_N]
+    frag_chance = config.BOSS_FRAGMENT_DROP_CHANCE[boss["tier"]]
+    if frag_candidates and random.random() < frag_chance:
+        weights = config.BOSS_FRAGMENT_RANK_WEIGHTS[:len(frag_candidates)]
+        uid, _d = random.choices(frag_candidates, weights=weights, k=1)[0]
+        frag_lo, frag_hi = config.BOSS_FRAGMENT_DROP[boss["tier"]]
         amount = random.randint(frag_lo, frag_hi)
         gu = await session.get(User, uid)
         if gu is not None:
@@ -345,7 +348,6 @@ def card_text(st: dict) -> str:
 
 def board_text(st: dict) -> str:
     """برد زنده زیر کارت که با هر ضربه ادیت میشه"""
-    boss = boss_of(st)
     left = max(0, int((st["expires_at"] - now_utc()).total_seconds()))
     lines = [
         f"{_hp_bar(st['hp'], st['max_hp'])} {fa_num(max(0, st['hp']))}/{fa_num(st['max_hp'])}",
