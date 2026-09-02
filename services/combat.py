@@ -124,7 +124,7 @@ def combat_boost_pcts(user: User, item_keys, dogs: list,
     artis = users.artifact_keys(levels)
     atk_p = dog_svc.trait_atk_pct(dogs) + (users.artifact_atk_mult(artis) - 1) + skill_pct(user, "power")
     def_p = dog_svc.trait_def_pct(dogs) + (users.artifact_def_mult(artis) - 1) + skill_pct(user, "defense")
-    atk_p += energy_svc.drink_atk_boost(user)  # بمب انرژی (راند ۱۳): بوست موقت فقط روی حمله، پس تو پی‌وی فقط مهاجم سود می‌بره
+    atk_p += energy_svc.drink_atk_boost(user)  # بمب انرژی: بوست موقت فقط روی استت حمله؛ برای هر دو نقش در قدرت پروفایل حساب می‌شود
     poison = getattr(user, "poison_until", None)
     if poison and poison > now_utc():
         atk_p -= config.POISON_CUT
@@ -138,7 +138,7 @@ def combat_boost_pcts(user: User, item_keys, dogs: list,
 def combat_raw_stats(user: User, item_keys, dogs: list, ammo: dict | None = None) -> tuple[int, int]:
     """
     (حمله, دفاع) خام = پایه بر اساس لول + بهترین سلاح/زره (با لول ارتقا) + سگ‌ها | بدون درصدهای بوست
-    مبنای «قدرت کل» حمله پی‌وی راند ۱۲، که بوست‌ها نقش‌محور روش سوار میشن
+    مبنای استت‌های نهایی پروفایل و قدرت کل متقارن PvP
     سگ‌ها فقط قدرت حمله میدن (شخصیت حذف شده) | راند ۲۹: ammo پاس بشه تفنگ بی‌تیر حساب نمیشه
     """
     levels = _levels_map(item_keys)

@@ -50,6 +50,16 @@ def hub_text(cash: int) -> str:
     )
 
 
+def two_player_text(cash: int) -> str:
+    return (
+        "<b>⚔️ مسابقه دونفره</b>\n\n"
+        f"💵 نقدت: {money(cash)}\n\n"
+        "فعلاً اینجا فقط دوز 3×3 داریم؛ بازی رو انتخاب کن، بعد مبلغ شرط رو می‌فرستی.\n\n"
+        "❌⭕ هر نفر فقط 3 مهره فعال داره؛ با مهره چهارم، قدیمی‌ترین مهره خودت پاک میشه.\n"
+        "📍 ساخت لابی و شروع دوز فقط تو گروه انجام میشه."
+    )
+
+
 def solo_text(cash: int) -> str:
     return (
         "<b>🤖 بازی‌های تک‌نفره</b>\n\n"
@@ -148,7 +158,7 @@ async def _start_duel_amount(update: Update) -> None:
         "<b>❌⭕ ساخت دوز دونفره 3×3</b>\n\n"
         f"شرط هر نفر رو بین {money(config.GAMBLE_DUEL_MIN_BET)} تا {money(config.GAMBLE_DUEL_MAX_BET)} بفرست.\n"
         f"💵 نقدت: {money(cash)}\n\nبعدش لابی عمومی ساخته میشه و مدل سری رو انتخاب می‌کنی. برای لغو بنویس «لغو»",
-        kb.gamble_back_kb("gm:h"),
+        kb.gamble_back_kb("gm:duel"),
     )
 
 
@@ -340,6 +350,16 @@ async def gambling_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         from handlers import mines
         return await mines.mines_hub_cmd(update, context)
     if data == "gm:duel":
+        async with session_scope() as session:
+            user, _ = await users.get_or_create(session, update.effective_user)
+            if user.pending_action in ("gsolo", "gduel"):
+                users.set_pending(user, None)
+            cash, level = int(user.cash or 0), int(user.level or 1)
+            await session.commit()
+        if level < config.GAMBLE_MIN_LEVEL:
+            return await query.answer(f"🔒 لول {config.GAMBLE_MIN_LEVEL} می‌خواد", show_alert=True)
+        return await respond(update, two_player_text(cash), kb.gamble_two_player_kb())
+    if data == "gm:duel:t3":
         return await _start_duel_amount(update)
 
     if len(parts_data) == 5 and parts_data[1] == "sr":

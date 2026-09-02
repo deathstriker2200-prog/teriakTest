@@ -1,10 +1,10 @@
 """
 حمله پی‌وی کلاسیک ⚔️، سیستم قدیمی بدون HP
 
-راند ۱۲ درخواست کارفرما: «قدرت کل» ((حمله خودش - دفاع طرف مقابل) / ۴، اصلاح راند ۳۸) دو طرف مقایسه میشه و درصدی نیس، مهاجم بیشتر بود برده وگرنه باخته
-بوست‌ها نقش‌محورن: مهاجم فقط بوست‌های حمله‌ای (نژاد سگ | آرتیفکت | مهارت قدرت | هوای تهاجمی) رو می‌گیره و هدف فقط بوست‌های دفاعی
-جاسوسی به‌جای شانس درصدی، استت‌ها و قدرت کل طرف رو نشون میده
-راند ۱۳: اختلاف قدرت تا PV_ATTACK_CLOSE_DIFF شانسیه، بیرونش قطعیه | راند ۱۷: بازه ۵۰ با برتری قوی‌تر | راند ۲۲: لبه برتری ۹۵ درصد شد (تیون حرفه‌ای، درخواست کارفرما) | هر هدف دیده‌شده تا ۲۰ نشون بعدی تکرار نمیشه
+قدرت هر دو نفر متقارن و دقیقاً برابر حمله نهایی + دفاع نهایی پروفایل خودشان است.
+قدرت بالاتر همیشه می‌برد و مساوی به سود مدافع است؛ رول شانس ۷۵/۲۵ قدیمی حذف شده.
+جاسوسی و پیام نتیجه همان اسنپ‌شات حمله، دفاع و قدرت کل پیش از فرسایش زره را نشان می‌دهند.
+هر هدف دیده‌شده تا ۲۰ نشون بعدی تکرار نمیشه
 هدف‌ها اول حوالی لول خودتن (±۲ لول)، هر مرحله خالی بود یه لول بازتر تا ±۱۰، بعدش فالبک: اول بالاترها بعد پایین‌ترها
 بعد هر حمله قربانی ۶ ساعت مصونیت می‌گیره
 و از لیست حمله‌های پی‌وی خارج میشه
@@ -88,93 +88,72 @@ def spy_cost(level: int) -> int:
     return int(lo + (hi - lo) * (lv - 1) / span)
 
 
-# ───────── قدرت کل نقش‌محور 💪 (راند ۱۲) ─────────
+# ───────── قدرت کل متقارن پروفایل 💪 ─────────
 
 def is_close(a_total: int, t_total: int) -> bool:
-    """اختلاف قدرت‌ها تو رنج نزدیکه؟ (راند ۱۳: اینجا برد قطعی نیس و شانس رول میشه)"""
+    """کمک‌تابع سازگاری؛ نزدیکی قدرت دیگر هیچ شانس جداگانه‌ای ایجاد نمی‌کند."""
     return abs(a_total - t_total) <= config.PV_ATTACK_CLOSE_DIFF
 
 
 def close_win_chance(a_total: int, t_total: int) -> float:
-    """در اختلاف حداکثر ۴۰: مساوی ۵۰٪، مهاجم قوی‌تر ۷۵٪ و مهاجم ضعیف‌تر ۲۵٪."""
-    if a_total == t_total:
-        return 0.50
-    return config.PV_ATTACK_STRONG_CHANCE if a_total > t_total else config.PV_ATTACK_WEAK_CHANCE
+    """خروجی سازگاری قطعی: فقط مهاجمِ قوی‌تر برنده است و مساوی به مدافع می‌رسد."""
+    return 1.0 if a_total > t_total else 0.0
 
 
 def decide_win(a_total: int, t_total: int) -> bool:
-    """اختلاف تا ۴۰ شانسی ۷۵/۲۵؛ اختلاف بیشتر از ۴۰ برد قطعی بازیکن قوی‌تر."""
-    if is_close(a_total, t_total):
-        return random.random() < close_win_chance(a_total, t_total)
+    """داوری کلاسیک PvP قطعی است؛ قدرت بیشتر می‌برد و مساوی به سود مدافع است."""
     return a_total > t_total
 
 
 async def total_powers(session: AsyncSession, attacker: User, target: User) -> tuple[int, int, dict]:
-    """
-    (قدرت کل مهاجم, قدرت کل هدف, جزئیات استت خام) | مبنا = (حمله خودش - دفاع طرف مقابل) / ۴ (راند ۳۸)
-    بوست‌ها نقش‌محورن (درخواست کارفرما): به قدرت کل مهاجم فقط بوست‌های حمله‌ای‌اش اضافه میشه (نه بوست دفاع)
-    و به قدرت کل هدف فقط بوست‌های دفاعی‌اش (نه بوست حمله) | هوا هم همین نقش رو داره (طوفان مهاجم رو ضعیف می‌کنه، مه مدافع رو قوی)
-    """
+    """اسنپ‌شات متقارن پروفایل: قدرت هر نفر دقیقاً حمله نهایی + دفاع نهایی خودش است."""
     a_items = await user_svc.get_item_levels(session, attacker.id)
     t_items = await user_svc.get_item_levels(session, target.id)
-    # راند ۲۹ (درخواست کارفرما): تفنگ بی‌تیر نه تو حمله مهاجم حسابه نه تو دفاع مدافع
     a_ammo = await user_svc.get_ammo_map(session, attacker.id)
     t_ammo = await user_svc.get_ammo_map(session, target.id)
     a_dogs = await dog_svc.get_user_dogs(session, attacker.id)
     t_dogs = await dog_svc.get_user_dogs(session, target.id)
 
-    a_atk0, a_def0 = combat.combat_raw_stats(attacker, a_items, a_dogs, a_ammo)
-    t_atk0, t_def0 = combat.combat_raw_stats(target, t_items, t_dogs, t_ammo)
-    # باف ساختمان کارتل هم رو قدرت کل سوار میشه (راند ۱۹، درخواست کارفرما)
-    from services import teams as team_svc
     from models import Team
-    a_m = await team_svc.get_membership(session, attacker.id)
-    t_m = await team_svc.get_membership(session, target.id)
-    a_team = await session.get(Team, a_m.team_id) if a_m else None
-    t_team = await session.get(Team, t_m.team_id) if t_m else None
-    a_tb = team_svc.atk_bonus(a_team) if a_m else 0.0
-    t_tb = team_svc.def_bonus(t_team) if t_m else 0.0
-    a_ap, _ = combat.combat_boost_pcts(attacker, a_items, a_dogs, a_tb, 0.0)
-    _, t_dp = combat.combat_boost_pcts(target, t_items, t_dogs, 0.0, t_tb)
+    from services import teams as team_svc
+    a_membership = await team_svc.get_membership(session, attacker.id)
+    t_membership = await team_svc.get_membership(session, target.id)
+    a_team = await session.get(Team, a_membership.team_id) if a_membership else None
+    t_team = await session.get(Team, t_membership.team_id) if t_membership else None
+    a_team_atk = team_svc.atk_bonus(a_team) if a_membership else 0.0
+    a_team_def = team_svc.def_bonus(a_team) if a_membership else 0.0
+    t_team_atk = team_svc.atk_bonus(t_team) if t_membership else 0.0
+    t_team_def = team_svc.def_bonus(t_team) if t_membership else 0.0
 
-    from services import world as world_svc
-    wkey, wpct, _ = await world_svc.weather_state(session)
-    watk, wdef = world_svc.weather_combat_mods(wkey, wpct)
-
-    # قابلیت تجهیزات در سیستم باینری پی‌وی/کارتل به ارزش انتظاری هم‌ارز تبدیل می‌شود؛
-    # قابلیت‌های راندی HP (مثل reflect/void) اینجا هم اثر واقعی و قابل پیش‌بینی دارند.
-    from utils import now_iran
-    _night = now_iran().hour >= config.SHADOW_NIGHT_FROM or now_iran().hour < config.SHADOW_NIGHT_TO
-    a_wkey = combat.weapon_choice(attacker, a_items, a_ammo)
-    t_akey = combat.armor_choice(target, t_items)
-    mimic_source = combat.roll_mimic_armor() if t_akey == "mimic" else None
-    armor_effect_key = mimic_source or t_akey
-    a_gear = combat.pvp_weapon_ability_bonus(a_wkey, a_items.get(a_wkey, 1) if a_wkey else 1, _night)
-    t_gear = combat.pvp_armor_ability_bonus(armor_effect_key, t_items.get(t_akey, 1) if t_akey else 1)
-
-    # راند ۳۸: قدرت رقابتی = (حمله مهاجم - دفاع هدف) / ۴؛ قابلیت فعال هم روی نقش خودش سوار می‌شود.
-    a_raw = (a_atk0 - t_def0) * (1 + a_ap + watk + a_gear)
-    t_raw = (t_atk0 - a_def0) * (1 + t_dp + wdef + t_gear)
-    a_total = int(a_raw / 4)
-    t_total = int(t_raw / 4)
-
-    # قدرت مطلق نمایشی (حمله+دفاع خودِ بازیکن)، دقیقاً فرمول پروفایل (باف کارتل هر دو طرف خودش، بدون اثر هوا)
-    # نتیجه برد/باخت همچنان با a_total/t_total نسبی بالا تعیین میشه، این فقط عدد نمایشیه که با پروفایل هم بخونه
-    a_tb_atk = team_svc.atk_bonus(a_team) if a_m else 0.0
-    a_tb_def = team_svc.def_bonus(a_team) if a_m else 0.0
-    t_tb_atk = team_svc.atk_bonus(t_team) if t_m else 0.0
-    t_tb_def = team_svc.def_bonus(t_team) if t_m else 0.0
-    a_atk_disp, a_def_disp = combat.combat_stats(attacker, a_items, a_dogs, a_tb_atk, a_tb_def, a_ammo)
-    t_atk_disp, t_def_disp = combat.combat_stats(target, t_items, t_dogs, t_tb_atk, t_tb_def, t_ammo)
-    a_display = int((a_atk_disp + a_def_disp) * (1 + a_gear))
-    t_display = int((t_atk_disp + t_def_disp) * (1 + t_gear))
+    # همین تابع و همین ورودی‌ها در پروفایل استفاده می‌شوند؛ هوا و نقش مهاجم/مدافع
+    # این اسنپ‌شات را نامتقارن نمی‌کند. محاسبه پیش از مصرف مهمات و فرسایش زره انجام می‌شود.
+    a_attack, a_defense = combat.combat_stats(
+        attacker, a_items, a_dogs, a_team_atk, a_team_def, ammo=a_ammo,
+    )
+    t_attack, t_defense = combat.combat_stats(
+        target, t_items, t_dogs, t_team_atk, t_team_def, ammo=t_ammo,
+    )
+    a_total = a_attack + a_defense
+    t_total = t_attack + t_defense
+    target_armor = combat.armor_choice(target, t_items)
 
     return a_total, t_total, {
-        "a_atk0": a_atk0, "a_def0": a_def0,
-        "t_atk0": t_atk0, "t_def0": t_def0, "weather": wkey,
-        "a_display": a_display, "t_display": t_display,
-        "weapon_ability_bonus": a_gear, "armor_ability_bonus": t_gear,
-        "target_armor_key": t_akey, "mimic_armor_key": mimic_source,
+        "a_attack": a_attack,
+        "a_defense": a_defense,
+        "t_attack": t_attack,
+        "t_defense": t_defense,
+        "a_display": a_total,
+        "t_display": t_total,
+        "target_armor_key": target_armor,
+        # کلیدهای زیر فقط برای سازگاری مصرف‌کننده‌های قدیمی نگه داشته شده‌اند.
+        "a_atk0": a_attack,
+        "a_def0": a_defense,
+        "t_atk0": t_attack,
+        "t_def0": t_defense,
+        "weather": None,
+        "weapon_ability_bonus": 0.0,
+        "armor_ability_bonus": 0.0,
+        "mimic_armor_key": None,
     }
 
 
@@ -293,8 +272,8 @@ async def execute(session: AsyncSession, attacker: User, victim: User) -> dict:
 
     a_total, t_total, _info = await total_powers(session, attacker, victim)
     artis = user_svc.artifact_keys(await user_svc.get_item_keys(session, attacker.id))
-    # حمله پی‌وی با همان قدرت کل قابل مشاهده داوری می‌شود؛ اختلاف ≤۴۰ شانس ۷۵/۲۵، بیشتر قطعی
-    won = decide_win(_info["a_display"], _info["t_display"])
+    # داوری دقیقاً با همین اسنپ‌شات قابل‌نمایش است: قوی‌تر قطعی می‌برد و مساوی سهم مدافع است.
+    won = decide_win(a_total, t_total)
 
     # راند ۲۹ (درخواست کارفرما): هر حمله پی‌وی با سلاح گرم یه تیر مصرف می‌کنه
     weapon_key, ammo_left = None, -1
@@ -305,11 +284,8 @@ async def execute(session: AsyncSession, attacker: User, victim: User) -> dict:
         weapon_key = w_try
         ammo_left = await user_svc.consume_ammo(session, attacker.id, w_try)
 
-    # debuffهای واقعی تفنگ در پی‌وی هم اعمال می‌شوند؛ بقیه قابلیت‌های راندی با ارزش انتظاری در total_powers حساب شده‌اند.
+    # اسنپ‌شات قدرت قبل از این اثرها ثبت شده؛ فرسایش و دباف نتیجه همان حمله‌اند.
     ability_notes: list[str] = []
-    mimic_key = _info.get("mimic_armor_key")
-    if mimic_key:
-        ability_notes.append(f"🎭 هزارچهره این بار قدرت {config.ARMORS[mimic_key]['name']} رو گرفت")
     wear = await user_svc.damage_armor(session, victim, _info.get("target_armor_key"))
     if wear and wear["loss"]:
         ability_notes.append(
@@ -388,6 +364,10 @@ async def execute(session: AsyncSession, attacker: User, victim: User) -> dict:
         "d_pow": t_total,
         "a_pow_disp": _info["a_display"],
         "d_pow_disp": _info["t_display"],
+        "a_attack": _info["a_attack"],
+        "a_defense": _info["a_defense"],
+        "d_attack": _info["t_attack"],
+        "d_defense": _info["t_defense"],
         "weapon": weapon_key,
         "ammo_left": ammo_left,
         "wood_loot": wood_loot,

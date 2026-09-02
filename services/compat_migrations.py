@@ -20,20 +20,9 @@ async def _mark_done(session: AsyncSession, key: str, data: dict) -> None:
     session.add(GameMeta(key=key, value=json.dumps(data, ensure_ascii=False, separators=(",", ":"))))
 
 
-async def migrate_legacy_gods_armor(session: AsyncSession) -> dict:
-    """زره خدایان دارندگان سقف قدیمی لول 20 را امن به نیمه‌خدایان تبدیل می‌کند."""
-    marker = "gods20_demigod_v1"
-    empty = {"done": False, "converted": 0, "merged": 0, "equipped": 0}
-    if await _already_done(session, marker):
-        return empty
-
-    stats = {"done": True, "converted": 0, "merged": 0, "equipped": 0}
-    rows = list((await session.execute(
-        select(InventoryItem)
-        .join(User, User.id == InventoryItem.user_id)
-        .where(InventoryItem.item_key == "gods", User.level <= 20)
-        .with_for_update()
-    )).scalars())
+async def _convert_gods_rows(session: AsyncSession, rows: list[InventoryItem]) -> dict:
+    """ردیف‌های Gods انتخاب‌شده را با حفظ بهترین لول/دوام/equip به Demigod تبدیل می‌کند."""
+    stats = {"converted": 0, "merged": 0, "equipped": 0}
     for source in rows:
         user = await session.get(User, source.user_id, with_for_update=True)
         if user is None:
@@ -68,7 +57,23 @@ async def migrate_legacy_gods_armor(session: AsyncSession) -> dict:
         if user.equipped_armor == "gods":
             user.equipped_armor = "demigod"
             stats["equipped"] += 1
+    return stats
 
+
+async def migrate_legacy_gods_armor(session: AsyncSession) -> dict:
+    """زره خدایان دارندگان سقف قدیمی لول 20 را امن به نیمه‌خدایان تبدیل می‌کند."""
+    marker = "gods20_demigod_v1"
+    empty = {"done": False, "converted": 0, "merged": 0, "equipped": 0}
+    if await _already_done(session, marker):
+        return empty
+
+    rows = list((await session.execute(
+        select(InventoryItem)
+        .join(User, User.id == InventoryItem.user_id)
+        .where(InventoryItem.item_key == "gods", User.level <= 20)
+        .with_for_update()
+    )).scalars())
+    stats = {"done": True, **await _convert_gods_rows(session, rows)}
     await _mark_done(session, marker, stats)
     return stats
 
@@ -115,6 +120,77 @@ async def migrate_player_xp_400k(session: AsyncSession) -> dict:
         user.xp = new_residual
         stats["checked"] += 1
 
+    await _mark_done(session, marker, stats)
+    return stats
+
+
+async def sync_lifetime_xp_with_medals(session: AsyncSession) -> dict:
+    """مدال کلی و XP کل عمر را بدون کم‌کردن هیچ‌کدام روی یک عدد واحد می‌نشاند."""
+    marker = "xp_medals_lifetime_v1"
+    empty = {
+        "done": False,
+        "checked": 0,
+        "raised": 0,
+        "same": 0,
+        "from_medals": 0,
+        "medals_raised": 0,
+        "skill_points": 0,
+    }
+    if await _already_done(session, marker):
+        return empty
+    if sum(config.PLAYER_XP_NEEDS) != config.PLAYER_XP_TOTAL_TO_MAX:
+        raise RuntimeError("PLAYER_XP_NEEDS must total exactly 400,000")
+
+    stats = dict(empty)
+    stats["done"] = True
+    rows = list((await session.execute(select(User).order_by(User.id).with_for_update())).scalars())
+    for user in rows:
+        old_level = min(max(1, int(user.level or 1)), config.MAX_LEVEL)
+        residual = max(0, int(user.xp or 0))
+        calculated = users.lifetime_xp(old_level, residual, config.PLAYER_XP_NEEDS)
+        medals = max(0, int(user.medals or 0))
+        lifetime = max(calculated, medals)
+        if medals > calculated:
+            stats["from_medals"] += 1
+        elif calculated > medals:
+            stats["medals_raised"] += 1
+
+        new_level, new_residual = users.level_from_lifetime_xp(lifetime, config.PLAYER_XP_NEEDS)
+        users.ensure_skills(user)
+        spent = sum(max(0, int(getattr(user, f"skill_{key}", 0) or 0)) for key in config.SKILLS)
+        owned_points = max(0, int(user.skill_points or 0)) + spent
+        missing = max(0, users.expected_skill_points(new_level) - owned_points)
+        if missing:
+            user.skill_points = max(0, int(user.skill_points or 0)) + missing
+            stats["skill_points"] += missing
+
+        if new_level > old_level:
+            stats["raised"] += 1
+        else:
+            stats["same"] += 1
+        user.level = new_level
+        user.xp = new_residual
+        user.medals = lifetime
+        stats["checked"] += 1
+
+    await _mark_done(session, marker, stats)
+    return stats
+
+
+async def migrate_underlevel_gods_armor(session: AsyncSession) -> dict:
+    """بعد از اصلاح XP، همه Godsهای صاحبان زیر لول واقعی خرید را به Demigod تبدیل می‌کند."""
+    marker = "gods_underlevel_demigod_v1"
+    empty = {"done": False, "converted": 0, "merged": 0, "equipped": 0}
+    if await _already_done(session, marker):
+        return empty
+    min_level = int(config.ARMORS["gods"]["min_level"])
+    rows = list((await session.execute(
+        select(InventoryItem)
+        .join(User, User.id == InventoryItem.user_id)
+        .where(InventoryItem.item_key == "gods", User.level < min_level)
+        .with_for_update()
+    )).scalars())
+    stats = {"done": True, **await _convert_gods_rows(session, rows)}
     await _mark_done(session, marker, stats)
     return stats
 

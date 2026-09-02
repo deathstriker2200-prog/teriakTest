@@ -282,8 +282,11 @@ async def update_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         market_rolled = await world_svc.ensure_market(s, force=True)
         # ترتیب مهم است: زره legacy با لول قبل از نگاشت XP تشخیص داده می‌شود.
         from services import compat_migrations as compat_svc
-        armor_migration = await compat_svc.migrate_legacy_gods_armor(s)
         xp_migration = await compat_svc.migrate_player_xp_400k(s)
+        xp_medals_migration = await compat_svc.sync_lifetime_xp_with_medals(s)
+        # هر دو مهاجرت Gods باید سطح نهاییِ بازسازی‌شده از XP/مدال را ببینند.
+        armor_migration = await compat_svc.migrate_legacy_gods_armor(s)
+        underlevel_armor_migration = await compat_svc.migrate_underlevel_gods_armor(s)
         duel_migration = await compat_svc.retire_legacy_duels(s)
         # سطح کارتل‌های قدیمی روی منحنی سخت‌تر بازنشانی میشه (فقط یه بار اجرا میشه)
         migrated_n = await team_svc.migrate_team_levels(s)
@@ -338,13 +341,6 @@ async def update_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         f"📈 بازار: {'رول فوری انجام شد و قیمت‌ها تازه حساب شدن' if market_rolled else 'بدون تغییر'}",
         f"👥 ظرفیت {fa_num(len(all_teams))} کارتل بازخوانی شد",
     ]
-    if armor_migration["done"]:
-        lines.append(
-            f"🛡 زره legacy: {fa_num(armor_migration['converted'])} تبدیل، "
-            f"{fa_num(armor_migration['merged'])} ادغام، {fa_num(armor_migration['equipped'])} تعویض زره پوشیده"
-        )
-    else:
-        lines.append("✅ مهاجرت زره خدایان قدیمی به نیمه‌خدایان قبلاً انجام شده")
     if xp_migration["done"]:
         lines.append(
             f"✨ XP روی منحنی 400,000: {fa_num(xp_migration['checked'])} بررسی | "
@@ -353,6 +349,31 @@ async def update_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         )
     else:
         lines.append("✅ XP بازیکن‌ها قبلاً روی منحنی دقیق 400,000 مهاجرت کرده")
+    if xp_medals_migration["done"]:
+        lines.append(
+            f"🎖 XP/مدال کلی: {fa_num(xp_medals_migration['checked'])} بررسی | "
+            f"{fa_num(xp_medals_migration['raised'])} لول بالاتر | "
+            f"{fa_num(xp_medals_migration['from_medals'])} از مدال | "
+            f"{fa_num(xp_medals_migration['medals_raised'])} مدال اصلاح‌شده | "
+            f"{fa_num(xp_medals_migration['skill_points'])} امتیاز مهارت جاافتاده"
+        )
+    else:
+        lines.append("✅ مدال کلی، XP کل و لول‌ها قبلاً با هم همگام شدن")
+    if armor_migration["done"]:
+        lines.append(
+            f"🛡 زره legacy: {fa_num(armor_migration['converted'])} تبدیل، "
+            f"{fa_num(armor_migration['merged'])} ادغام، {fa_num(armor_migration['equipped'])} تعویض زره پوشیده"
+        )
+    else:
+        lines.append("✅ مهاجرت زره خدایان قدیمی به نیمه‌خدایان قبلاً انجام شده")
+    if underlevel_armor_migration["done"]:
+        lines.append(
+            f"🪽 Gods زیر لول 30: {fa_num(underlevel_armor_migration['converted'])} تبدیل، "
+            f"{fa_num(underlevel_armor_migration['merged'])} ادغام، "
+            f"{fa_num(underlevel_armor_migration['equipped'])} تعویض زره پوشیده"
+        )
+    else:
+        lines.append("✅ همه زره‌های خدایان زیر لول لازم قبلاً به نیمه‌خدایان برگشتن")
     if duel_migration["done"]:
         lines.append(
             f"❌⭕ {fa_num(duel_migration['matches'])} دوئل قدیمی بسته شد و "

@@ -822,7 +822,8 @@ def energy_kb() -> InlineKeyboardMarkup:
     rows: list[list[InlineKeyboardButton]] = []
     for key, it in config.ENERGY_DRINKS.items():
         if it["energy"] is None:
-            gain = f"⚡ فول + 🔥 {fa_num(pct)}% حمله"
+            mins = config.ENERGY_BOOST_SECONDS // 60
+            gain = f"⚡ فول + 🔥 {fa_num(pct)}% حمله / {fa_num(mins)} دقیقه"
         else:
             gain = f"⚡ انرژی +{fa_num(it['energy'])}"
         rows.append([_btn(
@@ -1423,6 +1424,13 @@ def gamble_hub_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
         [_btn("🤖 تک‌نفره", "gm:solo", SUCCESS), _btn("⚔️ مسابقه دونفره", "gm:duel", DANGER)],
         [_btn("🏠 منوی اصلی", "menu:home", PRIMARY)],
+    ])
+
+
+def gamble_two_player_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [_btn("❌⭕ دوز 3×3", "gm:duel:t3", SUCCESS)],
+        [_btn("🔙 قمارخانه", "gm:h", PRIMARY)],
     ])
 
 

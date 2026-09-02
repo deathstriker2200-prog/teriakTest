@@ -1,4 +1,4 @@
-"""رتبه‌بندی بازیکن‌ها بر اساس مدال 🎖️، سه دکمه ثابت روزانه/هفتگی/کلی بالای دکمه منو، باز کردنش مستقیم روی کلی می‌افته"""
+"""رتبه‌بندی XP؛ مدال کلی دقیقاً XP کل عمر و روزانه/هفتگی XP همان بازه است."""
 
 from telegram import Update
 from telegram.ext import ContextTypes
@@ -20,6 +20,7 @@ def _rank_badge(i: int) -> str:
 
 
 TAB_TITLES = {"day": "📅 روزانه", "week": "🗓 هفتگی", "all": "🌍 کلی"}
+XP_LABELS = {"day": "XP امروز", "week": "XP این هفته", "all": "XP کل"}
 TAB_ORDER = ["day", "week", "all"]
 
 
@@ -47,7 +48,9 @@ async def rank_cb(update: Update, context: ContextTypes.DEFAULT_TYPE, tab: str |
             me_mark = " 👈 تو" if u.id == me.id else ""
             temoji, tname = users.title_of(u)
             lines.append(f"{badge} {temoji} [Lv.{u.level:02d}] │ {name}{me_mark}")
-            lines.append(f"<b>「{tname}」</b> 🎖️ {fa_num(users.medal_value(u, tab))}")
+            lines.append(
+                f"<b>「{tname}」</b> 🎖️ {XP_LABELS[tab]}: {fa_num(users.medal_value(u, tab))}"
+            )
 
         if not lines:
             lines.append("هنوز کسی مدالی نگرفته 🤷")
@@ -55,14 +58,21 @@ async def rank_cb(update: Update, context: ContextTypes.DEFAULT_TYPE, tab: str |
         if getattr(me, "lb_hidden", 0):
             footer = "👻 تو نامرئی هستی و تو لیدربرد دیده نمیشی"
         else:
-            footer = f"رتبه‌ات: {fa_num(my_rank)} از {fa_num(total)} (🎖️ {fa_num(my_medals)})"
+            footer = (
+                f"رتبه‌ات: {fa_num(my_rank)} از {fa_num(total)} "
+                f"(🎖️ {XP_LABELS[tab]}: {fa_num(my_medals)})"
+            )
 
+        explain = (
+            "🎖️ مدال کلی همون XP کل عمرته؛ لول هم از همین عدد حساب میشه"
+            if tab == "all" else "🎖️ این تب فقط XP گرفته‌شده تو همین بازه رو رتبه‌بندی می‌کنه"
+        )
         text = (
             f"<b>🏆 لیدربرد بازیکنا</b>\n{TAB_TITLES[tab]}\n\n"
             + "\n".join(lines)
             + "\n\n━━━━━━━━━━━━━━━━\n"
             + footer + "\n"
-            + "🎖️ مدال‌ها از تجربه‌ای که می‌گیری جمع میشن"
+            + explain
         )
         await s.commit()
 
