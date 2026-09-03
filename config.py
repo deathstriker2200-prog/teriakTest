@@ -1290,16 +1290,10 @@ SPECIAL_ARMOR_PARTS = {
     "plasma": 1, "void": 1, "neutron": 2, "demigod": 2, "dragonbone": 3, "quantum": 4,
     "celestial": 5, "emperor": 6, "gods": 8, "mimic": 10,
 }
-# فرگمنت‌های باس منبع ساخت تجهیزات لول ۲۰ تا ۳۰ هستند؛ قطعه افسانه‌ای کمیاب‌تر و جداست
-BOSS_FRAGMENT_NAME = "🔹 فرگمنت باس"
-SPECIAL_WEAPON_FRAGMENTS = {
-    "oblivion": 12, "stormbringer": 18, "sunlance": 28, "dragonbreath": 38,
-    "worldbreaker": 52, "judgment": 72,
-}
-SPECIAL_ARMOR_FRAGMENTS = {
-    "neutron": 12, "demigod": 15, "dragonbone": 18, "quantum": 28, "celestial": 38,
-    "emperor": 52, "gods": 72, "mimic": 90,
-}
+# فرگمنت باس از بازی بازنشسته شده؛ این دو دیکشنری خالی فقط برای سازگاری
+# افزونه‌های قدیمی مانده‌اند و هیچ تجهیزی دیگر فرگمنت نمی‌خواهد.
+SPECIAL_WEAPON_FRAGMENTS: dict[str, int] = {}
+SPECIAL_ARMOR_FRAGMENTS: dict[str, int] = {}
 
 # ───────── باس‌های محله 👹 (راند ۲۳، درخواست کارفرما) ─────────
 # هر روز دو باس تو هر گروه فعال اسپان میشن، ساعتاشون شانسی ولی حداقل ۲ ساعت فاصله دارن
@@ -1311,14 +1305,8 @@ BOSS_TIERS = {
 }
 # باس‌های قوی کمیاب‌تر شدند: معمولی ۸۰٪، اپیک ۱۵٪، لجندری ۵٪
 BOSS_TIER_SPAWN = [("common", 0.80), ("epic", 0.15), ("legendary", 0.05)]
-# شانس قطعه افسانه‌ای برای قاتل؛ دیگر تضمینی نیست
-BOSS_PART_DROP = {"common": 0.00, "epic": 0.05, "legendary": 0.20}
-# فرگمنت کمیاب: شانس همان سختی قبلی است ولی مقدار موفق دقیقاً دو برابر شده.
-# برای هر باس فقط یک رول؛ گیرنده بین سه نفر برتر با وزن رتبه انتخاب می‌شود.
-BOSS_FRAGMENT_TOP_N = 3
-BOSS_FRAGMENT_DROP_CHANCE = {"common": 0.10, "epic": 0.30, "legendary": 0.65}
-BOSS_FRAGMENT_DROP = {"common": (2, 2), "epic": (2, 4), "legendary": (4, 8)}
-BOSS_FRAGMENT_RANK_WEIGHTS = (0.50, 0.30, 0.20)
+# شانس قطعه افسانه‌ای برای قاتل باس: معمولی ۳٪، اپیک ۱۰٪، لجندری ۱۵٪
+BOSS_PART_DROP = {"common": 0.03, "epic": 0.10, "legendary": 0.15}
 BOSSES = [
     # ⚪ معمولی: مارلو ← ویکتور ← کِروک
     {"key": "marlo",   "name": "مارلو",   "emoji": "🥃", "tier": "common", "tag": "قاچاقچی قدیمی",
@@ -1385,7 +1373,6 @@ BOSS_IMAGE_DIR = "media/bosses"   # عکس باس‌ها اینجا روی سر�
 # ───────── مارکت (بازار خرید و فروش بازیکن‌ها 🛒، راند ۲۳، درخواست کارفرما) ─────────
 MARKET_ITEMS = {
     "part": {"name": "🧩 قطعه افسانه‌ای", "short": "قطعه افسانه‌ای"},
-    "fragment": {"name": "🔹 فرگمنت باس", "short": "فرگمنت باس"},
     "wood": {"name": "🪵 چوب", "short": "چوب"},
     "iron": {"name": "⛏️ آهن", "short": "آهن"},
 }
@@ -1419,8 +1406,10 @@ GEM_PLOT_SPEED_MINUTES = 1        # هر جم یک دقیقه ساخت زمین 
 FORCE_JOIN_STALE_SECONDS = 120   # پیام گیت برای هر نفر پشت سر هم اسپم نمیشه
 FORCE_JOIN_CACHE_SECONDS = 30    # ستینگ گیت تو کش حافظه چند ثانیه معتبره (روی هر پیام دیتابیس نمی‌ریم)
 FORCE_JOIN_RECHECK_SECONDS = 900 # وضعیت عضوها هر ۱۵ دقیقه یه بار چک دوباره میشه، فقط موقع پیام خودشون
-FORCE_JOIN_WIPE_AFTER_HOURS = 48 # غیرعضوی که بیشتر از این لفت مونده اکانتش با جاب پاکسازی میشه
-FORCE_JOIN_WIPE_SCAN_SECONDS = 3600  # هر ساعت اسکن غیرعضوهای مهلت‌گذشته
+# عضویت اجباری فقط دسترسی را می‌بندد و تحت هیچ شرایطی اکانت/آیتم بازیکن را پاک نمی‌کند.
+# نام‌های قدیمی برای سازگاری افزونه‌ها می‌مانند، ولی جاب مخرب دیگر ثبت یا اجرا نمی‌شود.
+FORCE_JOIN_WIPE_AFTER_HOURS = 48
+FORCE_JOIN_WIPE_SCAN_SECONDS = 3600
 
 # ───────── لاگ رویداد برای آمار پنل ادمین 📊 ─────────
 ACTION_LOG_KEEP_HOURS = 48       # ردیف‌های قدیمی‌تر رویداد پاک میشن، جدول همیشه سبک

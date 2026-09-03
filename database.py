@@ -298,15 +298,9 @@ def _migrate_data(sync_conn) -> None:
     except Exception:
         logger.warning("کلمپ لول به سقف اجرا نشد", exc_info=True)
 
-    # حذف شلیک‌کن پلاسما: دارنده‌هاش گاتلینگ می‌گیرن (کسی که گاتلینگ داشته ردیف پلاسماش پاک میشه)
-    try:
-        sync_conn.execute(text(
-            "DELETE FROM inventory WHERE item_key='plasma' "
-            "AND user_id IN (SELECT user_id FROM inventory WHERE item_key='minigun')"
-        ))
-        sync_conn.execute(text("UPDATE inventory SET item_key='minigun' WHERE item_key='plasma'"))
-    except Exception:
-        logger.warning("حذف پلاسما از اینونتوری اجرا نشد", exc_info=True)
+    # هشدار: کلید plasma در کاتالوگ فعلی زره معتبر است. مهاجرت قدیمی plasma→minigun
+    # عمداً حذف شده؛ آن کد در هر استارت زره مردم را تغییر می‌داد یا پاک می‌کرد.
+    # ترمیم موارد قبلی فقط یک‌بار و قابل‌گزارش از مسیر /update انجام می‌شود.
 
     # جستجوی کارتل به بزرگی/کوچکی حروف حساس نباشه (کارتل Master همون کارتل master)
     try:

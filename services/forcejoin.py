@@ -175,7 +175,7 @@ async def is_member(bot, channel: str, user_id: int) -> bool:
 async def apply_member_result(session, tg_id: int, ok: bool) -> None:
     """
     نتیجه یه چک واقعی رو روی ردیف کاربر ثبت می‌کنه
-    fj_left_at فقط موقع اولین تشخیص لفت ست میشه که مهلت پاکسازی دقیق بمونه
+    fj_left_at فقط سابقه زمان اولین تشخیص خروجه؛ غیرعضویت هیچ‌وقت داده بازی را پاک نمی‌کند
     """
     from sqlalchemy import select
     q = select(User).where(User.telegram_id == tg_id)

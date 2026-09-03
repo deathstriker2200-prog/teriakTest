@@ -87,7 +87,6 @@ async def _profile_caption(session, user) -> str:
         f"<b>💰 دارایی</b>\n"
         f"🪙 {money(user.cash)}\n"
         f"💎 جم: {fa_num(user.gems or 0)}\n"
-        f"🔹 فرگمنت باس: {fa_num(getattr(user, 'boss_fragments', 0) or 0)}\n"
         f"🏦 بانک: {fa_num(user.bank_balance)}\n\n"
         f"<b>🏡 مزرعه</b>\n"
         f"🌱 زمین: {fa_num(len(plots))}\n"

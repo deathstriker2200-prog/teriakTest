@@ -171,11 +171,11 @@ def force_join_kb(link: str) -> InlineKeyboardMarkup:
     ])
 
 
-def clearacc_confirm_kb(tg_id: int) -> InlineKeyboardMarkup:
-    """تایید ریست کامل اکانت (/clearacc)، فقط خود ادمین"""
+def clearacc_confirm_kb(token: str) -> InlineKeyboardMarkup:
+    """تأیید کوتاه‌عمر /clearacc؛ token در حافظه به ادمین آغازکننده قفل است."""
     return InlineKeyboardMarkup([[
-        _btn("✅ تایید، همه چیشو پاک کن", f"cacc:ok:{tg_id}", SUCCESS),
-        _btn("❌ لغو", f"cacc:no:{tg_id}", DANGER),
+        _btn("✅ بکاپ بگیر و ریست کن", f"cacc:ok:{token}", DANGER),
+        _btn("❌ لغو", f"cacc:no:{token}", PRIMARY),
     ]])
 
 
@@ -1685,8 +1685,7 @@ def market_filter_kb(desc: bool, owner_id: int) -> InlineKeyboardMarkup:
     """انتخاب آیتم برای سرچ تو آگهی‌ها"""
     sd = "e" if desc else "a"
     return InlineKeyboardMarkup([
-        [_btn("🧩 قطعه افسانه‌ای", f"mk:b:0:{sd}:part:{owner_id}", PRIMARY),
-         _btn("🔹 فرگمنت باس", f"mk:b:0:{sd}:fragment:{owner_id}", PRIMARY)],
+        [_btn("🧩 قطعه افسانه‌ای", f"mk:b:0:{sd}:part:{owner_id}", PRIMARY)],
         [_btn("🪵 چوب", f"mk:b:0:{sd}:wood:{owner_id}", PRIMARY),
          _btn("⛏️ آهن", f"mk:b:0:{sd}:iron:{owner_id}", PRIMARY)],
         [_btn("📋 همه آگهی‌ها", f"mk:b:0:{sd}:x:{owner_id}", SUCCESS)],
@@ -1705,8 +1704,7 @@ def market_listing_kb(listing_id: int, owner_id: int) -> InlineKeyboardMarkup:
 def market_sell_kb(owner_id: int) -> InlineKeyboardMarkup:
     """انتخاب جنس برای فروش"""
     return InlineKeyboardMarkup([
-        [_btn("🧩 قطعه افسانه‌ای", f"mk:si:part:a:{owner_id}", PRIMARY),
-         _btn("🔹 فرگمنت باس", f"mk:si:fragment:a:{owner_id}", PRIMARY)],
+        [_btn("🧩 قطعه افسانه‌ای", f"mk:si:part:a:{owner_id}", PRIMARY)],
         [_btn("🪵 چوب", f"mk:si:wood:a:{owner_id}", PRIMARY),
          _btn("⛏️ آهن", f"mk:si:iron:a:{owner_id}", PRIMARY)],
         [_btn("🛒 برگشت به مارکت", f"mk:h:0:a:{owner_id}", PRIMARY)],

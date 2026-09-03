@@ -18,8 +18,8 @@ import config
 from database import session_scope
 from handlers.common import respond
 from keyboards import keyboards as kb
-from models import Team, User
-from services import backup, users
+from models import InventoryItem, Team, User
+from services import backup
 from utils import fa_num
 
 BACKUP_MENU_TEXT = (
@@ -48,6 +48,7 @@ async def backup_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     async with session_scope() as s:
         n_users = (await s.execute(select(func.count(User.id)))).scalar_one()
         n_teams = (await s.execute(select(func.count(Team.id)))).scalar_one()
+        n_items = (await s.execute(select(func.count(InventoryItem.id)))).scalar_one()
 
     payload = await backup.make_upload_payload()
     if payload is None:
@@ -58,7 +59,7 @@ async def backup_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     stamp = datetime.now().strftime("%Y%m%d-%H%M")
     caption = (
         f"💾 بک‌آپ کامل تریاکی\n"
-        f"👥 {fa_num(n_users)} بازیکن | 🏴 {fa_num(n_teams)} کارتل\n"
+        f"👥 {fa_num(n_users)} بازیکن | 🏴 {fa_num(n_teams)} کارتل | 🎒 {fa_num(n_items)} آیتم\n"
         f"{fmt}\n"
         f"🗓 {stamp}\n"
         f"برای برگردوندنش: /upload_backup بزن و همین فایل رو برگردون"
@@ -162,6 +163,7 @@ async def _send_db_copy(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     async with session_scope() as s:
         n_users = (await s.execute(select(func.count(User.id)))).scalar_one()
         n_teams = (await s.execute(select(func.count(Team.id)))).scalar_one()
+        n_items = (await s.execute(select(func.count(InventoryItem.id)))).scalar_one()
 
     payload = await backup.make_upload_payload()
     if payload is None:
@@ -172,7 +174,7 @@ async def _send_db_copy(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     stamp = datetime.now().strftime("%Y%m%d-%H%M")
     caption = (
         f"💾 بک‌آپ کامل تریاکی\n"
-        f"👥 {fa_num(n_users)} بازیکن | 🏴 {fa_num(n_teams)} کارتل\n"
+        f"👥 {fa_num(n_users)} بازیکن | 🏴 {fa_num(n_teams)} کارتل | 🎒 {fa_num(n_items)} آیتم\n"
         f"{fmt}\n"
         f"🗓 {stamp}"
     )

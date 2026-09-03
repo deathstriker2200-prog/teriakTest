@@ -82,7 +82,7 @@ class User(Base):
     cartel_cooldown_reason: Mapped[str | None] = mapped_column(String(12), nullable=True)     # leave / kick / disband
     jailed_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)     # تا این وقت زندانیه و هیچ دستوری نمی‌تونه بزنه
     gems: Mapped[int] = mapped_column(Integer, default=0)                              # 💎 جم، فقط از باس به‌دست میاد
-    boss_fragments: Mapped[int] = mapped_column(Integer, default=0)                    # 🔹 فرگمنت باس، برای تجهیزات آخر بازی
+    boss_fragments: Mapped[int] = mapped_column(Integer, default=0)                    # ستون legacy؛ فرگمنت از بازی حذف و با /update صفر می‌شود
     caravan_level: Mapped[int] = mapped_column(Integer, default=1)                     # راند ۳۱: لگاسی (کاروان لولی حذف شد)، زمان تحویل ثابت CARAVAN_BASE_SECONDS
     trucks: Mapped[int] = mapped_column(Integer, default=1)                            # راند ۳۱: فیچر کامیون حذف شد؛ ستون لگاسی برای سازگاری دیتابیس قدیمی مونده
     truck_level: Mapped[int] = mapped_column(Integer, default=1)                       # راند ۳۱: لگاسی (لول ناوگان راند ۲۹ حذف شد)، به‌جاش SHIPMENT_MAX_ACTIVE=5 ثابته

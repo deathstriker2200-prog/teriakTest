@@ -28,7 +28,6 @@ def _home_text(n_open: int) -> str:
         "اینجا بازیکن‌ها می‌تونن مستقیم با هم معامله کنن 🤝\n\n"
         "قابل فروش:\n"
         "🧩 قطعه افسانه‌ای\n"
-        "🔹 فرگمنت باس\n"
         "🪵 چوب\n"
         "⛏️ آهن\n\n"
         f"📋 آگهی‌های فعال: {fa_num(n_open)}\n\n"
@@ -119,7 +118,7 @@ async def _n_open() -> int:
 
 SELL_PICK_TEXT = (
     "<b>🏷 فروش تو مارکت</b>\n\n"
-    "کدوم جنسو می‌خوای آگهی کنی؟ 🧩 قطعه افسانه‌ای، 🔹 فرگمنت باس، 🪵 چوب یا ⛏️ آهن\n"
+    "کدوم جنسو می‌خوای آگهی کنی؟ 🧩 قطعه افسانه‌ای، 🪵 چوب یا ⛏️ آهن\n"
     "بعد تعداد و قیمت کل رو ازت می‌پرسم و آخرش یه تاییدیه می‌گیری"
 )
 
@@ -153,6 +152,21 @@ async def market_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if owner_id is None or update.effective_user.id != owner_id:
         await query.answer()  # غریبه هیچ واکنشی نمی‌بینه
         return
+
+    # دکمه‌های قدیمی فرگمنت بعد از حذف کالا نه خطا می‌دهند نه state معلق می‌سازند.
+    if "fragment" in seg:
+        async with session_scope() as s:
+            me, _ = await users.get_or_create(s, update.effective_user)
+            if me.pending_action == "mkqty" and me.pending_value == "fragment":
+                users.set_pending(me, None)
+            n_open = await mk_svc.count_listings(s)
+            await s.commit()
+        return await respond(
+            update,
+            _home_text(n_open),
+            kb.market_home_kb(n_open, owner_id),
+            alert="🔹 فرگمنت باس کامل از بازی حذف شده",
+        )
 
     act = seg[1] if len(seg) > 1 else "h"
     a1 = seg[2] if len(seg) > 2 else "0"

@@ -6,7 +6,7 @@
 نبض انرژی هر ۵ دقیقه به همه کاربرا (یه کوئری دسته‌جمعی، بدون حلقه تک‌تک) ⚡
 جاروی ورودی‌های معلق عددی هر چند ثانیه (مهلت ۶۰ ثانیه‌ای واریز/برداشت و خرید منابع) ⏳
 جاروی بوست انرژی‌زا هر نیم دقیقه، پیام «اثر انرژی زا به پایان رسید» میره پی‌وی ⚡
-پاکسازی اکانت غیرعضوهای عضویت اجباری (بعد از مهلت مثلاً ۴۸ ساعته) هر ساعت 🧹
+عضویت اجباری فقط دسترسی غیرعضو را می‌بندد و هیچ اکانت یا آیتمی را پاک نمی‌کند 🔒
 """
 
 import asyncio
@@ -14,7 +14,7 @@ import logging
 import random
 from datetime import timedelta
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy import update as sql_update
 from telegram.error import BadRequest, Forbidden
 from telegram.ext import ContextTypes
@@ -22,7 +22,7 @@ from telegram.ext import ContextTypes
 import config
 from database import session_scope
 from keyboards import keyboards as kb
-from models import GroupActivity, TrackedUser, TrackedUserStats, User
+from models import GroupActivity, InventoryItem, TrackedUser, TrackedUserStats, User
 from services import world as world_svc
 from utils import money, now_utc
 
@@ -540,38 +540,8 @@ async def police_job(context: ContextTypes.DEFAULT_TYPE) -> None:
 # ───────── پاکسازی اکانت غیرعضوهای مهلت‌گذشته 🧹 (عضویت اجباری) ─────────
 
 async def fj_wipe_job(context: ContextTypes.DEFAULT_TYPE) -> None:
-    """
-    هر ساعت: غیرعضوهایی که بیشتر از FORCE_JOIN_WIPE_AFTER_HOURS لفت‌ان ریست میشن
-    لفت لحظه‌ای فقط دسترسی پی‌وی رو می‌بره (گیت)، ریست واقعی با مهلت انجام میشه
-    تا کسی که تصادفی لفت داده و برمی‌گرده اذیت نشه و کلاهبردارِ جوین-و-لفت هم نتونه سوءاستفاده کنه
-    """
-    from services import forcejoin as fj, users as users_svc
-    st = await fj.get_settings_cached()
-    if not (st["on"] and st["channel"]):
-        return
-    cutoff = now_utc() - timedelta(hours=config.FORCE_JOIN_WIPE_AFTER_HOURS)
-    wiped: list[int] = []
-    async with session_scope() as s:
-        q = select(User).where(
-            User.fj_member_status == 0,
-            User.fj_left_at.isnot(None),
-            User.fj_left_at <= cutoff,
-        )
-        for u in (await s.execute(q)).scalars():
-            if u.telegram_id in config.ADMIN_IDS:
-                continue  # ادمین‌ها از پاکسازی خارجن
-            await users_svc.wipe_account(s, u)
-            u.fj_member_status = u.fj_checked_at = u.fj_left_at = None
-            wiped.append(u.telegram_id)
-        await s.commit()
-    for tg_id in wiped:
-        fj.member_cache_drop(tg_id)
-        await _send(context, tg_id,
-                    "⚠️ حساب بازی‌ات ریست شد\n\n"
-                    "چون خیلی وقته عضو کانال نیسی بازی از نو شروع میشه\n"
-                    "برای برگشتن کافیه دوباره عضو بشی و /start رو بزنی")
-    if wiped:
-        logger.info("پاکسازی عضویت اجباری: %d اکانت غیرعضو ریست شد", len(wiped))
+    """سازگاری نام قدیمی؛ عضویت اجباری دیگر هرگز اکانت یا آیتم کسی را پاک نمی‌کند."""
+    logger.info("fj-wipe بازنشسته است؛ غیرعضویت فقط دسترسی را می‌بندد و داده بازیکن امن می‌ماند")
 
 
 # ───────── ثبت جاب‌ها ─────────
@@ -623,6 +593,10 @@ async def daily_backup_job(context: ContextTypes.DEFAULT_TYPE) -> None:
     from services import backup as backup_svc
     from utils import now_iran
 
+    async with session_scope() as s:
+        n_users = int((await s.execute(select(func.count(User.id)))).scalar_one())
+        n_items = int((await s.execute(select(func.count(InventoryItem.id)))).scalar_one())
+        await s.commit()
     try:
         payload = await backup_svc.make_upload_payload()
     except Exception as e:
@@ -641,7 +615,11 @@ async def daily_backup_job(context: ContextTypes.DEFAULT_TYPE) -> None:
         return
 
     data, fname = payload
-    caption = f"🗄 بک‌آپ خودکار روزانه تریاکی\n📅 {stamp} به‌وقت ایران"
+    caption = (
+        f"🗄 بک‌آپ خودکار روزانه تریاکی\n"
+        f"👥 {n_users:,} بازیکن | 🎒 {n_items:,} آیتم\n"
+        f"📅 {stamp} به‌وقت ایران"
+    )
     try:
         await context.bot.send_document(
             chat_id, document=InputFile(io.BytesIO(data), filename=fname), caption=caption,
@@ -672,7 +650,6 @@ def register_jobs(app) -> None:
     if config.POLICE_ENABLED:
         jq.run_repeating(police_job, interval=config.POLICE_ROLL_SECONDS, first=120, name="police")
     jq.run_repeating(energy_pulse_job, interval=config.ENERGY_PULSE_SECONDS, first=config.ENERGY_PULSE_SECONDS, name="energy-pulse")
-    jq.run_repeating(fj_wipe_job, interval=config.FORCE_JOIN_WIPE_SCAN_SECONDS, first=300, name="fj-wipe")
     jq.run_repeating(cartel_war_sweep_job, interval=config.CARTEL_WAR_SWEEP_SECONDS, first=50, name="cartel-war-sweep")
     if config.ADMIN_LOG_CHAT_ID:
         jq.run_repeating(track_summary_job, interval=config.TRACK_SUMMARY_SECONDS,
@@ -692,7 +669,7 @@ def register_jobs(app) -> None:
         name="stats-autoedit",
     )
     logger.info(
-        "جاب‌های زمان‌دار فعال شدن: آب‌وهوا | بازار | کاروان | برد کاروان | جاروی ورودی معلق | محموله | جاروی بوست انرژی‌زا | کاروان قاچاق | نبض انرژی | پاکسازی غیرعضو | ادیت ساعتی آمار%s%s",
+        "جاب‌های زمان‌دار فعال شدن: آب‌وهوا | بازار | کاروان | برد کاروان | جاروی ورودی معلق | محموله | جاروی بوست انرژی‌زا | کاروان قاچاق | نبض انرژی | ادیت ساعتی آمار%s%s",
         " | پلیس" if config.POLICE_ENABLED else "",
         " | لاگ ردیابی بازیکن" if config.ADMIN_LOG_CHAT_ID else "",
     )

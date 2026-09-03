@@ -1,4 +1,4 @@
-"""تست‌های متمرکز بچ قمار/دوز، آزمایشگاه، XP، زره و فرگمنت."""
+"""تست‌های متمرکز بچ قمار/دوز، آزمایشگاه، XP، زره و باس."""
 from __future__ import annotations
 
 import asyncio
@@ -214,51 +214,37 @@ async def test_lab_notification_job(Session) -> None:
 async def test_market_and_boss(Session) -> None:
     async with Session() as session:
         seller = make_user(22001, cash=1_000)
-        buyer = make_user(22002, cash=50_000)
         seller.boss_fragments = 10
-        session.add_all([seller, buyer])
+        session.add(seller)
         await session.flush()
-        ok, listing = await market.create_listing(session, seller, "fragment", 4, 20_000)
-        status, info = await market.buy_listing(session, buyer, listing.id)
+        ok, why = await market.create_listing(session, seller, "fragment", 4, 20_000)
         check(
-            "فرگمنت در مارکت ثبت، خرید و اتمیک منتقل می‌شود",
-            ok and status == "ok" and info["item"] == "fragment"
-            and seller.boss_fragments == 6 and buyer.boss_fragments == 4
-            and seller.cash == 21_000 and buyer.cash == 30_000,
-        )
-        _, expiring = await market.create_listing(session, seller, "fragment", 2, 5_000)
-        expiring.created_at = now_utc() - timedelta(hours=config.MARKET_TTL_HOURS + 1)
-        await session.flush()
-        swept = await market.sweep_expired(session)
-        await session.flush()
-        check(
-            "فرگمنت آگهی منقضی بدون گم‌شدن به فروشنده برمی‌گردد",
-            swept == 1 and seller.boss_fragments == 6 and await market.get_listing(session, expiring.id) is None,
+            "فرگمنت از ثبت و فهرست فعال مارکت کامل حذف شده",
+            not ok and isinstance(why, str) and "fragment" not in config.MARKET_ITEMS
+            and await market.count_listings(session, "fragment") == 0,
         )
 
         top = make_user(22003)
-        second = make_user(22004)
-        third = make_user(22005)
-        session.add_all([top, second, third])
+        killer = make_user(22004)
+        session.add_all([top, killer])
         await session.flush()
         chat_id = -22000
         boss.BOSSES[chat_id] = {
             "key": "marlo", "tier": "common", "hp": 0, "max_hp": 6000,
             "expires_at": now_utc() + timedelta(minutes=1),
-            "damages": {top.id: 300, second.id: 200, third.id: 100},
-            "names": {top.id: "top", second.id: "second", third.id: "third"},
+            "damages": {top.id: 300, killer.id: 100},
+            "names": {top.id: "top", killer.id: "killer"},
             "message_id": None,
         }
         with (
-            patch("services.boss.random.random", side_effect=[0.01, 1.0]),
-            patch("services.boss.random.choices", return_value=[(top.id, 300)]),
+            patch("services.boss.random.random", return_value=0.0),
             patch("services.boss.random.randint", return_value=1),
         ):
-            reward = await boss._settle(session, chat_id, top.id)
+            reward = await boss._settle(session, chat_id, killer.id)
         check(
-            "هر باس حداکثر یک دراپ کمیاب فرگمنت می‌دهد",
-            reward["total_fragments"] == 1 and top.boss_fragments == 1
-            and second.boss_fragments == 0 and third.boss_fragments == 0,
+            "قطعه افسانه‌ای فقط برای قاتل رول می‌شود و باس هیچ فرگمنتی نمی‌دهد",
+            reward["drop_part"] and killer.legendary_parts == 1 and top.legendary_parts == 0
+            and seller.boss_fragments == 10 and all("fragment" not in key for key in reward),
         )
 
 

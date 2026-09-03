@@ -33,8 +33,7 @@ def _status_line(user) -> str:
 def _status_line_parts(user) -> str:
     """خط سطح و موجودی + موجودی قطعه افسانه‌ای، فقط بخش‌های ویژه (سلاح/زره ویژه) این رو بالا نشون میدن"""
     have = int(getattr(user, "legendary_parts", 0) or 0)
-    fragments = int(getattr(user, "boss_fragments", 0) or 0)
-    return f"{_status_line(user)}\n🧩 قطعه افسانه‌ای: {fa_num(have)} | 🔹 فرگمنت باس: {fa_num(fragments)}"
+    return f"{_status_line(user)}\n🧩 قطعه افسانه‌ای: {fa_num(have)}"
 
 
 # ───────── متن‌ها ─────────
@@ -99,9 +98,6 @@ def _wsec_text(user, sec: str) -> str:
         parts23 = config.SPECIAL_WEAPON_PARTS.get(key, 0)
         if parts23:
             cost23 += f" + 🧩 {fa_num(parts23)} قطعه افسانه‌ای"
-        frags23 = config.SPECIAL_WEAPON_FRAGMENTS.get(key, 0)
-        if frags23:
-            cost23 += f" + 🔹 {fa_num(frags23)} فرگمنت باس"
         lines.append(cost23)
         if locked:
             lines.append(f"⭕️ بازگشایی در سطح {fa_num(w['min_level'])}")
@@ -156,9 +152,6 @@ def _arm_text(user, sec: str) -> str:
         parts_arm = config.SPECIAL_ARMOR_PARTS.get(key, 0)
         if parts_arm:
             cost_arm += f" + 🧩 {fa_num(parts_arm)} قطعه افسانه‌ای"
-        frags_arm = config.SPECIAL_ARMOR_FRAGMENTS.get(key, 0)
-        if frags_arm:
-            cost_arm += f" + 🔹 {fa_num(frags_arm)} فرگمنت باس"
         lines.append(cost_arm)
         if locked:
             lines.append(f"⭕️ بازگشایی در سطح {fa_num(a['min_level'])}")
@@ -534,7 +527,6 @@ async def buy_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         user, _ = await users.get_or_create(s, update.effective_user)
         cash, iron = user.cash, user.iron
         parts_have = int(getattr(user, "legendary_parts", 0) or 0)
-        fragments_have = int(getattr(user, "boss_fragments", 0) or 0)
         await s.commit()
 
     emoji = shop_svc.KIND_EMOJI.get(kind, "🛒")
@@ -555,12 +547,9 @@ async def buy_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         )
 
     need_parts = (config.SPECIAL_WEAPON_PARTS if kind == "weap" else config.SPECIAL_ARMOR_PARTS if kind == "arm" else {}).get(key, 0)
-    need_fragments = (config.SPECIAL_WEAPON_FRAGMENTS if kind == "weap" else config.SPECIAL_ARMOR_FRAGMENTS if kind == "arm" else {}).get(key, 0)
     craft_lines = ""
     if need_parts:
         craft_lines += f"🧩 قطعه افسانه‌ای: {fa_num(need_parts)} (داری {fa_num(parts_have)})\n"
-    if need_fragments:
-        craft_lines += f"🔹 فرگمنت باس: {fa_num(need_fragments)} (داری {fa_num(fragments_have)})\n"
 
     text = (
         "<b>🧾 فاکتور خرید</b>\n\n"

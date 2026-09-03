@@ -23,7 +23,8 @@ import database
 logger = logging.getLogger(__name__)
 
 _MAGIC = b"SQLite format 3\x00"
-_REQUIRED_TABLES = {"users"}
+_REQUIRED_TABLES = {"users", "inventory"}
+_REQUIRED_INVENTORY_COLUMNS = {"item_key", "level", "ammo", "durability"}
 
 
 def backup_supported() -> bool:
@@ -31,61 +32,82 @@ def backup_supported() -> bool:
     return config.sqlite_path() is not None
 
 
+def _sqlite_online_copy(src: str, dst: str) -> None:
+    """اسنپ‌شات سازگار با SQLite Online Backup API؛ WAL و نوشتن هم‌زمان را امن می‌خواند."""
+    if os.path.exists(dst):
+        os.remove(dst)
+    source = sqlite3.connect(f"file:{os.path.abspath(src)}?mode=ro", uri=True)
+    target = sqlite3.connect(dst)
+    try:
+        source.backup(target)
+        target.commit()
+    finally:
+        target.close()
+        source.close()
+
+
 async def create_snapshot() -> str:
-    """
-    ساخت اسنپ‌شات سالم از دیتابیس زنده با VACUUM INTO
-    خروجی: مسیر فایل موقت، مسئولیت پاک کردنش با صدا کننده‌ست
-    اگه VACUUM نشد، کپی خام فایل برمی‌گردونه
-    """
+    """اسنپ‌شات آنلاین و اعتبارسنجی‌شده SQLite؛ هیچ‌وقت فایل زنده را خام کپی نمی‌کند."""
     src = config.sqlite_path()
     if not src or not os.path.exists(src):
         raise FileNotFoundError("فایل دیتابیس پیدا نشد")
 
     fd, snapshot = tempfile.mkstemp(prefix="teriaky-backup-", suffix=".db")
     os.close(fd)
-
-    ok = False
     try:
-        async with database.engine.connect() as conn:
-            await conn.exec_driver_sql(f"VACUUM INTO '{snapshot}'")
-        ok = True
+        await asyncio.to_thread(_sqlite_online_copy, src, snapshot)
+        if not is_valid_backup_file(snapshot):
+            raise RuntimeError("اسنپ‌شات SQLite فاقد users/inventory یا ناسالم است")
+        return snapshot
     except Exception:
-        ok = False
-
-    if not ok or not is_valid_backup_file(snapshot):
-        # فالبک: کپی مستقیم فایل
-        import shutil
-        shutil.copyfile(src, snapshot)
-
-    return snapshot
+        try:
+            os.remove(snapshot)
+        except OSError:
+            pass
+        raise
 
 
 def is_valid_backup_file(path: str) -> bool:
-    """اعتبارسنجی فایل: هدر SQLite + جدول users"""
+    """هدر، سلامت داخلی و وجود/خوانایی users و inventory را اجباری می‌کند."""
     try:
         if os.path.getsize(path) < 100:
             return False
         with open(path, "rb") as f:
             if f.read(16) != _MAGIC:
                 return False
-        # باز کردن واقعی و چک جداول، فایل خراب اینجا می‌ترکه
         conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
         try:
+            integrity = conn.execute("PRAGMA integrity_check").fetchone()
+            if not integrity or str(integrity[0]).lower() != "ok":
+                return False
             rows = conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+            tables = {r[0] for r in rows}
+            if not _REQUIRED_TABLES.issubset(tables):
+                return False
+            inventory_columns = {
+                row[1] for row in conn.execute("PRAGMA table_info(inventory)").fetchall()
+            }
+            if not _REQUIRED_INVENTORY_COLUMNS.issubset(inventory_columns):
+                return False
+            conn.execute("SELECT COUNT(*) FROM users").fetchone()
+            # خواندن همه مقادیر حساس، علاوه بر integrity_check، خرابی/نبود ستون را قبل restore لو می‌دهد.
+            conn.execute(
+                "SELECT item_key, level, ammo, durability FROM inventory"
+            ).fetchall()
+            return True
         finally:
             conn.close()
-        tables = {r[0] for r in rows}
-        return _REQUIRED_TABLES.issubset(tables)
     except (OSError, sqlite3.Error):
         return False
 
 
 def _looks_like_pg_dump(sql: bytes) -> bool:
-    """دمپ متنی Postgres ـه؟ هدر pg_dump یا دستورای استانداردش باشه و جدول users توش باشه"""
-    head = sql[:65536].decode("utf-8", errors="ignore")
-    if "PostgreSQL database dump" in head:
-        return "users" in head or "CREATE TABLE" in head
-    return "CREATE TABLE" in head and "users" in head
+    """دامپ plain فقط وقتی معتبر است که schema هر دو جدول users و inventory را داشته باشد."""
+    head = sql[:2_000_000].decode("utf-8", errors="ignore").lower()
+    dump_header = "postgresql database dump" in head or "create table" in head
+    has_users = "create table public.users" in head or "create table users" in head
+    has_inventory = "create table public.inventory" in head or "create table inventory" in head
+    return dump_header and has_users and has_inventory
 
 
 def _detect_backup_kind(data: bytes) -> tuple[str, bytes]:
@@ -122,6 +144,12 @@ async def _restore_sqlite(data: bytes) -> tuple[bool, str]:
             return False, "❌ این فایل بک‌آپ سالم تریاکی نیس"
 
         await database.engine.dispose()
+        # WAL/SHM فایل قبلی نباید روی دیتابیس restoreشده replay شود.
+        for sidecar in (db_path + "-wal", db_path + "-shm"):
+            try:
+                os.remove(sidecar)
+            except FileNotFoundError:
+                pass
         os.replace(tmp, db_path)      # اتمی، رو ولوم ذخیره میشه
         tmp = ""
         await database.reload_engine()
@@ -161,6 +189,9 @@ async def _pg_dump_bytes(dsn: str) -> bytes | None:
         return None
     if proc.returncode != 0:
         logger.warning("pg_dump برای بک‌آپ احتیاطی شکست خورد: %s", err.decode(errors="ignore")[:300])
+        return None
+    if not _looks_like_pg_dump(out):
+        logger.error("بکاپ احتیاطی pg_dump فاقد schema کامل users/inventory است")
         return None
     return out
 
@@ -236,14 +267,16 @@ async def _restore_postgres(sql: bytes) -> tuple[bool, str]:
                 return False, f"❌ ری‌استور دامپ نشد ({tail[:120]}) و دیتابیس به نسخه قبلی خودش برگشت"
             return False, f"❌ ری‌استور دامپ نشد ({tail[:120]}) و برگردوندن خودکار هم خطا داد، دیتابیس ممکنه بین راه مونده باشه"
 
-        # چک سلامت پایه قبل از بالا اومدن مجدد بات: جدول users باشه و کوئری بخوره
-        rc2, _ = await _run_psql(dsn, "-tAc", "SELECT 1 FROM users LIMIT 1")
+        # هر دو جدول اصلی بازیکن و آیتم باید بعد restore وجود داشته و خوانا باشند.
+        rc2, _ = await _run_psql(
+            dsn, "-tAc", "SELECT COUNT(*) FROM users; SELECT COUNT(*) FROM inventory;",
+        )
         if rc2 != 0:
             rolled = await _rollback_safety(dsn, safety)
             await database.reload_engine()
             if rolled:
-                return False, "❌ دامپ اجرا شد ولی جدول users سالم نیس، دیتابیس به نسخه قبلی برگشت"
-            return False, "❌ دامپ اجرا شد ولی جدول users سالم نیس و برگردوندن خودکار هم خطا داد، دیتابیس ممکنه بین راه مونده باشه"
+                return False, "❌ دامپ اجرا شد ولی جدول users/inventory سالم نیس، دیتابیس به نسخه قبلی برگشت"
+            return False, "❌ دامپ اجرا شد ولی جدول users/inventory سالم نیس و برگردوندن خودکار هم خطا داد، دیتابیس ممکنه بین راه مونده باشه"
 
         await database.reload_engine()  # کانکشن‌ها روی اسکیمای تازه سوار بشن + مهاجرت‌های سبک
         return True, "✅ بک‌آپ Postgres ری‌استور شد، همه اطلاعات مطابق فایله"
@@ -266,7 +299,8 @@ async def make_upload_payload() -> tuple[bytes, str] | None:
     if backup_supported():
         try:
             snap = await create_snapshot()
-        except FileNotFoundError:
+        except (FileNotFoundError, RuntimeError, sqlite3.Error, OSError):
+            logger.exception("ساخت snapshot امن SQLite شکست خورد")
             return None
         with open(snap, "rb") as f:
             data = f.read()
@@ -289,6 +323,9 @@ async def make_upload_payload() -> tuple[bytes, str] | None:
             return None
         if proc.returncode != 0:
             logger.warning("pg_dump شکست خورد: %s", err.decode(errors="ignore")[:300])
+            return None
+        if not _looks_like_pg_dump(out):
+            logger.error("pg_dump ظاهراً کامل شد ولی schema جدول users/inventory داخل خروجی نیست")
             return None
         return gzip.compress(out), f"{config.BACKUP_NAME}-{stamp}.sql.gz"
     return None
@@ -410,7 +447,7 @@ async def _merge_sqlite_pg(data: bytes) -> tuple[bool, str]:
 
         if not is_valid_backup_file(tmp):
             return (False,
-                    "❌ این فایل بک‌آپ سالم تریاکی نیس (جدول users توش نیس)، چیزی دست نخورده\n"
+                    "❌ این فایل بک‌آپ سالم تریاکی نیس (users/inventory کامل توش نیس)، چیزی دست نخورده\n"
                     f"💾 بک‌آپ احتیاطی دیتابیس فعلی: {safety_path}")
 
         from database import Base

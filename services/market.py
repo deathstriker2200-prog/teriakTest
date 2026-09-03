@@ -20,8 +20,6 @@ from utils import money, now_utc
 def qty_of(user: User, item: str) -> int:
     if item == "part":
         return int(getattr(user, "legendary_parts", 0) or 0)
-    if item == "fragment":
-        return int(getattr(user, "boss_fragments", 0) or 0)
     if item == "wood":
         return int(getattr(user, "wood", 0) or 0)
     if item == "iron":
@@ -32,8 +30,6 @@ def qty_of(user: User, item: str) -> int:
 def give(user: User, item: str, n: int) -> None:
     if item == "part":
         user.legendary_parts = qty_of(user, "part") + n
-    elif item == "fragment":
-        user.boss_fragments = qty_of(user, "fragment") + n
     elif item == "wood":
         user.wood = qty_of(user, "wood") + n
     elif item == "iron":
@@ -50,7 +46,7 @@ def take(user: User, item: str, n: int) -> bool:
 
 def return_room(user: User, item: str) -> int | None:
     """جای خالی واقعی برای برگشت آگهی؛ قطعه افسانه‌ای سقف نداره."""
-    if item in ("part", "fragment"):
+    if item == "part":
         return None
     if item in ("wood", "iron"):
         from services.resources import res_cap
@@ -66,7 +62,6 @@ def can_return(user: User, item: str, qty: int) -> bool:
 def _item_column(item: str):
     return {
         "part": User.legendary_parts,
-        "fragment": User.boss_fragments,
         "wood": User.wood,
         "iron": User.iron,
     }.get(item)
@@ -95,7 +90,7 @@ async def _lock_user_rows(session: AsyncSession, *user_ids: int) -> bool:
 async def _refresh_market_user(session: AsyncSession, user: User) -> None:
     await session.refresh(
         user,
-        ["cash", "wood", "iron", "legendary_parts", "boss_fragments", "shelter_level"],
+        ["cash", "wood", "iron", "legendary_parts", "shelter_level"],
     )
 
 
@@ -191,7 +186,10 @@ async def sweep_expired(session: AsyncSession) -> int:
     cutoff = now_utc() - timedelta(hours=config.MARKET_TTL_HOURS)
     with session.no_autoflush:
         candidate_ids = list((await session.execute(
-            select(MarketListing.id).where(MarketListing.created_at < cutoff).order_by(MarketListing.id)
+            select(MarketListing.id).where(
+                MarketListing.created_at < cutoff,
+                MarketListing.item.in_(tuple(config.MARKET_ITEMS)),
+            ).order_by(MarketListing.id)
         )).scalars())
     n = 0
     for listing_id in candidate_ids:
@@ -242,7 +240,10 @@ async def create_listing(session: AsyncSession, user: User, item: str, qty: int,
     if not await _lock_user_rows(session, user.id):
         return False, "❌ صاحب موجودی پیدا نشد"
     await _refresh_market_user(session, user)
-    q_open = select(func.count(MarketListing.id)).where(MarketListing.seller_id == user.id)
+    q_open = select(func.count(MarketListing.id)).where(
+        MarketListing.seller_id == user.id,
+        MarketListing.item.in_(tuple(config.MARKET_ITEMS)),
+    )
     n_open = int((await session.execute(q_open)).scalar() or 0)
     if n_open >= config.MARKET_MAX_PER_USER:
         return False, f"❌ آگهی بازتو به {config.MARKET_MAX_PER_USER} تا رسیده، یکی رو لغو کن بعد آگهی جدید بذار"
@@ -267,8 +268,12 @@ async def create_listing(session: AsyncSession, user: User, item: str, qty: int,
 # ───────── خواندن لیست ─────────
 
 async def count_listings(session: AsyncSession, item: str | None = None) -> int:
-    q = select(func.count(MarketListing.id))
+    """فقط کالاهای فعال فعلی؛ ردیف legacy فرگمنت تا اجرای /update پنهان می‌ماند."""
+    allowed = tuple(config.MARKET_ITEMS)
+    q = select(func.count(MarketListing.id)).where(MarketListing.item.in_(allowed))
     if item:
+        if item not in config.MARKET_ITEMS:
+            return 0
         q = q.where(MarketListing.item == item)
     return int((await session.execute(q)).scalar() or 0)
 
@@ -279,8 +284,11 @@ async def fetch_page(session: AsyncSession, item: str | None, page: int, desc: b
     صفحه خواسته‌شده از ته اومد بیرون، آخرین صفحه داده میشه
     """
     order = MarketListing.price.desc() if desc else MarketListing.price.asc()
-    q = select(MarketListing)
+    allowed = tuple(config.MARKET_ITEMS)
+    q = select(MarketListing).where(MarketListing.item.in_(allowed))
     if item:
+        if item not in config.MARKET_ITEMS:
+            return [], 0, 1
         q = q.where(MarketListing.item == item)
     q = q.order_by(order, MarketListing.id.asc())
     rows = list((await session.execute(q)).scalars())
@@ -291,14 +299,18 @@ async def fetch_page(session: AsyncSession, item: str | None, page: int, desc: b
 
 
 async def get_listing(session: AsyncSession, listing_id: int) -> MarketListing | None:
-    return await session.get(MarketListing, listing_id)
+    row = await session.get(MarketListing, listing_id)
+    return row if row is not None and row.item in config.MARKET_ITEMS else None
 
 
 # ───────── آگهی‌های خود کاربر (راند ۲۶، درخواست کارفرما) ─────────
 
 async def my_listings(session: AsyncSession, user_id: int) -> list[MarketListing]:
     """آگهی‌های باز خود کاربر به ترتیب ثبت"""
-    q = select(MarketListing).where(MarketListing.seller_id == user_id).order_by(MarketListing.id)
+    q = select(MarketListing).where(
+        MarketListing.seller_id == user_id,
+        MarketListing.item.in_(tuple(config.MARKET_ITEMS)),
+    ).order_by(MarketListing.id)
     return list((await session.execute(q)).scalars())
 
 
@@ -309,7 +321,7 @@ async def cancel_listing(session: AsyncSession, user: User, listing_id: int) -> 
     """
     with session.no_autoflush:
         preview = await session.get(MarketListing, listing_id)
-    if preview is None or preview.seller_id != user.id:
+    if preview is None or preview.item not in config.MARKET_ITEMS or preview.seller_id != user.id:
         return False, None
     if not await _lock_user_rows(session, user.id):
         return False, None
@@ -342,7 +354,7 @@ async def buy_listing(session: AsyncSession, buyer: User, listing_id: int) -> tu
     """
     with session.no_autoflush:
         preview = await session.get(MarketListing, listing_id)
-    if preview is None:
+    if preview is None or preview.item not in config.MARKET_ITEMS:
         return "gone", {}
     if preview.seller_id == buyer.id:
         return "own", {"row": preview}

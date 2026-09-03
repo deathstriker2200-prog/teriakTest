@@ -7,6 +7,7 @@
 """
 
 import asyncio
+import secrets
 import time
 
 from telegram import Update
@@ -22,6 +23,11 @@ from services import forcejoin as fj_svc
 from services import teams as team_svc
 from services import world as world_svc
 from utils import esc, fa_num, jalali_str, money, now_utc, parse_amount
+
+
+_CLEARACC_TTL_SECONDS = 120
+# token → (ادمین آغازکننده، telegram_id هدف، انقضای monotonic)
+_CLEARACC_REQUESTS: dict[str, tuple[int, int, float]] = {}
 
 
 def _is_admin(update: Update) -> bool:
@@ -194,7 +200,7 @@ async def _user_card_text(session, target) -> str:
         f"🆔 {uname} | <code>{target.telegram_id}</code>\n"
         f"⭐ لول {fa_num(target.level)} | ✨ {fa_num(target.xp)} از {fa_num(economy.xp_need(target.level))}\n"
         f"💵 نقدی {money(target.cash)}\n"
-        f"💎 جم {fa_num(target.gems or 0)} | 🔹 فرگمنت {fa_num(getattr(target, 'boss_fragments', 0) or 0)}\n"
+        f"💎 جم {fa_num(target.gems or 0)} | 🧩 قطعه افسانه‌ای {fa_num(target.legendary_parts or 0)}\n"
         f"💪 حمله {fa_num(atk30)} | 🛡 دفاع {fa_num(dfn30)}\n"
         f"🔫 {wname30}\n"
         f"🦺 {aname30}\n"
@@ -280,13 +286,14 @@ async def update_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
     async with session_scope() as s:
         market_rolled = await world_svc.ensure_market(s, force=True)
-        # ترتیب مهم است: زره legacy با لول قبل از نگاشت XP تشخیص داده می‌شود.
         from services import compat_migrations as compat_svc
         xp_migration = await compat_svc.migrate_player_xp_400k(s)
         xp_medals_migration = await compat_svc.sync_lifetime_xp_with_medals(s)
         # هر دو مهاجرت Gods باید سطح نهاییِ بازسازی‌شده از XP/مدال را ببینند.
         armor_migration = await compat_svc.migrate_legacy_gods_armor(s)
         underlevel_armor_migration = await compat_svc.migrate_underlevel_gods_armor(s)
+        plasma_migration = await compat_svc.repair_plasma_inventory(s)
+        fragment_migration = await compat_svc.remove_boss_fragments(s)
         duel_migration = await compat_svc.retire_legacy_duels(s)
         # سطح کارتل‌های قدیمی روی منحنی سخت‌تر بازنشانی میشه (فقط یه بار اجرا میشه)
         migrated_n = await team_svc.migrate_team_levels(s)
@@ -374,6 +381,23 @@ async def update_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         )
     else:
         lines.append("✅ همه زره‌های خدایان زیر لول لازم قبلاً به نیمه‌خدایان برگشتن")
+    if plasma_migration["done"]:
+        lines.append(
+            f"🛡 نجات پلاسما: {fa_num(plasma_migration['restored'])} برگشت، "
+            f"{fa_num(plasma_migration['merged'])} ادغام، "
+            f"{fa_num(plasma_migration['recreated'])} مالکیت قطعی بازسازی شد"
+        )
+    else:
+        lines.append("✅ خرابی مهاجرت قدیمی زره پلاسما قبلاً ترمیم شده")
+    if fragment_migration["done"]:
+        lines.append(
+            f"🔹 حذف فرگمنت: {fa_num(fragment_migration['fragments'])} عدد از "
+            f"{fa_num(fragment_migration['users'])} بازیکن | "
+            f"{fa_num(fragment_migration['listings'])} آگهی | "
+            f"{fa_num(fragment_migration['pending'])} ورودی معلق"
+        )
+    else:
+        lines.append("✅ فرگمنت‌های باس و آگهی‌های قدیمیش قبلاً کامل پاک شدن")
     if duel_migration["done"]:
         lines.append(
             f"❌⭕ {fa_num(duel_migration['matches'])} دوئل قدیمی بسته شد و "
@@ -771,32 +795,76 @@ async def clearacc_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         level, cash = target.level, target.cash
         await s.commit()
 
+    now_mono = time.monotonic()
+    for old_token, req in list(_CLEARACC_REQUESTS.items()):
+        if req[2] <= now_mono:
+            _CLEARACC_REQUESTS.pop(old_token, None)
+    token = secrets.token_urlsafe(8)
+    _CLEARACC_REQUESTS[token] = (update.effective_user.id, tg_id, now_mono + _CLEARACC_TTL_SECONDS)
+
     text = (
         "<b>🧨 ریست اکانت</b>\n\n"
         f"می‌خوای حساب «{name}» ({uname} | <code>{tg_id}</code>) رو کامل پاک کنی؟\n\n"
         f"⭐ لول {fa_num(level)} و 💵 {money(cash)} و همه زمین‌ها و سگ‌ها و آیتم‌هاش می‌پره\n"
         f"برمی‌گرده به حالت روز اول با {money(config.START_CASH)}\n\n"
+        f"⏳ این تأیید فقط {fa_num(_CLEARACC_TTL_SECONDS)} ثانیه و فقط برای خودت معتبره\n"
+        "💾 قبل از پاک‌کردن هم بکاپ کامل اجباری برات ارسال میشه\n\n"
         "انجامش بدیم؟"
     )
-    await update.message.reply_html(text, reply_markup=kb.clearacc_confirm_kb(tg_id))
+    await update.message.reply_html(text, reply_markup=kb.clearacc_confirm_kb(token))
 
 
 async def clearacc_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """تایید/لغو ریست اکانت، فقط ادمین"""
+    """ریست فقط با token کوتاه‌عمرِ همان ادمین و پس از ارسال موفق بکاپ کامل."""
     if not _is_admin(update):
         await update.callback_query.answer()
         return
-    _, action, raw = parts(update)
-    tg_id = int(raw)
+    _, action, token = parts(update)
+    req = _CLEARACC_REQUESTS.get(token)
+    admin_id = update.effective_user.id
+    if req is None or req[2] <= time.monotonic():
+        _CLEARACC_REQUESTS.pop(token, None)
+        return await respond(
+            update,
+            "<b>⏳ تأیید ریست منقضی شده</b>\n\nدوباره دستور /clearacc رو بزن؛ هیچ داده‌ای پاک نشد",
+            kb.admin_kb(),
+        )
+    if req[0] != admin_id:
+        return await update.callback_query.answer("این تأیید فقط مال ادمینیه که درخواستشو ساخته", show_alert=True)
+    _CLEARACC_REQUESTS.pop(token, None)
+    tg_id = req[1]
 
     if action == "no":
         return await respond(update, "<b>😅 بی‌خیال ریست شدیم</b>\n\nاکانت دست نخورده موند", kb.admin_kb())
+
+    # اول بکاپ کامل و سالم را تحویل ادمین می‌دهیم؛ شکست بکاپ/ارسال یعنی ریست ممنوع.
+    from services import backup as backup_svc
+    payload = await backup_svc.make_upload_payload()
+    if payload is None:
+        return await respond(
+            update,
+            "<b>❌ ریست لغو شد</b>\n\nبکاپ امن ساخته نشد؛ هیچ داده‌ای پاک نشد",
+            kb.admin_kb(),
+        )
+    data, filename = payload
+    try:
+        await update.effective_message.reply_document(
+            document=data,
+            filename=filename,
+            caption=f"💾 بکاپ اجباری قبل از /clearacc بازیکن {tg_id}\nتا وقتی این فایل ارسال نشه ریست انجام نمیشه",
+        )
+    except Exception:
+        return await respond(
+            update,
+            "<b>❌ ریست لغو شد</b>\n\nارسال بکاپ به تلگرام شکست خورد؛ اکانت کاملاً دست‌نخورده موند",
+            kb.admin_kb(),
+        )
 
     async with session_scope() as s:
         target = await users.get_by_tg(s, tg_id)
         if target is None:
             await s.commit()
-            return await respond(update, "❌ طرف دیگه تو بازی نیس", kb.admin_kb())
+            return await respond(update, "❌ طرف دیگه تو بازی نیس؛ چیزی پاک نشد", kb.admin_kb())
         name = esc(users.display_name(target))
         await users.wipe_account(s, target)
         await s.commit()
@@ -804,16 +872,15 @@ async def clearacc_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     await respond(
         update,
         f"<b>✅ اکانت «{name}» ریست شد</b>\n\n"
-        f"همه چیش پاک شد، الان مثل روز اوله\n"
-        f"💰 {money(config.START_CASH)} تو جیبشه",
+        f"بکاپ قبل ریست بالاتر برات ارسال شد\n"
+        f"💰 {money(config.START_CASH)} تو جیب بازیکنه",
         kb.admin_kb(),
     )
-    # به خود طرف هم خبر بدیم، استارت کرده باشه
     try:
         await context.bot.send_message(
             tg_id,
             "<b>🔄 اکانتت ریست شد</b>\n\n"
-            f"حسابت توسط مدیریت به حالت روز اول برگشت\n"
+            "حسابت با تأیید دستی مدیریت و بعد از گرفتن بکاپ کامل به حالت روز اول برگشت\n"
             f"💰 دوباره با {money(config.START_CASH)} شروع می‌کنی",
             parse_mode="HTML",
         )

@@ -163,7 +163,6 @@ async def _shelter_text(session, user) -> str:
         f"🪵 چوب: {fa_num(user.wood)}",
         f"⛏️ آهن: {fa_num(user.iron)}",
         f"{config.LEGENDARY_PART_NAME}: {fa_num(getattr(user, 'legendary_parts', 0) or 0)} (ساخت تجهیزات ویژه)",
-        f"{config.BOSS_FRAGMENT_NAME}: {fa_num(getattr(user, 'boss_fragments', 0) or 0)} (ساخت تجهیزات لول ۲۰ تا ۳۰)",
         "",
         "📦 آیتم‌ها",
         f"🌱 بذر: {fa_num(seeds_n)}",

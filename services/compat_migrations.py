@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import json
 
-from sqlalchemy import select
+from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import config
-from models import GameMeta, InventoryItem, User
+from models import GameMeta, InventoryItem, MarketListing, User
 from services import users
 
 
@@ -191,6 +191,117 @@ async def migrate_underlevel_gods_armor(session: AsyncSession) -> dict:
         .with_for_update()
     )).scalars())
     stats = {"done": True, **await _convert_gods_rows(session, rows)}
+    await _mark_done(session, marker, stats)
+    return stats
+
+
+async def repair_plasma_inventory(session: AsyncSession) -> dict:
+    """خرابی migration قدیمی plasma→minigun را بدون دست‌زدن به گاتلینگ واقعی ترمیم می‌کند."""
+    marker = "repair_plasma_inventory_v1"
+    empty = {"done": False, "restored": 0, "merged": 0, "recreated": 0, "weapon_fixed": 0}
+    if await _already_done(session, marker):
+        return empty
+
+    stats = dict(empty)
+    stats["done"] = True
+    # سلاح واقعی durability ندارد؛ minigun دارای durability امضای قطعی زره پلاسمایی rename‌شده است.
+    corrupted = list((await session.execute(
+        select(InventoryItem)
+        .where(InventoryItem.item_key == "minigun", InventoryItem.durability.is_not(None))
+        .order_by(InventoryItem.user_id)
+        .with_for_update()
+    )).scalars())
+    for source in corrupted:
+        owner = await session.get(User, source.user_id, with_for_update=True)
+        source_level = max(1, int(source.level or 1))
+        source_max = users.armor_max_durability("plasma", source_level)
+        source_cur = users.armor_current_durability("plasma", source_level, source.durability)
+        source_ratio = source_cur / max(1, source_max)
+        target = (await session.execute(
+            select(InventoryItem).where(
+                InventoryItem.user_id == source.user_id,
+                InventoryItem.item_key == "plasma",
+            ).with_for_update()
+        )).scalar_one_or_none()
+        if target is None:
+            source.item_key = "plasma"
+            source.ammo = None
+            source.durability = source_cur
+            stats["restored"] += 1
+        else:
+            target_level = max(1, int(target.level or 1))
+            target_max = users.armor_max_durability("plasma", target_level)
+            target_cur = users.armor_current_durability("plasma", target_level, target.durability)
+            target_ratio = target_cur / max(1, target_max)
+            target.level = max(source_level, target_level)
+            merged_max = users.armor_max_durability("plasma", target.level)
+            target.durability = max(0, min(merged_max, round(merged_max * max(source_ratio, target_ratio))))
+            target.ammo = None
+            await session.delete(source)
+            stats["merged"] += 1
+        if owner is not None and owner.equipped_weapon == "minigun":
+            owner.equipped_weapon = None
+            stats["weapon_fixed"] += 1
+
+    await session.flush()
+    # وقتی پلاسما روی تن ثبت بوده ولی ردیفش در برخورد با گاتلینگ حذف شده، مالکیت قطعی است؛
+    # level قبلی اثری ندارد، پس محافظه‌کارانه لول ۱ با دوام کامل برمی‌گردد.
+    equipped_owners = list((await session.execute(
+        select(User).where(User.equipped_armor == "plasma").order_by(User.id).with_for_update()
+    )).scalars())
+    for owner in equipped_owners:
+        exists = (await session.execute(select(InventoryItem.id).where(
+            InventoryItem.user_id == owner.id,
+            InventoryItem.item_key == "plasma",
+        ))).scalar_one_or_none()
+        if exists is None:
+            session.add(InventoryItem(
+                user_id=owner.id,
+                item_key="plasma",
+                level=1,
+                ammo=None,
+                durability=users.armor_max_durability("plasma", 1),
+            ))
+            stats["recreated"] += 1
+
+    await _mark_done(session, marker, stats)
+    return stats
+
+
+async def remove_boss_fragments(session: AsyncSession) -> dict:
+    """فرگمنت، escrow مارکت و state معلق آن را یک‌بار و کامل بازنشسته می‌کند."""
+    marker = "remove_boss_fragments_v1"
+    empty = {"done": False, "users": 0, "fragments": 0, "listings": 0, "pending": 0}
+    if await _already_done(session, marker):
+        return empty
+
+    user_count, fragment_total = (await session.execute(select(
+        func.count(User.id),
+        func.coalesce(func.sum(User.boss_fragments), 0),
+    ).where(User.boss_fragments > 0))).one()
+    listing_count = int((await session.execute(
+        select(func.count(MarketListing.id)).where(MarketListing.item == "fragment")
+    )).scalar_one())
+    fragment_pending = or_(
+        (User.pending_action == "mkqty") & (User.pending_value == "fragment"),
+        (User.pending_action == "mkprice") & User.pending_value.like("fragment:%"),
+    )
+    pending_count = int((await session.execute(
+        select(func.count(User.id)).where(fragment_pending)
+    )).scalar_one())
+
+    await session.execute(update(User).where(User.boss_fragments != 0).values(boss_fragments=0))
+    await session.execute(delete(MarketListing).where(MarketListing.item == "fragment"))
+    await session.execute(update(User).where(fragment_pending).values(
+        pending_action=None, pending_value=None, pending_at=None, pending_chat_id=None,
+    ))
+    stats = {
+        "done": True,
+        "users": int(user_count or 0),
+        "fragments": int(fragment_total or 0),
+        "listings": listing_count,
+        "pending": pending_count,
+    }
     await _mark_done(session, marker, stats)
     return stats
 

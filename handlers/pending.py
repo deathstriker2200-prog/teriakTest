@@ -406,7 +406,11 @@ async def capture(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             if it23 is None:
                 users.set_pending(user, None)
                 await s.commit()
-                await update.message.reply_html("❌ مشکلی پیش اومد، دوباره از «مارکت» شروع کن")
+                msg = (
+                    "🔹 فرگمنت باس کامل از بازی حذف شده؛ آگهی‌های قدیمیش هم با /update پاک میشن"
+                    if item23 == "fragment" else "❌ مشکلی پیش اومد، دوباره از «مارکت» شروع کن"
+                )
+                await update.message.reply_html(msg)
                 raise ApplicationHandlerStop()
             have23 = mk_svc.qty_of(user, item23)
             if have23 < qty:
@@ -503,7 +507,7 @@ async def capture(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if action == "trf_amt":
             amount = parse_amount(text)
             if amount is None:
-                await update.message.reply_html(f"❌ فقط عددشو بفرست، مثلا: 8000\n\n❌ اگر هم پشیمون شدی بنویس «لغو»")
+                await update.message.reply_html("❌ فقط عددشو بفرست، مثلا: 8000\n\n❌ اگر هم پشیمون شدی بنویس «لغو»")
                 raise ApplicationHandlerStop()
             target = await users.get_by_tg(s, int(user.pending_value or 0))
             if target is None:

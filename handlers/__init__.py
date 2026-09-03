@@ -437,7 +437,7 @@ def register_handlers(app: Application) -> None:
 
     # ── ادمین ──
     app.add_handler(CallbackQueryHandler(admin.admin_cb, pattern=r"^adm:\w+:\d+$"))
-    app.add_handler(CallbackQueryHandler(admin.clearacc_cb, pattern=r"^cacc:(?:ok|no):\d+$"))
+    app.add_handler(CallbackQueryHandler(admin.clearacc_cb, pattern=r"^cacc:(?:ok|no):[A-Za-z0-9_-]{8,32}$"))
     app.add_handler(CallbackQueryHandler(admin.broadcast_scope_cb, pattern=r"^bcs:[gpa]:-?\d+:\d+$"))
     app.add_handler(CallbackQueryHandler(admin.broadcast_mode_cb, pattern=r"^bcm:[ft]:[gpa]:-?\d+:\d+$"))
     app.add_handler(CallbackQueryHandler(admin.broadcast_cancel_cb, pattern=r"^bcc$"))

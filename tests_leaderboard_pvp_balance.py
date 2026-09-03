@@ -1,4 +1,4 @@
-"""رگرسیون دسته اصلاح XP/لیدربرد، فرگمنت، PvP کلاسیک، مسیر قمار، زره و بمب انرژی."""
+"""رگرسیون دسته اصلاح XP/لیدربرد، باس، PvP کلاسیک، مسیر قمار، زره و بمب انرژی."""
 from __future__ import annotations
 
 import asyncio
@@ -34,24 +34,17 @@ def test_static_balance_and_ui() -> None:
         and sum(config.PLAYER_XP_NEEDS) == config.PLAYER_XP_TOTAL_TO_MAX == 400_000,
     )
     check(
-        "جدول فرگمنت سلاح دقیقاً مقادیر مصوب است",
-        config.SPECIAL_WEAPON_FRAGMENTS == {
-            "oblivion": 12, "stormbringer": 18, "sunlance": 28,
-            "dragonbreath": 38, "worldbreaker": 52, "judgment": 72,
-        },
+        "فرگمنت از نیاز ساخت سلاح و زره کامل حذف شده",
+        config.SPECIAL_WEAPON_FRAGMENTS == {} and config.SPECIAL_ARMOR_FRAGMENTS == {},
     )
     check(
-        "جدول فرگمنت زره دقیقاً مقادیر مصوب است",
-        config.SPECIAL_ARMOR_FRAGMENTS == {
-            "neutron": 12, "demigod": 15, "dragonbone": 18, "quantum": 28,
-            "celestial": 38, "emperor": 52, "gods": 72, "mimic": 90,
-        },
+        "فرگمنت از کاتالوگ مارکت حذف شده",
+        "fragment" not in config.MARKET_ITEMS,
     )
     check(
-        "شانس باس ثابت و مقدار موفق دو برابر است",
-        config.BOSS_FRAGMENT_DROP_CHANCE == {"common": 0.10, "epic": 0.30, "legendary": 0.65}
-        and config.BOSS_FRAGMENT_DROP == {"common": (2, 2), "epic": (2, 4), "legendary": (4, 8)}
-        and config.BOSS_FRAGMENT_TOP_N == 3,
+        "قطعه افسانه‌ای قاتل باس با شانس 3%/10%/15% رول می‌شود",
+        config.BOSS_PART_DROP == {"common": 0.03, "epic": 0.10, "legendary": 0.15}
+        and not any(name.startswith("BOSS_FRAGMENT") for name in vars(config)),
     )
     check(
         "بمب انرژی 150,000، پانزده دقیقه و 30٪ است",

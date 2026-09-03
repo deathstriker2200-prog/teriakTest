@@ -1,8 +1,8 @@
 """
 باس‌های محله 👹 (راند ۲۳، درخواست کارفرما)
 هر روز دو باس تو هر گروه فعال اسپان میشن، ساعتاشون شانسی ولی حداقل ۲ ساعت فاصله دارن
-درجه‌ها: ⚪ معمولی ۷۰ درصد | 🟣 اپیک ۲۰ درصد | 🟡 لجندری ۱۰ درصد (راند ۲۹: ماندگاری ۱۰/۲۰/۳۰ دقیقه و جواب باس منهای دفاع زره)
-قطعه افسانه‌ای برای قاتل تضمینی نیست و هر باس فقط یک رول کمیاب فرگمنت بین سه نفر برتر دارد
+درجه‌ها: ⚪ معمولی ۸۰ درصد | 🟣 اپیک ۱۵ درصد | 🟡 لجندری ۵ درصد (اسپاون قبلی دست‌نخورده؛ ماندگاری ۱۰/۲۰/۳۰ دقیقه و جواب باس منهای دفاع زره)
+قطعه افسانه‌ای فقط برای قاتل و با شانس درجه باس رول می‌شود؛ فرگمنت باس از بازی حذف شده
 حالت باس فعال درون حافظه‌ست (مثل کاروان، با ری‌استارت می‌ره) ولی برنامه روزانه اسپون تو دیتابیسه
 عکس باس‌ها از پنل ادمین با فرستادن عکس ست میشه و فایلش روی سرور ذخیره می‌مونه
 """
@@ -229,7 +229,7 @@ async def _settle(session: AsyncSession, chat_id: int, killer_id: int) -> dict:
     """
     تسویه کشتن باس: جایزه رومیزی بین نفرهای برتر دمیج بر اساس رتبه (BOSS_RANK_PCT)
     جم هر درجه به صورت مجموع کنترل‌شده بین سه نفر برتر تقسیم می‌شود؛ لجندری ۵۰ تا ۸۰ جم.
-    فرگمنت با یک رول کمیاب بین سه نفر برتر می‌افتد و قطعه افسانه‌ای فقط با شانس درجه به قاتل می‌رسد.
+    قطعه افسانه‌ای فقط با شانس درجه به قاتل می‌رسد؛ فرگمنت باس بازنشسته شده است.
     """
     st = BOSSES.pop(chat_id, None)
     if not st:
@@ -258,20 +258,6 @@ async def _settle(session: AsyncSession, chat_id: int, killer_id: int) -> dict:
                 gu.gems = (gu.gems or 0) + g
                 gem_gains[uid] = g
 
-    # 🔹 فرگمنت باس کمیاب است: برای هر باس فقط یک رول، نه جایزه تضمینی برای همه.
-    fragment_gains: dict[int, int] = {}
-    frag_candidates = ranked[: config.BOSS_FRAGMENT_TOP_N]
-    frag_chance = config.BOSS_FRAGMENT_DROP_CHANCE[boss["tier"]]
-    if frag_candidates and random.random() < frag_chance:
-        weights = config.BOSS_FRAGMENT_RANK_WEIGHTS[:len(frag_candidates)]
-        uid, _d = random.choices(frag_candidates, weights=weights, k=1)[0]
-        frag_lo, frag_hi = config.BOSS_FRAGMENT_DROP[boss["tier"]]
-        amount = random.randint(frag_lo, frag_hi)
-        gu = await session.get(User, uid)
-        if gu is not None:
-            gu.boss_fragments = (gu.boss_fragments or 0) + amount
-            fragment_gains[uid] = amount
-
     rows = []
     for idx, (uid, d) in enumerate(ranked):
         u = await session.get(User, uid)
@@ -290,7 +276,6 @@ async def _settle(session: AsyncSession, chat_id: int, killer_id: int) -> dict:
             "top": idx == 0,
             "killer": uid == killer_id,
             "gems": gem_gains.get(uid, 0),
-            "fragments": fragment_gains.get(uid, 0),
         })
 
     # 🧩 قطعه افسانه‌ای دیگر تضمینی نیست؛ فقط قاتل و با شانس پایین درجه باس
@@ -306,7 +291,6 @@ async def _settle(session: AsyncSession, chat_id: int, killer_id: int) -> dict:
         "drop_part": drop_part,
         "killer_gems": gem_gains.get(killer_id, 0),
         "total_gems": sum(gem_gains.values()),
-        "total_fragments": sum(fragment_gains.values()),
     }
 
 
@@ -338,7 +322,6 @@ def card_text(st: dict) -> str:
         f"⚔️ قدرت: {fa_num(boss['dmg'])} (اول از دفاع زره‌ت کم میشه)",
         "",
         f"🎁 جایزه شکست: {money(boss['reward'])} (پلکانی بین ۵ نفر برتر دمیج)",
-        f"🔹 فرگمنت باس برای {fa_num(config.BOSS_FRAGMENT_TOP_N)} نفر برتر",
         f"🧩 شانس قطعه افسانه‌ای قاتل: {fa_num(int(config.BOSS_PART_DROP.get(boss['tier'], 0) * 100))}%",
         "💎 جم فقط از باس می‌افتد و بین سه نفر برتر تقسیم می‌شود",
     ]
@@ -379,14 +362,12 @@ def end_text(res: dict, key: str) -> str:
     for r in rows:
         mark = "👑" if r["top"] else "▫️"
         gem = f" + 💎×{fa_num(r['gems'])}" if r.get("gems") else ""
-        frag = f" + 🔹×{fa_num(r['fragments'])}" if r.get("fragments") else ""
-        lines.append(f"{mark} {r['name']} ({fa_num(r['dmg'])} دمیج) → {money(r['share'])}{gem}{frag}")
+        lines.append(f"{mark} {r['name']} ({fa_num(r['dmg'])} دمیج) → {money(r['share'])}{gem}")
         if r["killer"]:
             killer_name = r["name"]
     lines.append("")
     lines.append(f"قاتل: {killer_name}")
     lines.append(f"💎 مجموع جم واردشده: {fa_num(res.get('total_gems', 0))}")
-    lines.append(f"🔹 مجموع فرگمنت: {fa_num(res.get('total_fragments', 0))}")
     if res.get("drop_part"):
         lines.append("🧩 قاتل باس یک قطعه افسانه‌ای هم پیدا کرد")
     return "\n".join(lines)
